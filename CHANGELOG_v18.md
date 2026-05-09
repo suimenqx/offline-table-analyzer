@@ -105,3 +105,10 @@ node tools/run-parser-tests.js
 - 支持拖拽页签调整顺序，激活页签不会因排序改变。
 - 页签标题增加省略显示和 hover title，长名称不会撑破顶部导航。
 - 新增 `tools/run-tab-tests.js` 覆盖页签重命名、标题清理、拖拽排序和异常目标回滚逻辑。
+
+## v18.6
+
+- Fixed sidebar navigation regression: the 配置规则 tab now uses delegated binding and remains clickable after document changes.
+- Fixed Smart Parser logo double-click behavior by preventing the second click from toggling the sidebar back.
+- Added a fullscreen data-source editor with live sync, format/header controls, parse shortcut, and modal close controls.
+- Added UI interaction static validation for sidebar and fullscreen source editor behavior.

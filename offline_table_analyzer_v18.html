@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>离线表格分析器 V18.1 (Universal Import)</title>
+    <title>离线表格分析器 V18.6</title>
     <style>
         /* --- Design Tokens --- */
         :root {
@@ -186,6 +186,16 @@
         .input-resizer.dragging::after { background: var(--primary); opacity: 1; }
         .floating-actions { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; background: rgba(255,255,255,0.9); backdrop-filter: blur(6px); padding: 6px; border-radius: 999px; border: 1px solid var(--border); box-shadow: var(--shadow-xs); }
         [data-theme="dark"] .floating-actions { background: rgba(15,23,42,0.85); }
+        .source-card-title { display: flex; align-items: center; gap: 8px; }
+        .source-card-actions { display: flex; align-items: center; gap: 6px; }
+        .source-editor-shell { width: min(1180px, 94vw); height: 90vh; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; overflow: hidden; }
+        .source-editor-head { min-height: 54px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .source-editor-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        .source-editor-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .source-editor-body { flex: 1; min-height: 0; padding: 12px; background: var(--bg-app); }
+        #rawInputLarge { width: 100%; height: 100%; min-height: 0; resize: none; border-radius: 12px; padding: 14px; line-height: 1.55; white-space: pre; overflow: auto; font-family: var(--font-mono); background: var(--bg-card); border: 1px solid var(--border); }
+        .source-editor-foot { padding: 10px 14px; border-top: 1px solid var(--border); background: var(--bg-elevated); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .source-editor-foot .muted { font-size: 12px; }
 
         /* Accordion */
         .accordion { display: flex; flex-direction: column; gap: 8px; }
@@ -294,7 +304,7 @@
         <div class="sidebar-header">
             <div class="logo sidebar-toggle" id="sidebarToggle" title="点击折叠 / 展开侧栏" tabindex="0">
                 <div class="logo-icon">T</div>
-                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.2</span></span>
+                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.6</span></span>
             </div>
         </div>
 
@@ -308,8 +318,13 @@
             <div class="sidebar-pane active" data-tab="data">
                 <div class="card" style="box-shadow:none;">
                     <div class="card-header" style="border-bottom:1px solid var(--border);">
-                        <span class="card-title">数据源</span>
-                        <span class="muted" style="font-size:12px;">粘贴/拖拽输入</span>
+                        <div class="source-card-title">
+                            <span class="card-title">数据源</span>
+                            <span class="muted" style="font-size:12px;">粘贴/拖拽输入</span>
+                        </div>
+                        <div class="source-card-actions">
+                            <button class="icon-btn sm" id="expandSourceBtn" title="打开大编辑空间">⛶</button>
+                        </div>
                     </div>
                     <div class="card-body">
                         <div class="textarea-shell">
@@ -468,6 +483,47 @@
     <div class="fp-actions">
         <button class="sm" id="fpClear">清除</button>
         <button class="primary sm" id="fpApply">应用</button>
+    </div>
+</div>
+
+<!-- Fullscreen Data Source Editor -->
+<div id="sourceEditorModal" class="fullscreen-modal hidden">
+    <div class="source-editor-shell">
+        <div class="source-editor-head">
+            <div class="source-editor-title">
+                <div class="eyebrow">Data Source</div>
+                <div style="font-weight:800; font-size:16px;">大编辑空间</div>
+            </div>
+            <div class="source-editor-tools">
+                <select id="formatSelectLarge" class="format-select" title="输入格式">
+                    <option value="auto">自动识别</option>
+                    <option value="cli-table-data">CLI table-data</option>
+                    <option value="csv">CSV</option>
+                    <option value="excel-paste">Excel/TSV</option>
+                    <option value="html-table">HTML 表格</option>
+                    <option value="semicolon-csv">分号分隔</option>
+                    <option value="pipe-table">竖线/Markdown</option>
+                    <option value="ascii-table">ASCII 表格</option>
+                    <option value="fixed-width">固定宽度</option>
+                    <option value="plain-text">空白文本</option>
+                </select>
+                <select id="headerModeSelectLarge" class="format-select narrow" title="表头处理，CLI table-data 固定使用 validflag 行作为表头">
+                    <option value="auto">自动表头</option>
+                    <option value="first-row">首行表头</option>
+                    <option value="none">无表头</option>
+                </select>
+                <button class="sm" id="sourceEditorParseBtn">解析</button>
+                <button class="primary sm" id="sourceEditorDoneBtn">完成</button>
+                <button class="icon-btn sm" id="sourceEditorCloseBtn" title="关闭">×</button>
+            </div>
+        </div>
+        <div class="source-editor-body">
+            <textarea id="rawInputLarge" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..."></textarea>
+        </div>
+        <div class="source-editor-foot">
+            <span class="muted">内容实时同步到左侧数据源；Ctrl/⌘ + Enter 解析，Esc 关闭。</span>
+            <span class="muted" id="sourceEditorStats">0 字符</span>
+        </div>
     </div>
 </div>
 
@@ -820,7 +876,7 @@ const Store = {
     },
     save() { localStorage.setItem('v16_4_store', JSON.stringify(this.state)); },
     addDoc() {
-        this.state.docs.push({ id: Date.now().toString(), title: `Analysis ${this.state.docs.length+1}`, raw: "", ui: { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{} } });
+        this.state.docs.push({ id: Date.now().toString(), title: `Analysis ${this.state.docs.length+1}`, raw: "", ui: { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, sidebarTab:"data" } });
         this.state.activeId = this.state.docs[this.state.docs.length-1].id; this.save();
     },
     removeDoc(id) {
@@ -860,6 +916,7 @@ const Store = {
         if(!d.ui.rules) d.ui.rules = {};
         if(!d.ui.columnFilters) d.ui.columnFilters = {};
         if(!d.ui.collapsedTables) d.ui.collapsedTables = {};
+        if(!d.ui.sidebarTab) d.ui.sidebarTab = 'data';
         return d;
     },
     updateUI(k, v) { this.curr().ui[k]=v; this.save(); },
@@ -2626,6 +2683,7 @@ const App = {
             const isCli = manualFormat === 'cli-table-data' || (manualFormat === 'auto' && parsedFormat === 'cli-table-data');
             headerSelect.disabled = isCli;
         }
+        this.syncSourceEditorControls();
     },
 
     setHeaderMode(mode) {
@@ -2650,21 +2708,113 @@ const App = {
         return { html, format, headerMode };
     },
 
+    getSourceEditorText() {
+        const input = $('rawInputLarge');
+        return input ? input.value : '';
+    },
+
+    updateSourceEditorStats() {
+        const stats = $('sourceEditorStats');
+        if(!stats) return;
+        const text = this.getSourceEditorText();
+        const lines = text ? text.split(/\n/).length : 0;
+        stats.textContent = `${text.length} 字符 · ${lines} 行`;
+    },
+
+    syncSourceEditorControls() {
+        const formatMain = $('formatSelect');
+        const headerMain = $('headerModeSelect');
+        const formatLarge = $('formatSelectLarge');
+        const headerLarge = $('headerModeSelectLarge');
+        if(formatLarge && formatMain) formatLarge.value = formatMain.value || 'auto';
+        if(headerLarge && headerMain) headerLarge.value = headerMain.value || 'auto';
+        const manualFormat = formatLarge ? formatLarge.value : (formatMain ? formatMain.value : 'auto');
+        const parsedFormat = Parser.lastResult && Parser.lastResult.format;
+        const isCli = manualFormat === 'cli-table-data' || (manualFormat === 'auto' && parsedFormat === 'cli-table-data');
+        if(headerLarge) headerLarge.disabled = isCli;
+        if(headerMain) headerMain.disabled = isCli;
+    },
+
+    syncSourceTextFromLarge() {
+        const large = $('rawInputLarge');
+        const main = $('rawInput');
+        if(!large || !main) return;
+        main.value = large.value;
+        Store.curr().raw = large.value;
+        Store.save();
+        this.updateSourceEditorStats();
+    },
+
+    openSourceEditor() {
+        const modal = $('sourceEditorModal');
+        const large = $('rawInputLarge');
+        const main = $('rawInput');
+        if(!modal || !large || !main) return;
+        large.value = main.value || '';
+        this.syncSourceEditorControls();
+        this.updateSourceEditorStats();
+        modal.classList.remove('hidden');
+        document.body.classList.add('modal-open');
+        setTimeout(() => { large.focus(); }, 0);
+    },
+
+    closeSourceEditor() {
+        this.syncSourceTextFromLarge();
+        const modal = $('sourceEditorModal');
+        if(modal) modal.classList.add('hidden');
+        document.body.classList.remove('modal-open');
+    },
+
+    runFromSourceEditor(close=false) {
+        this.syncSourceTextFromLarge();
+        this.run();
+        this.syncSourceEditorControls();
+        if(close) this.closeSourceEditor();
+    },
+
+    setSidebarTab(tabName='data') {
+        const next = tabName === 'config' ? 'config' : 'data';
+        document.querySelectorAll('[data-tab-btn]').forEach(btn => {
+            const active = btn.dataset.tabBtn === next;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        document.querySelectorAll('.sidebar-pane').forEach(pane => {
+            pane.classList.toggle('active', pane.dataset.tab === next);
+        });
+        const d = Store.curr();
+        d.ui.sidebarTab = next;
+        Store.save();
+    },
+
     bindSidebar() {
         const sidebar = $('sidebar');
         const toggle = $('sidebarToggle');
-        if(toggle) toggle.onclick = () => { sidebar.classList.toggle('collapsed'); };
+        const toggleSidebar = () => { if(sidebar) sidebar.classList.toggle('collapsed'); };
+        if(toggle) {
+            toggle.onclick = (e) => {
+                if(e.detail > 1) return;
+                toggleSidebar();
+            };
+            toggle.ondblclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+            };
+        }
         const hint = sidebar ? sidebar.querySelector('.collapse-hint') : null;
         if(hint) hint.onclick = () => sidebar.classList.remove('collapsed');
 
-        const tabBtns = document.querySelectorAll('[data-tab-btn]');
-        const panes = document.querySelectorAll('.sidebar-pane');
-        const setTab = (t) => {
-            tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tabBtn===t));
-            panes.forEach(p => p.classList.toggle('active', p.dataset.tab===t));
-        };
-        tabBtns.forEach(btn => btn.onclick = () => setTab(btn.dataset.tabBtn));
-        setTab('data');
+        const tabs = document.querySelector('.sidebar-tabs');
+        if(tabs) {
+            tabs.onclick = e => {
+                const btn = e.target.closest('[data-tab-btn]');
+                if(!btn) return;
+                e.preventDefault();
+                if(sidebar && sidebar.classList.contains('collapsed')) sidebar.classList.remove('collapsed');
+                this.setSidebarTab(btn.dataset.tabBtn);
+            };
+        }
+        this.setSidebarTab((Store.curr().ui && Store.curr().ui.sidebarTab) || 'data');
     },
 
     bindAccordions() {
@@ -2720,6 +2870,47 @@ validflag Time      Level   Message                 Code
             const html = data.getData('text/html');
             const plain = data.getData('text/plain');
             if(html && /<table[\s>]/i.test(html)) this.lastPaste = { html, plain };
+        });
+        const expandSourceBtn = $('expandSourceBtn');
+        if(expandSourceBtn) expandSourceBtn.onclick = () => this.openSourceEditor();
+        const sourceClose = $('sourceEditorCloseBtn');
+        if(sourceClose) sourceClose.onclick = () => this.closeSourceEditor();
+        const sourceDone = $('sourceEditorDoneBtn');
+        if(sourceDone) sourceDone.onclick = () => this.closeSourceEditor();
+        const sourceParse = $('sourceEditorParseBtn');
+        if(sourceParse) sourceParse.onclick = () => this.runFromSourceEditor(false);
+        const rawLarge = $('rawInputLarge');
+        if(rawLarge) {
+            rawLarge.oninput = () => this.syncSourceTextFromLarge();
+            rawLarge.addEventListener('paste', e => {
+                const data = e.clipboardData;
+                if(!data) return;
+                const html = data.getData('text/html');
+                const plain = data.getData('text/plain');
+                if(html && /<table[\s>]/i.test(html)) this.lastPaste = { html, plain };
+            });
+            rawLarge.onkeydown = e => {
+                if(e.key === 'Escape') { e.preventDefault(); this.closeSourceEditor(); }
+                if((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this.runFromSourceEditor(false); }
+            };
+        }
+        const formatLarge = $('formatSelectLarge');
+        if(formatLarge) formatLarge.onchange = e => {
+            const main = $('formatSelect');
+            if(main) main.value = e.target.value;
+            this.setImportFormat(e.target.value);
+            this.syncSourceEditorControls();
+        };
+        const headerLarge = $('headerModeSelectLarge');
+        if(headerLarge) headerLarge.onchange = e => {
+            const main = $('headerModeSelect');
+            if(main) main.value = e.target.value;
+            this.setHeaderMode(e.target.value);
+            this.syncSourceEditorControls();
+        };
+        const sourceModal = $('sourceEditorModal');
+        if(sourceModal) sourceModal.addEventListener('click', e => {
+            if(e.target === sourceModal) this.closeSourceEditor();
         });
         const tabsContainer = $('tabsContainer');
         tabsContainer.onclick = e => {
@@ -2963,6 +3154,12 @@ validflag Time      Level   Message                 Code
         if(jm) jm.addEventListener('click', e => { if(e.target === jm) closeJoin(); });
 
         document.addEventListener('keydown', e => {
+            const sourceModal = $('sourceEditorModal');
+            if(sourceModal && !sourceModal.classList.contains('hidden') && e.key === 'Escape') {
+                e.preventDefault();
+                this.closeSourceEditor();
+                return;
+            }
             if($('joinModal').classList.contains('hidden')) return;
             if(!$('modalOverlay').classList.contains('hidden')) return;
             if(e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); }
@@ -2991,6 +3188,7 @@ validflag Time      Level   Message                 Code
         const headerModeSelect = $('headerModeSelect'); if(headerModeSelect) headerModeSelect.value = d.ui.importHeaderMode || 'auto';
         $('checkHl').checked = d.ui.enableHighlight !== false;
         $('checkOnlyHl').checked = d.ui.onlyHighlighted || false;
+        if($('sidebar')) this.setSidebarTab(d.ui.sidebarTab || 'data');
         this.run(false);
         this.renderPreview();
     },
