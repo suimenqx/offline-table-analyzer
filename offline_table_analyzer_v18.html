@@ -162,7 +162,7 @@
         .doc-tab.dragging { opacity: 0.55; transform: scale(0.98); }
         .doc-tab.drag-over-before { box-shadow: inset 2px 0 0 var(--primary); }
         .doc-tab.drag-over-after { box-shadow: inset -2px 0 0 var(--primary); }
-        .doc-tab-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-tab-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; cursor: text; }
         .doc-tab-title-input { width: 120px; height: 22px; border: 1px solid var(--primary); border-radius: 6px; padding: 0 6px; color: var(--text-main); background: var(--bg-card); font: inherit; font-weight: 700; outline: none; }
         .doc-tab-close { font-size: 14px; opacity: 0.6; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
         .doc-tab-close:hover { background: rgba(0,0,0,0.08); opacity: 1; }
@@ -2602,6 +2602,17 @@ const App = {
         this.renderTabs();
         this.loadDoc();
     },
+    activateTab(id, force=false) {
+        if(!id) return false;
+        if(!Store.state.docs.some(d => d.id === id)) return false;
+        if(!force && Store.state.activeId === id) return false;
+        this.persistCurrentDocFromInputs();
+        Store.state.activeId = id;
+        Store.save();
+        this.renderTabs();
+        this.loadDoc();
+        return true;
+    },
     init() {
         Store.init(); Select.init();
         this.bindSidebar(); this.bindAccordions();
@@ -2997,12 +3008,13 @@ validflag Time      Level   Message                 Code
             if(e.target.classList.contains('doc-tab-close')) {
                 e.stopPropagation();
                 const t = e.target.closest('.doc-tab');
-                Store.removeDoc(t.dataset.id); 
-                App.renderTabs(); App.loadDoc();
+                if(t && Store.removeDoc(t.dataset.id)) {
+                    App.renderTabs(); App.loadDoc();
+                }
                 return;
             }
             const t = e.target.closest('.doc-tab'); if(!t) return;
-            Store.state.activeId = t.dataset.id; Store.save(); this.renderTabs(); this.loadDoc();
+            this.activateTab(t.dataset.id);
         };
         tabsContainer.ondblclick = e => {
             const titleEl = e.target.closest('.doc-tab-title');
@@ -3011,7 +3023,9 @@ validflag Time      Level   Message                 Code
             if(!tab) return;
             e.preventDefault();
             e.stopPropagation();
-            this.startTabRename(tab.dataset.id);
+            const id = tab.dataset.id;
+            if(Store.state.activeId !== id) this.activateTab(id);
+            setTimeout(() => this.startTabRename(id), 0);
         };
         tabsContainer.addEventListener('dragstart', e => {
             const tab = e.target.closest('.doc-tab');
@@ -3028,7 +3042,13 @@ validflag Time      Level   Message                 Code
         });
         tabsContainer.addEventListener('dragover', e => {
             const tab = e.target.closest('.doc-tab');
-            if(!tab || !this.tabDrag.sourceId || tab.dataset.id === this.tabDrag.sourceId) return;
+            if(!this.tabDrag.sourceId) return;
+            if(!tab && e.target === tabsContainer) {
+                e.preventDefault();
+                if(e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+                return;
+            }
+            if(!tab || tab.dataset.id === this.tabDrag.sourceId) return;
             e.preventDefault();
             const rect = tab.getBoundingClientRect();
             const place = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
@@ -3040,10 +3060,16 @@ validflag Time      Level   Message                 Code
             if(tab && !tab.contains(e.relatedTarget)) this.clearTabDragMarkers(tab);
         });
         tabsContainer.addEventListener('drop', e => {
-            const tab = e.target.closest('.doc-tab');
-            if(!tab || !this.tabDrag.sourceId || tab.dataset.id === this.tabDrag.sourceId) return;
+            let tab = e.target.closest('.doc-tab');
+            if(!this.tabDrag.sourceId) return;
+            if(!tab && e.target === tabsContainer) {
+                const tabs = Array.from(tabsContainer.querySelectorAll('.doc-tab')).filter(el => el.dataset.id !== this.tabDrag.sourceId);
+                tab = tabs[tabs.length - 1];
+                if(!tab) return;
+            }
+            if(!tab || tab.dataset.id === this.tabDrag.sourceId) return;
             e.preventDefault();
-            const place = tab.classList.contains('drag-over-after') ? 'after' : 'before';
+            const place = tab.classList.contains('drag-over-after') || e.target === tabsContainer ? 'after' : 'before';
             Store.moveDoc(this.tabDrag.sourceId, tab.dataset.id, place);
             this.clearAllTabDragMarkers();
             this.tabDrag.sourceId = null;

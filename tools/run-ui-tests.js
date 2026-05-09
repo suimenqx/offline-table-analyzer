@@ -39,6 +39,12 @@ assert(script.includes('this.bindSidebar(); this.bindAccordions();\n        this
 assert(script.includes("Store.curr().raw = large.value"), 'large editor must sync source text to store');
 assert(script.includes("if($('sidebar')) this.setSidebarTab"), 'sidebar tab should refresh on document load');
 assert(script.includes('createNewTab(e)'), 'App should own robust new tab flow');
+assert(script.includes('activateTab(id, force=false)'), 'App should activate tabs without re-rendering active tabs');
 assert(script.includes('addTabBtn.onclick = e => this.createNewTab(e)'), 'add tab button should call robust new tab flow');
+assert(script.includes("if(!force && Store.state.activeId === id) return false;"), 'clicking the active tab should not break double-click rename');
+assert(script.includes("setTimeout(() => this.startTabRename(id), 0)"), 'double-click rename should survive activation re-render');
+assert(script.includes("tabsContainer.addEventListener('dragstart'"), 'tabs should have dragstart binding');
+assert(script.includes("tabsContainer.addEventListener('drop'"), 'tabs should have drop binding');
+assert(script.includes('Store.moveDoc(this.tabDrag.sourceId, tab.dataset.id, place)'), 'drag drop should reorder docs');
 assert(script.includes("escapeHtml(str='')") && script.includes('renderTabs()'), 'App should escape tab titles when rendering');
-console.log('UI interaction tests passed: 16');
+console.log('UI interaction tests passed: 22');
