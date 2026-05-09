@@ -158,6 +158,12 @@
         .doc-tab { height: 32px; padding: 0 12px; border-radius: 8px; display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-mid); cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
         .doc-tab:hover { background: var(--bg-hover); }
         .doc-tab.active { background: var(--primary-soft); color: var(--primary); font-weight: 700; border-color: rgba(37,99,235,0.1); }
+        .doc-tab[draggable="true"] { user-select: none; }
+        .doc-tab.dragging { opacity: 0.55; transform: scale(0.98); }
+        .doc-tab.drag-over-before { box-shadow: inset 2px 0 0 var(--primary); }
+        .doc-tab.drag-over-after { box-shadow: inset -2px 0 0 var(--primary); }
+        .doc-tab-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .doc-tab-title-input { width: 120px; height: 22px; border: 1px solid var(--primary); border-radius: 6px; padding: 0 6px; color: var(--text-main); background: var(--bg-card); font: inherit; font-weight: 700; outline: none; }
         .doc-tab-close { font-size: 14px; opacity: 0.6; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
         .doc-tab-close:hover { background: rgba(0,0,0,0.08); opacity: 1; }
 
@@ -808,6 +814,7 @@ const Store = {
     init() {
         try { const s = JSON.parse(localStorage.getItem('v16_4_store')); if(s) this.state = s; } catch(e){}
         if(this.state.docs.length===0) this.addDoc();
+        this.state.docs.forEach((d, idx) => { if(!d.title) d.title = `Analysis ${idx + 1}`; });
         if(!this.state.globalViews) this.state.globalViews = [];
         this.applyTheme();
     },
@@ -822,6 +829,30 @@ const Store = {
         this.state.docs.splice(idx,1);
         if(this.state.activeId===id) this.state.activeId = this.state.docs[Math.max(0,idx-1)].id;
         this.save();
+    },
+    renameDoc(id, title) {
+        const doc = this.state.docs.find(d => d.id === id);
+        if(!doc) return false;
+        const next = String(title ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+        if(!next) return false;
+        doc.title = next;
+        this.save();
+        return true;
+    },
+    moveDoc(sourceId, targetId, place='before') {
+        if(!sourceId || !targetId || sourceId === targetId) return false;
+        const from = this.state.docs.findIndex(d => d.id === sourceId);
+        if(from < 0) return false;
+        const [doc] = this.state.docs.splice(from, 1);
+        let to = this.state.docs.findIndex(d => d.id === targetId);
+        if(to < 0) {
+            this.state.docs.splice(from, 0, doc);
+            return false;
+        }
+        if(place === 'after') to += 1;
+        this.state.docs.splice(to, 0, doc);
+        this.save();
+        return true;
     },
     curr() { 
         const d = this.state.docs.find(d=>d.id===this.state.activeId) || this.state.docs[0];
@@ -2453,6 +2484,7 @@ const App = {
     raw: [], rendered: [],
     filterPopover: { open:false, table:null, col:null },
     activeEditor: null,
+    tabDrag: { sourceId:null },
     init() {
         Store.init(); Select.init(); this.bind(); this.renderTabs(); this.loadDoc();
         this.bindSidebar(); this.bindAccordions();
@@ -2689,7 +2721,9 @@ validflag Time      Level   Message                 Code
             const plain = data.getData('text/plain');
             if(html && /<table[\s>]/i.test(html)) this.lastPaste = { html, plain };
         });
-        $('tabsContainer').onclick = e => {
+        const tabsContainer = $('tabsContainer');
+        tabsContainer.onclick = e => {
+            if(e.target.closest('.doc-tab-title-input')) return;
             if(e.target.classList.contains('doc-tab-close')) {
                 e.stopPropagation();
                 const t = e.target.closest('.doc-tab');
@@ -2700,6 +2734,55 @@ validflag Time      Level   Message                 Code
             const t = e.target.closest('.doc-tab'); if(!t) return;
             Store.state.activeId = t.dataset.id; Store.save(); this.renderTabs(); this.loadDoc();
         };
+        tabsContainer.ondblclick = e => {
+            const titleEl = e.target.closest('.doc-tab-title');
+            if(!titleEl) return;
+            const tab = titleEl.closest('.doc-tab');
+            if(!tab) return;
+            e.preventDefault();
+            e.stopPropagation();
+            this.startTabRename(tab.dataset.id);
+        };
+        tabsContainer.addEventListener('dragstart', e => {
+            const tab = e.target.closest('.doc-tab');
+            if(!tab || e.target.closest('.doc-tab-close') || e.target.closest('.doc-tab-title-input')) {
+                e.preventDefault();
+                return;
+            }
+            this.tabDrag.sourceId = tab.dataset.id;
+            tab.classList.add('dragging');
+            if(e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', tab.dataset.id);
+            }
+        });
+        tabsContainer.addEventListener('dragover', e => {
+            const tab = e.target.closest('.doc-tab');
+            if(!tab || !this.tabDrag.sourceId || tab.dataset.id === this.tabDrag.sourceId) return;
+            e.preventDefault();
+            const rect = tab.getBoundingClientRect();
+            const place = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+            this.markTabDrop(tab, place);
+            if(e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+        });
+        tabsContainer.addEventListener('dragleave', e => {
+            const tab = e.target.closest('.doc-tab');
+            if(tab && !tab.contains(e.relatedTarget)) this.clearTabDragMarkers(tab);
+        });
+        tabsContainer.addEventListener('drop', e => {
+            const tab = e.target.closest('.doc-tab');
+            if(!tab || !this.tabDrag.sourceId || tab.dataset.id === this.tabDrag.sourceId) return;
+            e.preventDefault();
+            const place = tab.classList.contains('drag-over-after') ? 'after' : 'before';
+            Store.moveDoc(this.tabDrag.sourceId, tab.dataset.id, place);
+            this.clearAllTabDragMarkers();
+            this.tabDrag.sourceId = null;
+            this.renderTabs();
+        });
+        tabsContainer.addEventListener('dragend', () => {
+            this.clearAllTabDragMarkers();
+            this.tabDrag.sourceId = null;
+        });
 
         const inputBind = (id, k, subK) => $(id).oninput = e => {
             const val = e.target.type==='checkbox'?e.target.checked:e.target.value;
@@ -2959,8 +3042,60 @@ validflag Time      Level   Message                 Code
     },
 
     renderTabs() {
-        // Correctly handle tab close
-        $('tabsContainer').innerHTML = Store.state.docs.map(d => `<div class="doc-tab ${d.id===Store.state.activeId?'active':''}" data-id="${d.id}"><span>${d.title}</span><span class="doc-tab-close">×</span></div>`).join('');
+        $('tabsContainer').innerHTML = Store.state.docs.map((d, idx) => {
+            const title = d.title || `Analysis ${idx + 1}`;
+            const safeTitle = this.escapeHtml(title);
+            return `<div class="doc-tab ${d.id===Store.state.activeId?'active':''}" data-id="${this.escapeHtml(d.id)}" draggable="true" title="${safeTitle}"><span class="doc-tab-title">${safeTitle}</span><span class="doc-tab-close" draggable="false" title="关闭">×</span></div>`;
+        }).join('');
+    },
+
+    startTabRename(id) {
+        const tab = Array.from(document.querySelectorAll('.doc-tab')).find(el => el.dataset.id === id);
+        if(!tab) return;
+        const titleEl = tab.querySelector('.doc-tab-title');
+        const doc = Store.state.docs.find(d => d.id === id);
+        if(!titleEl || !doc) return;
+        const oldTitle = doc.title || '';
+        tab.setAttribute('draggable', 'false');
+        const input = document.createElement('input');
+        input.className = 'doc-tab-title-input';
+        input.value = oldTitle;
+        input.maxLength = 40;
+        titleEl.innerHTML = '';
+        titleEl.appendChild(input);
+        let done = false;
+        const finish = (save) => {
+            if(done) return;
+            done = true;
+            if(save) Store.renameDoc(id, input.value);
+            this.renderTabs();
+        };
+        input.onclick = e => e.stopPropagation();
+        input.ondblclick = e => e.stopPropagation();
+        input.onkeydown = e => {
+            e.stopPropagation();
+            if(e.key === 'Enter') finish(true);
+            if(e.key === 'Escape') finish(false);
+        };
+        input.onblur = () => finish(true);
+        setTimeout(() => { input.focus(); input.select(); }, 0);
+    },
+
+    markTabDrop(tab, place) {
+        document.querySelectorAll('.doc-tab.drag-over-before, .doc-tab.drag-over-after').forEach(el => {
+            if(el !== tab) this.clearTabDragMarkers(el);
+        });
+        tab.classList.toggle('drag-over-before', place === 'before');
+        tab.classList.toggle('drag-over-after', place === 'after');
+    },
+
+    clearTabDragMarkers(tab) {
+        if(!tab) return;
+        tab.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
+    },
+
+    clearAllTabDragMarkers() {
+        document.querySelectorAll('.doc-tab').forEach(tab => this.clearTabDragMarkers(tab));
     },
 
     renderPreview() {
