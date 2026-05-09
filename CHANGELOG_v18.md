@@ -89,3 +89,11 @@ node tools/run-parser-tests.js
 
 - Removed redundant import summary counters from the table title row.
 - The preview header now only shows format and header handling metadata; row/show counts remain in the existing table metadata tags.
+
+## v18.4 字体显示优化
+
+- 新增统一字体变量 `--font-ui`、`--font-table`、`--font-mono`。
+- 表格数据区从等宽字体切换为系统 UI 无衬线字体优先，改善中文显示清晰度。
+- 表格和单元格编辑器启用 `tabular-nums`，保持数字列更稳定的宽度表现。
+- 原始文本输入区继续保留等宽字体，并增加中文字体兜底，兼顾 CLI/ASCII 输入对齐和中文可读性。
+- 全局启用字体平滑和 `text-rendering: optimizeLegibility`。

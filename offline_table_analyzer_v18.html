@@ -34,6 +34,9 @@
             --selection-bg: rgba(37, 99, 235, 0.14);
             --z-float: 900;
             --z-modal: 1200;
+            --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+            --font-table: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+            --font-mono: "SF Mono", "Cascadia Code", "JetBrains Mono", "Fira Code", Consolas, "Liberation Mono", "Noto Sans Mono CJK SC", "Microsoft YaHei UI", monospace;
         }
 
         [data-theme="dark"] {
@@ -63,7 +66,7 @@
         }
 
         * { box-sizing: border-box; outline: none; }
-        body { margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, sans-serif; background: var(--bg-app); color: var(--text-strong); font-size: 13px; line-height: 1.5; }
+        body { margin: 0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; font-family: var(--font-ui); -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; background: var(--bg-app); color: var(--text-strong); font-size: 13px; line-height: 1.5; }
         body.modal-open { overflow: hidden; }
         a { color: var(--primary); text-decoration: none; }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -165,7 +168,7 @@
         .panel-header { padding: 12px 14px; font-weight: 800; color: var(--text-strong); display: flex; align-items: center; justify-content: space-between; background: var(--bg-elevated); border-bottom: 1px solid var(--border); }
         .toolbar { display: flex; gap: 8px; }
         .textarea-shell { position: relative; display: flex; flex-direction: column; }
-        #rawInput { min-height: 120px; max-height: 600px; height: 320px; border-radius: 12px; padding: 12px; font-family: "JetBrains Mono", Consolas, monospace; background: var(--bg-elevated); border: 1px solid var(--border); flex: 0 0 auto; }
+        #rawInput { min-height: 120px; max-height: 600px; height: 320px; border-radius: 12px; padding: 12px; font-family: var(--font-mono); background: var(--bg-elevated); border: 1px solid var(--border); flex: 0 0 auto; }
         .format-select { width: 148px; height: 28px; padding: 0 8px; border-radius: 8px; font-size: 12px; font-weight: 700; background: var(--bg-card); color: var(--text-mid); border: 1px solid var(--border); }
         .format-select.narrow { width: 108px; }
         .format-select:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -198,7 +201,7 @@
         .filterable-th .th-filter-dot { display: inline-block; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; }
         .filterable-th .th-filter-clear { font-size: 11px; color: var(--text-tertiary); cursor: pointer; padding: 2px 4px; border-radius: 6px; }
         .filterable-th .th-filter-clear:hover { color: var(--primary); background: var(--bg-hover); }
-        table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: "JetBrains Mono", Consolas, monospace; font-size: 12px; cursor: cell; user-select: none; display: block; overflow-x: auto; }
+        table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--font-table); font-size: 12px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; cursor: cell; user-select: none; display: block; overflow-x: auto; }
         th, td { padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: left; }
         th { background: linear-gradient(180deg, rgba(37,99,235,0.06), rgba(37,99,235,0)); color: var(--text-strong); font-weight: 700; position: sticky; top: 0; z-index: 5; }
         tbody tr:nth-child(even) td { background: rgba(15, 23, 42, 0.015); }
@@ -222,7 +225,7 @@
         .filter-popover .fp-actions { display: flex; justify-content: flex-end; gap: 3px; }
         .filter-popover .fp-actions .sm, .filter-popover .fp-actions .primary.sm { padding: 2px 6px; font-size: 10px; height: 20px; }
         td.editing { position: relative; }
-        .cell-editor { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); box-sizing: border-box; border: 1px solid var(--primary); border-radius: 4px; padding: 2px 4px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 12px; background: var(--bg-card); color: var(--text-main); }
+        .cell-editor { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); box-sizing: border-box; border: 1px solid var(--primary); border-radius: 4px; padding: 2px 4px; font-family: var(--font-table); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; font-size: 12px; background: var(--bg-card); color: var(--text-main); }
 
         /* Modals */
         .modal-bg { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(4px); z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; padding: 24px; }
