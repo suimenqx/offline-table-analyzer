@@ -20,7 +20,8 @@ function assert(cond, msg) {
   'id="sourceEditorDoneBtn"',
   'id="sourceEditorCloseBtn"',
   'id="sidebarDataTabBtn"',
-  'id="sidebarConfigTabBtn"'
+  'id="sidebarConfigTabBtn"',
+  'id="addTabBtn" type="button"'
 ].forEach(token => assert(html.includes(token), `missing ${token}`));
 [
   'openSourceEditor()',
@@ -37,4 +38,7 @@ assert(script.includes("document.querySelectorAll('[data-tab-btn]').forEach(btn 
 assert(script.includes('this.bindSidebar(); this.bindAccordions();\n        this.bind();'), 'sidebar binding must run before broad UI binding');
 assert(script.includes("Store.curr().raw = large.value"), 'large editor must sync source text to store');
 assert(script.includes("if($('sidebar')) this.setSidebarTab"), 'sidebar tab should refresh on document load');
-console.log('UI interaction tests passed: 13');
+assert(script.includes('createNewTab(e)'), 'App should own robust new tab flow');
+assert(script.includes('addTabBtn.onclick = e => this.createNewTab(e)'), 'add tab button should call robust new tab flow');
+assert(script.includes("escapeHtml(str='')") && script.includes('renderTabs()'), 'App should escape tab titles when rendering');
+console.log('UI interaction tests passed: 16');

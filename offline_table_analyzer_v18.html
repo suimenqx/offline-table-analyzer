@@ -460,7 +460,7 @@
         <nav class="top-nav">
             <div class="doc-tabs" id="tabsContainer"></div>
             <div class="flex items-center gap-2">
-                <button class="icon-btn sm" id="addTabBtn" title="新建页签">＋</button>
+                <button class="icon-btn sm" id="addTabBtn" type="button" title="新建页签">＋</button>
                 <div style="height:20px; width:1px; background:var(--border); margin:0 6px;"></div>
                 <button class="icon-btn sm" id="themeBtn" title="切换主题">◑</button>
                 <button class="primary sm" id="exportPrevBtn">导出预览 Excel</button>
@@ -868,23 +868,61 @@ const Exporter = {
 const Store = {
     state: { docs:[], activeId:null, theme:'light', globalViews:[] },
     init() {
-        try { const s = JSON.parse(localStorage.getItem('v16_4_store')); if(s) this.state = s; } catch(e){}
-        if(this.state.docs.length===0) this.addDoc();
-        this.state.docs.forEach((d, idx) => { if(!d.title) d.title = `Analysis ${idx + 1}`; });
+        try { const s = JSON.parse(localStorage.getItem('v16_4_store')); if(s && Array.isArray(s.docs)) this.state = s; } catch(e){}
+        if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!this.state.globalViews) this.state.globalViews = [];
+        if(this.state.docs.length===0) this.addDoc();
+        const seenIds = new Set();
+        this.state.docs.forEach((d, idx) => {
+            this.normalizeDoc(d, idx);
+            if(seenIds.has(d.id)) d.id = this.generateDocId();
+            seenIds.add(d.id);
+        });
+        if(!this.state.docs.some(d => d.id === this.state.activeId)) this.state.activeId = this.state.docs[0] && this.state.docs[0].id;
         this.applyTheme();
+        this.save();
     },
     save() { localStorage.setItem('v16_4_store', JSON.stringify(this.state)); },
-    addDoc() {
-        this.state.docs.push({ id: Date.now().toString(), title: `Analysis ${this.state.docs.length+1}`, raw: "", ui: { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, sidebarTab:"data" } });
-        this.state.activeId = this.state.docs[this.state.docs.length-1].id; this.save();
+    createDefaultUI() {
+        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto" };
+    },
+    normalizeDoc(doc, idx=0) {
+        if(!doc.id) doc.id = this.generateDocId();
+        if(!doc.title) doc.title = `Analysis ${idx + 1}`;
+        if(doc.raw === undefined || doc.raw === null) doc.raw = "";
+        const defaults = this.createDefaultUI();
+        doc.ui = Object.assign(defaults, doc.ui || {});
+        if(!doc.ui.rules) doc.ui.rules = {};
+        if(!doc.ui.columnFilters) doc.ui.columnFilters = {};
+        if(!doc.ui.collapsedTables) doc.ui.collapsedTables = {};
+        if(!doc.ui.sidebarTab) doc.ui.sidebarTab = 'data';
+        if(!doc.ui.importFormat) doc.ui.importFormat = 'auto';
+        if(!doc.ui.importHeaderMode) doc.ui.importHeaderMode = 'auto';
+        return doc;
+    },
+    generateDocId() {
+        let id;
+        do {
+            id = `doc_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        } while(this.state.docs.some(d => d.id === id));
+        return id;
+    },
+    nextDocTitle() { return `Analysis ${this.state.docs.length + 1}`; },
+    addDoc(initial={}) {
+        const doc = this.normalizeDoc(Object.assign({ id:this.generateDocId(), title:this.nextDocTitle(), raw:"" }, initial), this.state.docs.length);
+        this.state.docs.push(doc);
+        this.state.activeId = doc.id;
+        this.save();
+        return doc;
     },
     removeDoc(id) {
         if(this.state.docs.length<=1) return alert("至少保留一个页签");
         const idx = this.state.docs.findIndex(d=>d.id===id);
+        if(idx < 0) return false;
         this.state.docs.splice(idx,1);
         if(this.state.activeId===id) this.state.activeId = this.state.docs[Math.max(0,idx-1)].id;
         this.save();
+        return true;
     },
     renameDoc(id, title) {
         const doc = this.state.docs.find(d => d.id === id);
@@ -911,13 +949,11 @@ const Store = {
         return true;
     },
     curr() { 
-        const d = this.state.docs.find(d=>d.id===this.state.activeId) || this.state.docs[0];
-        if(!d.ui) d.ui = { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{} };
-        if(!d.ui.rules) d.ui.rules = {};
-        if(!d.ui.columnFilters) d.ui.columnFilters = {};
-        if(!d.ui.collapsedTables) d.ui.collapsedTables = {};
-        if(!d.ui.sidebarTab) d.ui.sidebarTab = 'data';
-        return d;
+        if(!Array.isArray(this.state.docs)) this.state.docs = [];
+        if(this.state.docs.length === 0) this.addDoc();
+        let d = this.state.docs.find(d=>d.id===this.state.activeId) || this.state.docs[0];
+        if(!d) d = this.addDoc();
+        return this.normalizeDoc(d, this.state.docs.indexOf(d));
     },
     updateUI(k, v) { this.curr().ui[k]=v; this.save(); },
     updateRule(table, field, value) {
@@ -2542,6 +2578,30 @@ const App = {
     filterPopover: { open:false, table:null, col:null },
     activeEditor: null,
     tabDrag: { sourceId:null },
+    escapeHtml(str='') {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+    persistCurrentDocFromInputs() {
+        const input = $('rawInput');
+        const doc = Store.curr();
+        if(input) doc.raw = input.value;
+        Store.save();
+    },
+    createNewTab(e) {
+        if(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        this.persistCurrentDocFromInputs();
+        Store.addDoc();
+        this.renderTabs();
+        this.loadDoc();
+    },
     init() {
         Store.init(); Select.init();
         this.bindSidebar(); this.bindAccordions();
@@ -2842,7 +2902,11 @@ const App = {
     },
 
     bind() {
-        $('addTabBtn').onclick = () => { Store.addDoc(); this.renderTabs(); this.loadDoc(); };
+        const addTabBtn = $('addTabBtn');
+        if(addTabBtn) {
+            addTabBtn.type = 'button';
+            addTabBtn.onclick = e => this.createNewTab(e);
+        }
         const doParse = () => this.run();
         const doClear = () => { $('rawInput').value=''; this.run(); };
         $('parseBtn').onclick = doParse;
@@ -3255,10 +3319,14 @@ validflag Time      Level   Message                 Code
     },
 
     renderTabs() {
-        $('tabsContainer').innerHTML = Store.state.docs.map((d, idx) => {
+        const container = $('tabsContainer');
+        if(!container) return;
+        container.innerHTML = Store.state.docs.map((d, idx) => {
+            Store.normalizeDoc(d, idx);
             const title = d.title || `Analysis ${idx + 1}`;
             const safeTitle = this.escapeHtml(title);
-            return `<div class="doc-tab ${d.id===Store.state.activeId?'active':''}" data-id="${this.escapeHtml(d.id)}" draggable="true" title="${safeTitle}"><span class="doc-tab-title">${safeTitle}</span><span class="doc-tab-close" draggable="false" title="关闭">×</span></div>`;
+            const safeId = this.escapeHtml(d.id);
+            return `<div class="doc-tab ${d.id===Store.state.activeId?'active':''}" data-id="${safeId}" draggable="true" title="${safeTitle}"><span class="doc-tab-title">${safeTitle}</span><span class="doc-tab-close" draggable="false" title="关闭">×</span></div>`;
         }).join('');
     },
 

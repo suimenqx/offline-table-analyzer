@@ -120,3 +120,11 @@ node tools/run-parser-tests.js
 - Added explicit IDs and `type="button"` to the sidebar segmented controls to prevent accidental disabled/form-button behavior.
 - Kept sidebar tab state persistence through `applySidebarTab`, while the visual switch itself no longer depends on the full parse/config flow.
 - Expanded UI static checks to cover the restored direct binding and init order.
+
+## v18.8
+
+- 修复新建页签回归：补齐 App 级 HTML 转义方法，避免页签渲染链路因缺失方法中断。
+- 加强新建页签流程：新增 `createNewTab()`，先持久化当前数据源，再创建空白页签、渲染并加载。
+- 加强 Store 页签数据模型：统一默认 UI 字段、生成唯一页签 ID、兼容历史 localStorage 数据并修正重复 ID。
+- 修复删除不存在页签时可能误删最后一个页签的边界问题。
+- 扩展页签回归测试，覆盖新建页签、唯一 ID、默认 UI、activeId 和误删保护。

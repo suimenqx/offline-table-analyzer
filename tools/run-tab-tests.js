@@ -56,4 +56,16 @@ assert(Store.state.docs.map(d => d.id).join('') === 'bca', 'move after order fai
 reset();
 assert(Store.moveDoc('b', 'missing', 'before') === false, 'invalid target should fail');
 assert(Store.state.docs.map(d => d.id).join('') === 'abc', 'invalid target should restore original order');
-console.log('Tab interaction tests passed: 7');
+reset();
+const oldIds = new Set(Store.state.docs.map(d => d.id));
+const newDoc = Store.addDoc();
+assert(Store.state.docs.length === 4, 'addDoc should append a new tab');
+assert(newDoc && newDoc.id && !oldIds.has(newDoc.id), 'addDoc should generate a unique id');
+assert(Store.state.activeId === newDoc.id, 'addDoc should activate the new tab');
+assert(newDoc.raw === '', 'new tab should start with an empty source');
+assert(newDoc.ui && newDoc.ui.sidebarTab === 'data', 'new tab should have default sidebar UI');
+assert(newDoc.ui.importFormat === 'auto' && newDoc.ui.importHeaderMode === 'auto', 'new tab should have import defaults');
+const beforeRemove = Store.state.docs.map(d => d.id).join(',');
+assert(Store.removeDoc('missing') === false, 'removing a missing tab should fail safely');
+assert(Store.state.docs.map(d => d.id).join(',') === beforeRemove, 'removing a missing tab must not delete another tab');
+console.log('Tab interaction tests passed: 15');
