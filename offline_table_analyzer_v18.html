@@ -1032,33 +1032,52 @@ const HtmlTableParser = {
     }
 };
 
-const CsvParser = {
-    id:'csv', label:'CSV', delimiter:',',
+function buildSingleTableResult(rows, name, sourceType, options={}, meta={}, forcedHeader) {
+    const resolved = HeaderResolver.infer(rows, { ...options, hasHeader: forcedHeader === undefined ? options.hasHeader : forcedHeader, tableName:name });
+    return {
+        tables:[{ name, headers:resolved.headers, rows:resolved.rows, sourceType, meta:{ ...meta, hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders }, diagnostics:resolved.diagnostics }],
+        diagnostics:resolved.diagnostics
+    };
+}
+
+function createDelimitedParser({ id, label, delimiter, tableName, confidence }) {
+    return {
+        id, label, delimiter,
+        confidence(source) { return confidence(source); },
+        parse(source, options={}) {
+            const matrix = Delimited.parse(source.text || '', delimiter);
+            return buildSingleTableResult(matrix, tableName, id, options, { delimiter });
+        }
+    };
+}
+
+const CsvParser = createDelimitedParser({
+    id:'csv', label:'CSV', delimiter:',', tableName:'CSV Table 1',
     confidence(source) {
         const text = source.text || '';
         if(/\t/.test(text)) return 0.05;
         const st = Delimited.delimiterStats(text, ',');
         return st.consistent ? st.score : 0.12;
-    },
-    parse(source, options={}) { return parseDelimitedTable(source.text, ',', this.id, options); }
-};
+    }
+});
 
-const SemicolonCsvParser = {
-    id:'semicolon-csv', label:'分号分隔', delimiter:';',
-    confidence(source) { const st = Delimited.delimiterStats(source.text || '', ';'); return st.consistent ? st.score - 0.04 : 0; },
-    parse(source, options={}) { return parseDelimitedTable(source.text, ';', this.id, options); }
-};
+const SemicolonCsvParser = createDelimitedParser({
+    id:'semicolon-csv', label:'分号分隔', delimiter:';', tableName:'Delimited Table 1',
+    confidence(source) {
+        const st = Delimited.delimiterStats(source.text || '', ';');
+        return st.consistent ? st.score - 0.04 : 0;
+    }
+});
 
-const ExcelPasteParser = {
-    id:'excel-paste', label:'Excel/表格复制 TSV', delimiter:'\t',
+const ExcelPasteParser = createDelimitedParser({
+    id:'excel-paste', label:'Excel/表格复制 TSV', delimiter:'\t', tableName:'Excel Paste Table 1',
     confidence(source) {
         const text = source.text || '';
         if(!/\t/.test(text)) return 0;
         const st = Delimited.delimiterStats(text, '\t');
         return st.consistent ? Math.max(0.82, st.score) : 0.35;
-    },
-    parse(source, options={}) { return parseDelimitedTable(source.text, '\t', this.id, options); }
-};
+    }
+});
 
 const PipeTableParser = {
     id:'pipe-table', label:'竖线/网页表格文本', delimiter:'|',
@@ -1080,11 +1099,18 @@ const PipeTableParser = {
             if(s.endsWith('|')) s = s.slice(0, -1);
             return s.split('|').map(v => v.trim());
         }).filter(r => !TableUtils.isEmptyRow(r));
-        const name = 'Pipe Table 1';
-        const resolved = HeaderResolver.infer(rows, { ...options, hasHeader: hasMdSep || options.hasHeader, tableName:name });
-        return { tables:[{ name, headers:resolved.headers, rows:resolved.rows, sourceType:this.id, meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders }, diagnostics:resolved.diagnostics }], diagnostics:resolved.diagnostics };
+        return buildSingleTableResult(rows, 'Pipe Table 1', this.id, options, { delimiter:'|' }, hasMdSep || options.hasHeader);
     }
 };
+
+function splitPipeRows(lines) {
+    return lines.map(l => {
+        let s = l.trim();
+        if(s.startsWith('|')) s = s.slice(1);
+        if(s.endsWith('|')) s = s.slice(0, -1);
+        return s.split('|').map(v => v.trim());
+    }).filter(r => !TableUtils.isEmptyRow(r));
+}
 
 const AsciiTableParser = {
     id:'ascii-table', label:'ASCII/终端表格',
@@ -1099,15 +1125,7 @@ const AsciiTableParser = {
         const lines = TableUtils.lines(source.text)
             .map(l => l.replace(/[│┃]/g, '|'))
             .filter(l => l.trim() && !border.test(l.trim()));
-        const rows = lines.map(l => {
-            let s = l.trim();
-            if(s.startsWith('|')) s = s.slice(1);
-            if(s.endsWith('|')) s = s.slice(0, -1);
-            return s.split('|').map(v => v.trim());
-        }).filter(r => !TableUtils.isEmptyRow(r));
-        const name = 'ASCII Table 1';
-        const resolved = HeaderResolver.infer(rows, { ...options, tableName:name });
-        return { tables:[{ name, headers:resolved.headers, rows:resolved.rows, sourceType:this.id, meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders }, diagnostics:resolved.diagnostics }], diagnostics:resolved.diagnostics };
+        return buildSingleTableResult(splitPipeRows(lines), 'ASCII Table 1', this.id, options);
     }
 };
 
@@ -1124,9 +1142,7 @@ const FixedWidthParser = {
     },
     parse(source, options={}) {
         const rows = TableUtils.lines(source.text).filter(l => l.trim()).map(l => l.trim().split(/\s{2,}/).map(v => v.trim()));
-        const name = 'Fixed Width Table 1';
-        const resolved = HeaderResolver.infer(rows, { ...options, tableName:name });
-        return { tables:[{ name, headers:resolved.headers, rows:resolved.rows, sourceType:this.id, meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders }, diagnostics:resolved.diagnostics }], diagnostics:resolved.diagnostics };
+        return buildSingleTableResult(rows, 'Fixed Width Table 1', this.id, options);
     }
 };
 
@@ -1135,9 +1151,7 @@ const PlainTextTableParser = {
     confidence(source) { return (source.text || '').trim() ? 0.08 : 0; },
     parse(source, options={}) {
         const rows = TableUtils.lines(source.text).filter(l => l.trim()).map(l => l.trim().split(/\s+/));
-        const name = 'Text Table 1';
-        const resolved = HeaderResolver.infer(rows, { ...options, tableName:name });
-        return { tables:[{ name, headers:resolved.headers, rows:resolved.rows, sourceType:this.id, meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders }, diagnostics:resolved.diagnostics }], diagnostics:resolved.diagnostics };
+        return buildSingleTableResult(rows, 'Text Table 1', this.id, options);
     }
 };
 
@@ -1199,14 +1213,6 @@ const CliTableDataParser = {
         return { tables, diagnostics };
     }
 };
-
-function parseDelimitedTable(text, delimiter, sourceType, options={}) {
-    const matrix = Delimited.parse(text || '', delimiter);
-    const nameMap = { csv:'CSV Table 1', 'semicolon-csv':'Delimited Table 1', 'excel-paste':'Excel Paste Table 1' };
-    const name = nameMap[sourceType] || 'Delimited Table 1';
-    const resolved = HeaderResolver.infer(matrix, { ...options, tableName:name });
-    return { tables:[{ name, headers:resolved.headers, rows:resolved.rows, sourceType, meta:{ delimiter, hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders }, diagnostics:resolved.diagnostics }], diagnostics:resolved.diagnostics };
-}
 
 const ImportEngine = {
     parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, PlainTextTableParser],
