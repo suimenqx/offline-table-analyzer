@@ -166,10 +166,6 @@
         .toolbar { display: flex; gap: 8px; }
         .textarea-shell { position: relative; display: flex; flex-direction: column; }
         #rawInput { min-height: 120px; max-height: 600px; height: 320px; border-radius: 12px; padding: 12px; font-family: "JetBrains Mono", Consolas, monospace; background: var(--bg-elevated); border: 1px solid var(--border); flex: 0 0 auto; }
-        .import-summary { margin-top: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-elevated); color: var(--text-mid); display: none; gap: 8px; flex-wrap: wrap; align-items: center; }
-        .import-summary.show { display: flex; }
-        .import-summary .summary-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--bg-card); font-size: 11px; font-weight: 700; color: var(--text-mid); }
-        .import-summary .summary-action { color: var(--primary); cursor: pointer; font-weight: 800; }
         .format-select { width: 148px; height: 28px; padding: 0 8px; border-radius: 8px; font-size: 12px; font-weight: 700; background: var(--bg-card); color: var(--text-mid); border: 1px solid var(--border); }
         .format-select.narrow { width: 108px; }
         .format-select:disabled { opacity: 0.55; cursor: not-allowed; }
@@ -289,7 +285,7 @@
         <div class="sidebar-header">
             <div class="logo sidebar-toggle" id="sidebarToggle" title="点击折叠 / 展开侧栏" tabindex="0">
                 <div class="logo-icon">T</div>
-                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.1</span></span>
+                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.2</span></span>
             </div>
         </div>
 
@@ -311,7 +307,6 @@
                             <textarea id="rawInput" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..." style="border:none; border-radius:12px; resize:none; line-height:1.5; white-space: pre; overflow-x: auto;"></textarea>
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
-                        <div id="importSummary" class="import-summary"></div>
                     </div>
                     <div class="card-body" style="border-top:1px solid var(--border); display:flex; align-items:center; justify-content:flex-start; gap:8px; padding-top:10px;">
                         <div class="flex gap-2" style="align-items:center; justify-content:flex-start; flex-wrap:nowrap;">
@@ -2559,25 +2554,34 @@ const App = {
         return [];
     },
 
-    updateImportSummary() {
-        const el = $('importSummary');
-        if(!el) return;
+    getImportSummaryItems() {
         const res = Parser.lastResult || {};
-        if(!res.format || res.format === 'empty') { el.classList.remove('show'); el.innerHTML = ''; this.syncImportControls(); return; }
-        const tableCount = (res.tables || []).length;
-        const rowCount = (res.tables || []).reduce((sum, t) => sum + (t.rows || []).length, 0);
-        const colCount = tableCount === 1 ? (res.tables[0].headers || []).length : (res.tables || []).reduce((sum, t) => sum + (t.headers || []).length, 0);
-        const hasGeneratedHeaders = (res.tables || []).some(t => t.meta && t.meta.generatedHeaders);
+        if(!res.format || res.format === 'empty') return [];
+        const tables = res.tables || [];
+        const tableCount = tables.length;
+        const rowCount = tables.reduce((sum, t) => sum + (t.rows || []).length, 0);
+        const colCount = tableCount === 1 ? ((tables[0].headers || []).length) : tables.reduce((sum, t) => sum + (t.headers || []).length, 0);
+        const hasGeneratedHeaders = tables.some(t => t.meta && t.meta.generatedHeaders);
         const isCli = res.format === 'cli-table-data';
         const headerText = isCli ? 'validflag 行' : (hasGeneratedHeaders ? '自动生成 Column1...' : '已识别');
-        el.innerHTML = [
-            `<span class="summary-pill">格式: ${res.label || res.format}</span>`,
-            `<span class="summary-pill">表头: ${headerText}</span>`,
-            `<span class="summary-pill">表: ${tableCount}</span>`,
-            `<span class="summary-pill">行: ${rowCount}</span>`,
-            `<span class="summary-pill">列: ${colCount}</span>`
-        ].join('');
-        el.classList.add('show');
+        return [
+            `格式: ${res.label || res.format}`,
+            `表头: ${headerText}`,
+            `表: ${tableCount}`,
+            `行: ${rowCount}`,
+            `列: ${colCount}`
+        ];
+    },
+
+    appendImportSummaryTags(meta) {
+        this.getImportSummaryItems().forEach(text => {
+            const tag = createEl('span', 'meta-tag');
+            tag.textContent = text;
+            meta.appendChild(tag);
+        });
+    },
+
+    updateImportSummary() {
         this.syncImportControls();
     },
 
@@ -3025,6 +3029,7 @@ validflag Time      Level   Message                 Code
             }
             const rowTag = createEl('span', 'meta-tag'); rowTag.textContent = `Row: ${t.rows.length}`; meta.appendChild(rowTag);
             const showTag = createEl('span', 'meta-tag'); showTag.textContent = `Show: ${res.rows.length}`; meta.appendChild(showTag);
+            if(tIdx === 0) this.appendImportSummaryTags(meta);
             if(filterCount>0) { 
                 const fTag = createEl('span','meta-tag'); 
                 fTag.textContent = `列过滤: ${filterCount}`; 
