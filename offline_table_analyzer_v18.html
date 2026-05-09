@@ -2558,18 +2558,12 @@ const App = {
         const res = Parser.lastResult || {};
         if(!res.format || res.format === 'empty') return [];
         const tables = res.tables || [];
-        const tableCount = tables.length;
-        const rowCount = tables.reduce((sum, t) => sum + (t.rows || []).length, 0);
-        const colCount = tableCount === 1 ? ((tables[0].headers || []).length) : tables.reduce((sum, t) => sum + (t.headers || []).length, 0);
         const hasGeneratedHeaders = tables.some(t => t.meta && t.meta.generatedHeaders);
         const isCli = res.format === 'cli-table-data';
         const headerText = isCli ? 'validflag 行' : (hasGeneratedHeaders ? '自动生成 Column1...' : '已识别');
         return [
             `格式: ${res.label || res.format}`,
-            `表头: ${headerText}`,
-            `表: ${tableCount}`,
-            `行: ${rowCount}`,
-            `列: ${colCount}`
+            `表头: ${headerText}`
         ];
     },
 

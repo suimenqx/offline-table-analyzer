@@ -84,3 +84,8 @@ node tools/run-parser-tests.js
 - 将“格式 / 表头 / 表数量 / 行数 / 列数”解析信息移动到预览表标题行，显示在 `Row` / `Show` 后方。
 - 解析信息复用现有 `meta-tag` 样式，与表格预览区风格保持一致。
 
+
+## v18.3
+
+- Removed redundant import summary counters from the table title row.
+- The preview header now only shows format and header handling metadata; row/show counts remain in the existing table metadata tags.
