@@ -1294,6 +1294,30 @@ window.__OTA_TESTS__ = {
             this.assert(r.format === 'html-table', 'expected html table');
             this.assert(r.tables[0].headers[1] === 'name', 'expected html header');
         });
+        test('semicolon delimited data is supported', () => {
+            const r = ImportEngine.parse('id;name;score\n1;Alice;9\n2;Bob;8');
+            this.assert(r.format === 'semicolon-csv', 'expected semicolon parser');
+            this.assert(r.tables[0].rows[1][1] === 'Bob', 'expected Bob');
+        });
+        test('fixed width web copied text parses by multi-space gaps', () => {
+            const r = ImportEngine.parse('id   name       age\n1    Alice      20\n2    Bob        30');
+            this.assert(r.format === 'fixed-width', 'expected fixed-width');
+            this.assert(r.tables[0].headers[1] === 'name', 'expected name header');
+        });
+        test('duplicate and blank headers are normalized', () => {
+            const r = ImportEngine.parse('id,,id\n1,Alice,100');
+            this.assert(r.tables[0].headers.join('|') === 'id|Column2|id_2', 'expected normalized headers');
+        });
+        test('row width mismatch yields diagnostics but keeps data', () => {
+            const r = ImportEngine.parse('id,name,age\n1,Alice,20\n2,Bob\n3,Cindy,25,extra');
+            this.assert(r.diagnostics.some(d => d.code === 'ROW_WIDTH_MISMATCH'), 'expected width warning');
+            this.assert(r.tables[0].rows.length === 3, 'expected all rows preserved');
+        });
+        test('header mode can force first row as data', () => {
+            const r = ImportEngine.parse('id,name\n1,Alice', { headerMode:'none' });
+            this.assert(r.tables[0].headers[0] === 'Column1', 'expected generated header');
+            this.assert(r.tables[0].rows[0][0] === 'id', 'expected first row as data');
+        });
         const failures = [];
         cases.forEach(c => { try { c.fn(); } catch(e) { failures.push(`${c.name}: ${e.message}`); } });
         if(failures.length) throw new Error(failures.join('\n'));
