@@ -304,14 +304,14 @@
         <div class="sidebar-header">
             <div class="logo sidebar-toggle" id="sidebarToggle" title="点击折叠 / 展开侧栏" tabindex="0">
                 <div class="logo-icon">T</div>
-                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.6</span></span>
+                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.7</span></span>
             </div>
         </div>
 
         <div class="sidebar-tabs">
             <div class="seg-control">
-                <button class="seg-btn active" data-tab-btn="data">数据源</button>
-                <button class="seg-btn" data-tab-btn="config">配置规则</button>
+                <button class="seg-btn active" id="sidebarDataTabBtn" data-tab-btn="data" type="button">数据源</button>
+                <button class="seg-btn" id="sidebarConfigTabBtn" data-tab-btn="config" type="button">配置规则</button>
             </div>
         </div>
         <div class="sidebar-scroll">
@@ -2543,8 +2543,9 @@ const App = {
     activeEditor: null,
     tabDrag: { sourceId:null },
     init() {
-        Store.init(); Select.init(); this.bind(); this.renderTabs(); this.loadDoc();
+        Store.init(); Select.init();
         this.bindSidebar(); this.bindAccordions();
+        this.bind(); this.renderTabs(); this.loadDoc();
         this.initInputResizer();
 
         // Picker Logic
@@ -2772,19 +2773,27 @@ const App = {
         if(close) this.closeSourceEditor();
     },
 
-    setSidebarTab(tabName='data') {
+    applySidebarTab(tabName='data', persist=true) {
         const next = tabName === 'config' ? 'config' : 'data';
-        document.querySelectorAll('[data-tab-btn]').forEach(btn => {
+        const tabBtns = document.querySelectorAll('[data-tab-btn]');
+        const panes = document.querySelectorAll('.sidebar-pane');
+        tabBtns.forEach(btn => {
             const active = btn.dataset.tabBtn === next;
             btn.classList.toggle('active', active);
             btn.setAttribute('aria-selected', active ? 'true' : 'false');
         });
-        document.querySelectorAll('.sidebar-pane').forEach(pane => {
+        panes.forEach(pane => {
             pane.classList.toggle('active', pane.dataset.tab === next);
         });
-        const d = Store.curr();
-        d.ui.sidebarTab = next;
-        Store.save();
+        if(persist) {
+            const d = Store.curr();
+            if(d && d.ui) d.ui.sidebarTab = next;
+            Store.save();
+        }
+    },
+
+    setSidebarTab(tabName='data') {
+        this.applySidebarTab(tabName, true);
     },
 
     bindSidebar() {
@@ -2804,17 +2813,23 @@ const App = {
         const hint = sidebar ? sidebar.querySelector('.collapse-hint') : null;
         if(hint) hint.onclick = () => sidebar.classList.remove('collapsed');
 
+        const handleSidebarTabClick = e => {
+            const btn = e.target.closest('[data-tab-btn]');
+            if(!btn) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if(sidebar && sidebar.classList.contains('collapsed')) sidebar.classList.remove('collapsed');
+            this.applySidebarTab(btn.dataset.tabBtn, true);
+        };
         const tabs = document.querySelector('.sidebar-tabs');
-        if(tabs) {
-            tabs.onclick = e => {
-                const btn = e.target.closest('[data-tab-btn]');
-                if(!btn) return;
-                e.preventDefault();
-                if(sidebar && sidebar.classList.contains('collapsed')) sidebar.classList.remove('collapsed');
-                this.setSidebarTab(btn.dataset.tabBtn);
-            };
-        }
-        this.setSidebarTab((Store.curr().ui && Store.curr().ui.sidebarTab) || 'data');
+        if(tabs) tabs.onclick = handleSidebarTabClick;
+        document.querySelectorAll('[data-tab-btn]').forEach(btn => {
+            btn.onclick = handleSidebarTabClick;
+            btn.disabled = false;
+            btn.removeAttribute('disabled');
+            btn.setAttribute('type', 'button');
+        });
+        this.applySidebarTab((Store.curr().ui && Store.curr().ui.sidebarTab) || 'data', false);
     },
 
     bindAccordions() {

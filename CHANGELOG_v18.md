@@ -112,3 +112,11 @@ node tools/run-parser-tests.js
 - Fixed Smart Parser logo double-click behavior by preventing the second click from toggling the sidebar back.
 - Added a fullscreen data-source editor with live sync, format/header controls, parse shortcut, and modal close controls.
 - Added UI interaction static validation for sidebar and fullscreen source editor behavior.
+
+## v18.7
+
+- Restored the v17-style direct sidebar tab binding for 数据源 / 配置规则.
+- Sidebar navigation is now bound before the broader UI event wiring, so a later optional-control binding issue cannot block 配置规则 from opening.
+- Added explicit IDs and `type="button"` to the sidebar segmented controls to prevent accidental disabled/form-button behavior.
+- Kept sidebar tab state persistence through `applySidebarTab`, while the visual switch itself no longer depends on the full parse/config flow.
+- Expanded UI static checks to cover the restored direct binding and init order.

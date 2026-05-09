@@ -18,7 +18,9 @@ function assert(cond, msg) {
   'id="headerModeSelectLarge"',
   'id="sourceEditorParseBtn"',
   'id="sourceEditorDoneBtn"',
-  'id="sourceEditorCloseBtn"'
+  'id="sourceEditorCloseBtn"',
+  'id="sidebarDataTabBtn"',
+  'id="sidebarConfigTabBtn"'
 ].forEach(token => assert(html.includes(token), `missing ${token}`));
 [
   'openSourceEditor()',
@@ -26,10 +28,13 @@ function assert(cond, msg) {
   'syncSourceTextFromLarge()',
   'syncSourceEditorControls()',
   'runFromSourceEditor(close=false)',
-  'setSidebarTab(tabName=\'data\')'
+  'setSidebarTab(tabName=\'data\')',
+  'applySidebarTab(tabName=\'data\', persist=true)'
 ].forEach(token => assert(script.includes(token), `missing method ${token}`));
 assert(script.includes("if(e.detail > 1) return;"), 'sidebar double-click should not toggle twice');
-assert(script.includes("tabs.onclick = e =>"), 'sidebar config tab should use delegated click binding');
+assert(script.includes('const handleSidebarTabClick = e =>'), 'sidebar config tab should use shared click handler');
+assert(script.includes("document.querySelectorAll('[data-tab-btn]').forEach(btn =>"), 'sidebar tabs should also bind direct click handlers');
+assert(script.includes('this.bindSidebar(); this.bindAccordions();\n        this.bind();'), 'sidebar binding must run before broad UI binding');
 assert(script.includes("Store.curr().raw = large.value"), 'large editor must sync source text to store');
 assert(script.includes("if($('sidebar')) this.setSidebarTab"), 'sidebar tab should refresh on document load');
-console.log('UI interaction tests passed: 10');
+console.log('UI interaction tests passed: 13');
