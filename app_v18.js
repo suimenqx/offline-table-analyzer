@@ -1916,6 +1916,7 @@ const App = {
         const colCount = tableCount === 1 ? (res.tables[0].headers || []).length : (res.tables || []).reduce((sum, t) => sum + (t.headers || []).length, 0);
         const warnings = (res.diagnostics || []).filter(d => d.level !== 'error').length;
         const hasGeneratedHeaders = (res.tables || []).some(t => t.meta && t.meta.generatedHeaders);
+        const mode = (Store.curr().ui && Store.curr().ui.importHeaderMode) || 'auto';
         const pct = Math.round((res.confidence || 0) * 100);
         const html = [
             `<span class="summary-pill">格式: ${res.label || res.format}</span>`,
@@ -1923,7 +1924,9 @@ const App = {
             `<span class="summary-pill">表: ${tableCount}</span>`,
             `<span class="summary-pill">行: ${rowCount}</span>`,
             `<span class="summary-pill">列: ${colCount}</span>`,
-            hasGeneratedHeaders ? `<span class="summary-pill summary-warning">已自动生成表头 Column1...</span>` : `<span class="summary-pill">表头: 已检测</span>`,
+            hasGeneratedHeaders ? `<span class="summary-pill summary-warning">表头: 自动生成 Column1...</span>` : `<span class="summary-pill">表头: ${mode === 'none' ? '强制无表头' : '已检测'}</span>`,
+            `<span class="summary-action" id="headerAutoAction">自动表头</span>`,
+            hasGeneratedHeaders ? `<span class="summary-action" id="headerFirstAction">第一行作为表头</span>` : `<span class="summary-action" id="headerNoneAction">第一行作为数据</span>`,
             warnings ? `<span class="summary-pill summary-warning">警告: ${warnings}</span>` : '',
             warnings ? `<span class="summary-action" id="showImportWarnings">查看</span>` : ''
         ].filter(Boolean).join('');
@@ -1931,6 +1934,9 @@ const App = {
         el.classList.add('show');
         const btn = $('showImportWarnings');
         if(btn) btn.onclick = () => this.showImportDiagnostics();
+        const autoBtn = $('headerAutoAction'); if(autoBtn) autoBtn.onclick = () => this.setHeaderMode('auto');
+        const firstBtn = $('headerFirstAction'); if(firstBtn) firstBtn.onclick = () => this.setHeaderMode('first-row');
+        const noneBtn = $('headerNoneAction'); if(noneBtn) noneBtn.onclick = () => this.setHeaderMode('none');
     },
 
     showImportDiagnostics() {
@@ -1940,12 +1946,18 @@ const App = {
         this.modal('解析诊断', html);
     },
 
+    setHeaderMode(mode) {
+        Store.updateUI('importHeaderMode', mode);
+        this.run();
+        Toast.show(mode === 'auto' ? '已切回自动表头检测' : (mode === 'first-row' ? '已将第一行作为表头' : '已将第一行作为数据'));
+    },
+
     getParseOptions() {
         const d = Store.curr();
         const text = $('rawInput').value;
         const last = this.lastPaste || {};
         const html = last.html && last.plain && text.trim() === last.plain.trim() ? last.html : '';
-        return { html };
+        return { html, headerMode: (d.ui && d.ui.importHeaderMode) || 'auto' };
     },
 
     bindSidebar() {
