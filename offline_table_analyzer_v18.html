@@ -209,6 +209,12 @@
         /* Preview */
         .preview-area { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: linear-gradient(180deg, var(--bg-app) 0%, var(--bg-elevated) 100%); }
         .meta-tag { background: rgba(15, 23, 42, 0.04); padding: 4px 8px; border-radius: 999px; font-size: 11px; color: var(--text-mid); }
+        .table-meta-spacer { flex: 1 1 auto; min-width: 12px; }
+        .table-view-toggle { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-card); }
+        .table-view-toggle button { border: 0; background: transparent; color: var(--text-mid); padding: 4px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; cursor: pointer; }
+        .table-view-toggle button.active { color: var(--primary); background: var(--primary-soft); }
+        .row-header-th { position: sticky; left: 0; z-index: 6; min-width: 140px; max-width: 260px; background: var(--bg-elevated) !important; box-shadow: 1px 0 0 var(--border); }
+        td.row-header-cell { font-weight: 700; color: var(--text-strong); background: var(--bg-elevated) !important; position: sticky; left: 0; z-index: 4; box-shadow: 1px 0 0 var(--border); }
 
         .table-container { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; margin: 0 0 14px 0; display: flex; flex-direction: column; overflow: visible; box-shadow: var(--shadow-xs); }
         .table-meta { padding: 10px 14px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); display: flex; gap: 10px; font-size: 12px; color: var(--text-mid); align-items: center; flex-wrap: wrap; }
@@ -217,7 +223,7 @@
         .filterable-th .th-filter-dot { display: inline-block; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; }
         .filterable-th .th-filter-clear { font-size: 11px; color: var(--text-tertiary); cursor: pointer; padding: 2px 4px; border-radius: 6px; }
         .filterable-th .th-filter-clear:hover { color: var(--primary); background: var(--bg-hover); }
-        table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--font-table); font-size: 12px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; cursor: cell; user-select: none; display: block; overflow-x: auto; }
+        table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--font-table); font-size: 12px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; cursor: cell; user-select: none; display: block; overflow: auto hidden; }
         th, td { padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: left; }
         th { background: linear-gradient(180deg, rgba(37,99,235,0.06), rgba(37,99,235,0)); color: var(--text-strong); font-weight: 700; position: sticky; top: 0; z-index: 5; }
         tbody tr:nth-child(even) td { background: rgba(15, 23, 42, 0.015); }
@@ -304,7 +310,7 @@
         <div class="sidebar-header">
             <div class="logo sidebar-toggle" id="sidebarToggle" title="点击折叠 / 展开侧栏" tabindex="0">
                 <div class="logo-icon">T</div>
-                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.7</span></span>
+                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.10</span></span>
             </div>
         </div>
 
@@ -463,7 +469,8 @@
                 <button class="icon-btn sm" id="addTabBtn" type="button" title="新建页签">＋</button>
                 <div style="height:20px; width:1px; background:var(--border); margin:0 6px;"></div>
                 <button class="icon-btn sm" id="themeBtn" title="切换主题">◑</button>
-                <button class="primary sm" id="exportPrevBtn">导出预览 Excel</button>
+                <button class="sm" id="exportFullBtn" title="导出当前页签的全量数据 Excel">导出全量 Excel</button>
+                <button class="primary sm" id="exportPrevBtn" title="导出当前预览结果 Excel">导出预览 Excel</button>
             </div>
         </nav>
         <div class="preview-area" id="previewArea"></div>
@@ -681,6 +688,15 @@ const Exporter = {
         const now = new Date(); const pad = n => String(n).padStart(2,'0');
         return `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
     },
+    sanitizeFilePrefix(prefix='export') {
+        const safe = String(prefix || 'export')
+            .replace(/[\\/:*?"<>|]+/g, '_')
+            .replace(/\s+/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 80);
+        return safe || 'export';
+    },
     download(filename, content, type='text/plain') {
         const blob = content instanceof Blob ? content : new Blob([content], {type});
         const url = URL.createObjectURL(blob);
@@ -846,6 +862,7 @@ const Exporter = {
     toExcel(tables, prefix='export') {
         if(!tables || !tables.length) return Toast.show('\u65e0\u6570\u636e\u53ef\u5bfc\u51fa', true);
         try {
+            prefix = this.sanitizeFilePrefix(prefix);
             const sheets = this.normalizeTables(tables);
             const files = [
                 { name: '[Content_Types].xml', data: this.buildContentTypes(sheets.length) },
@@ -862,15 +879,17 @@ const Exporter = {
             Toast.show('Excel \u5bfc\u51fa\u5931\u8d25', true);
         }
     },
-    toJson(data, prefix='backup') { this.download(`${prefix}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
+    toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
 };
 /* Core */
 const Store = {
-    state: { docs:[], activeId:null, theme:'light', globalViews:[] },
+    state: { docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1 },
     init() {
         try { const s = JSON.parse(localStorage.getItem('v16_4_store')); if(s && Array.isArray(s.docs)) this.state = s; } catch(e){}
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!this.state.globalViews) this.state.globalViews = [];
+        if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
+        this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
         if(this.state.docs.length===0) this.addDoc();
         const seenIds = new Set();
         this.state.docs.forEach((d, idx) => {
@@ -878,23 +897,25 @@ const Store = {
             if(seenIds.has(d.id)) d.id = this.generateDocId();
             seenIds.add(d.id);
         });
+        this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
         if(!this.state.docs.some(d => d.id === this.state.activeId)) this.state.activeId = this.state.docs[0] && this.state.docs[0].id;
         this.applyTheme();
         this.save();
     },
     save() { localStorage.setItem('v16_4_store', JSON.stringify(this.state)); },
     createDefaultUI() {
-        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto" };
+        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto" };
     },
     normalizeDoc(doc, idx=0) {
         if(!doc.id) doc.id = this.generateDocId();
-        if(!doc.title) doc.title = `Analysis ${idx + 1}`;
+        if(!doc.title) doc.title = this.makeUniqueTitle(`Analysis ${idx + 1}`, doc.id);
         if(doc.raw === undefined || doc.raw === null) doc.raw = "";
         const defaults = this.createDefaultUI();
         doc.ui = Object.assign(defaults, doc.ui || {});
         if(!doc.ui.rules) doc.ui.rules = {};
         if(!doc.ui.columnFilters) doc.ui.columnFilters = {};
         if(!doc.ui.collapsedTables) doc.ui.collapsedTables = {};
+        if(!doc.ui.previewModes) doc.ui.previewModes = {};
         if(!doc.ui.sidebarTab) doc.ui.sidebarTab = 'data';
         if(!doc.ui.importFormat) doc.ui.importFormat = 'auto';
         if(!doc.ui.importHeaderMode) doc.ui.importHeaderMode = 'auto';
@@ -907,9 +928,36 @@ const Store = {
         } while(this.state.docs.some(d => d.id === id));
         return id;
     },
-    nextDocTitle() { return `Analysis ${this.state.docs.length + 1}`; },
+    getAnalysisNumber(title='') {
+        const m = String(title || '').trim().match(/^Analysis\s+(\d+)$/i);
+        return m ? parseInt(m[1], 10) : 0;
+    },
+    getMaxAnalysisNumber() {
+        return Math.max(0, ...(this.state.docs || []).map(d => this.getAnalysisNumber(d && d.title)));
+    },
+    makeUniqueTitle(title, excludeId=null) {
+        const clean = String(title || 'Analysis').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Analysis';
+        const used = new Set((this.state.docs || []).filter(d => d.id !== excludeId).map(d => String(d.title || '').trim()));
+        const trimWithSuffix = (base, suffix='') => (base.slice(0, Math.max(1, 40 - suffix.length)) + suffix).trim();
+        const base = trimWithSuffix(clean);
+        if(!used.has(base)) return base;
+        let i = 2;
+        let suffix = ` (${i})`;
+        let next = trimWithSuffix(clean, suffix);
+        while(used.has(next)) {
+            suffix = ` (${++i})`;
+            next = trimWithSuffix(clean, suffix);
+        }
+        return next;
+    },
+    nextDocTitle() {
+        const n = Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1);
+        this.state.nextAnalysisSeq = n + 1;
+        return this.makeUniqueTitle(`Analysis ${n}`);
+    },
     addDoc(initial={}) {
-        const doc = this.normalizeDoc(Object.assign({ id:this.generateDocId(), title:this.nextDocTitle(), raw:"" }, initial), this.state.docs.length);
+        const title = initial.title ? this.makeUniqueTitle(initial.title) : this.nextDocTitle();
+        const doc = this.normalizeDoc(Object.assign({ id:this.generateDocId(), title, raw:"" }, initial, { title }), this.state.docs.length);
         this.state.docs.push(doc);
         this.state.activeId = doc.id;
         this.save();
@@ -929,7 +977,7 @@ const Store = {
         if(!doc) return false;
         const next = String(title ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
         if(!next) return false;
-        doc.title = next;
+        doc.title = this.makeUniqueTitle(next, id);
         this.save();
         return true;
     },
@@ -2517,50 +2565,111 @@ const JoinEditor = {
 
 /* Selection Logic */
 const Select = {
-    start: null, end: null, active: false,
+    start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
     init() {
         const p = $('previewArea');
         p.addEventListener('mousedown', e => {
-            const td = e.target.closest('td'); if(!td) { this.clear(); return; }
-            this.active = true; this.start = this.end = this.getCoord(td); this.draw();
-        });
-        p.addEventListener('mouseover', e => {
-            if(!this.active) return;
             const td = e.target.closest('td');
-            if(td && this.getCoord(td).idx === this.start.idx) { this.end = this.getCoord(td); this.draw(); }
+            if(!td || td.classList.contains('row-header-cell')) { this.clear(); return; }
+            this.active = true;
+            this.tableEl = td.closest('table');
+            this.lastPointer = { x:e.clientX, y:e.clientY };
+            this.start = this.end = this.getCoord(td);
+            this.draw();
+            this.startAutoScroll();
+            e.preventDefault();
         });
-        document.addEventListener('mouseup', () => this.active=false);
+        document.addEventListener('mousemove', e => {
+            if(!this.active) return;
+            this.lastPointer = { x:e.clientX, y:e.clientY };
+            const el = document.elementFromPoint(e.clientX, e.clientY);
+            const td = el && el.closest ? el.closest('td') : null;
+            if(td && this.tableEl && td.closest('table') === this.tableEl && !td.classList.contains('row-header-cell')) {
+                const next = this.getCoord(td);
+                if(next.idx === this.start.idx) { this.end = next; this.draw(); }
+            }
+        });
+        document.addEventListener('mouseup', () => {
+            this.active=false;
+            this.stopAutoScroll();
+        });
         document.addEventListener('copy', e => { if(this.start && this.end) { e.preventDefault(); this.copy(e); } });
     },
-    getCoord(td) { return { idx: +td.closest('table').dataset.idx, r: +td.dataset.r, c: +td.dataset.c }; },
+    getCoord(td) {
+        return {
+            idx: +td.closest('table').dataset.idx,
+            r: +(td.dataset.vr ?? td.dataset.r),
+            c: +(td.dataset.vc ?? td.dataset.c)
+        };
+    },
+    findVisualCell(tbl, r, c) { return tbl.querySelector(`td[data-vr="${r}"][data-vc="${c}"]`); },
     draw() {
         document.querySelectorAll('.selected-cell').forEach(e=>e.classList.remove('selected-cell'));
         if(!this.start) return;
         const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`); if(!tbl) return;
         const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
-        for(let r=minR; r<=maxR; r++) { for(let c=minC; c<=maxC; c++) { const td = tbl.querySelector(`td[data-r="${r}"][data-c="${c}"]`); if(td) td.classList.add('selected-cell'); } }
+        for(let r=minR; r<=maxR; r++) {
+            for(let c=minC; c<=maxC; c++) {
+                const td = this.findVisualCell(tbl, r, c);
+                if(td) td.classList.add('selected-cell');
+            }
+        }
     },
-    clear() { this.start=null; this.end=null; this.draw(); },
+    clear() { this.start=null; this.end=null; this.tableEl=null; this.stopAutoScroll(); this.draw(); },
+    startAutoScroll() {
+        if(this.autoScrollRaf) return;
+        const tick = () => {
+            if(!this.active || !this.tableEl || !this.lastPointer) { this.autoScrollRaf = null; return; }
+            const pointer = this.lastPointer;
+            const table = this.tableEl;
+            const tr = table.getBoundingClientRect();
+            const edge = 36;
+            let dx = 0;
+            if(pointer.x > tr.right - edge) dx = Math.min(34, Math.ceil((pointer.x - (tr.right - edge)) / 2));
+            else if(pointer.x < tr.left + edge) dx = -Math.min(34, Math.ceil(((tr.left + edge) - pointer.x) / 2));
+            if(dx) table.scrollLeft += dx;
+
+            const preview = $('previewArea');
+            if(preview) {
+                const pr = preview.getBoundingClientRect();
+                let dy = 0;
+                if(pointer.y > pr.bottom - edge) dy = Math.min(28, Math.ceil((pointer.y - (pr.bottom - edge)) / 2));
+                else if(pointer.y < pr.top + edge) dy = -Math.min(28, Math.ceil(((pr.top + edge) - pointer.y) / 2));
+                if(dy) preview.scrollTop += dy;
+            }
+            this.autoScrollRaf = requestAnimationFrame(tick);
+        };
+        this.autoScrollRaf = requestAnimationFrame(tick);
+    },
+    stopAutoScroll() {
+        if(this.autoScrollRaf) cancelAnimationFrame(this.autoScrollRaf);
+        this.autoScrollRaf = null;
+    },
+    getHeaderText(tbl, c) {
+        const mode = tbl.dataset.viewMode || 'column-header';
+        if(mode === 'row-header') {
+            const ths = tbl.querySelectorAll('thead th');
+            return ths[c + 1] ? ths[c + 1].textContent : `Row ${c + 1}`;
+        }
+        const ths = tbl.querySelectorAll('thead th');
+        return ths[c] ? ths[c].textContent : '';
+    },
     copy(e) {
         const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`);
         const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
         let hHtml = '<thead><tr>'; let hText = '';
-        const thead = tbl.querySelector('thead');
-        if(thead) {
-            const ths = thead.querySelectorAll('th');
-            for(let c=minC; c<=maxC; c++) {
-               const txt = ths[c] ? ths[c].textContent : '';
-               hHtml += `<th style="background:#444; color:#fff; border:1px solid #ccc;">${txt}</th>`; hText += txt + '\t';
-            }
+        for(let c=minC; c<=maxC; c++) {
+           const txt = this.getHeaderText(tbl, c);
+           hHtml += `<th style="background:#444; color:#fff; border:1px solid #ccc;">${txt}</th>`; hText += txt + '\t';
         }
         hHtml += '</tr></thead>'; hText = hText.trimEnd() + '\n';
         let bHtml = '<tbody>'; let bText = '';
         for(let r=minR; r<=maxR; r++) {
             bHtml += '<tr>';
             for(let c=minC; c<=maxC; c++) {
-                const td = tbl.querySelector(`td[data-r="${r}"][data-c="${c}"]`);
+                const td = this.findVisualCell(tbl, r, c);
                 const v = td?td.textContent:''; bHtml += `<td style="border:1px solid #ccc;">${v}</td>`; bText += v + '\t';
             }
             bHtml += '</tr>'; bText = bText.trimEnd() + '\n';
@@ -2578,6 +2687,8 @@ const App = {
     filterPopover: { open:false, table:null, col:null },
     activeEditor: null,
     tabDrag: { sourceId:null },
+    sourceEditorPersistTimer: null,
+    sourceEditorStatsTimer: null,
     escapeHtml(str='') {
         return String(str)
             .replace(/&/g, '&amp;')
@@ -2739,6 +2850,41 @@ const App = {
         });
     },
 
+    getTablePreviewMode(tableName) {
+        const ui = Store.curr().ui;
+        return (ui.previewModes && ui.previewModes[tableName]) === 'row-header' ? 'row-header' : 'column-header';
+    },
+
+    setTablePreviewMode(tableName, mode) {
+        const ui = Store.curr().ui;
+        if(!ui.previewModes) ui.previewModes = {};
+        ui.previewModes[tableName] = mode === 'row-header' ? 'row-header' : 'column-header';
+        Store.save();
+        this.renderPreview();
+    },
+
+    appendPreviewModeToggle(meta, tableName, mode) {
+        const spacer = createEl('span', 'table-meta-spacer');
+        meta.appendChild(spacer);
+        const wrap = createEl('span', 'table-view-toggle');
+        wrap.title = '切换预览方向：列表头 / 行表头';
+        wrap.onclick = e => e.stopPropagation();
+        wrap.ondblclick = e => e.stopPropagation();
+        const colBtn = createEl('button');
+        colBtn.type = 'button';
+        colBtn.textContent = '列表头';
+        colBtn.className = mode === 'column-header' ? 'active' : '';
+        colBtn.onclick = e => { e.stopPropagation(); this.setTablePreviewMode(tableName, 'column-header'); };
+        const rowBtn = createEl('button');
+        rowBtn.type = 'button';
+        rowBtn.textContent = '行表头';
+        rowBtn.className = mode === 'row-header' ? 'active' : '';
+        rowBtn.onclick = e => { e.stopPropagation(); this.setTablePreviewMode(tableName, 'row-header'); };
+        wrap.appendChild(colBtn);
+        wrap.appendChild(rowBtn);
+        meta.appendChild(wrap);
+    },
+
     updateImportSummary() {
         this.syncImportControls();
     },
@@ -2785,12 +2931,65 @@ const App = {
         return input ? input.value : '';
     },
 
+    getExportPrefix(kind='export') {
+        const title = Store.curr().title || 'Analysis';
+        return Exporter.sanitizeFilePrefix(`${title}_${kind}`);
+    },
+
+    getEnabledJoinTables(full=true) {
+        const ui = Store.curr().ui;
+        const names = ui.enabledViews || [];
+        return names.map(v => {
+            const cfg = Store.state.globalViews.find(g=>g.view===v);
+            return cfg ? Joiner.run(this.raw, cfg, Store.state.globalViews) : null;
+        }).filter(Boolean);
+    },
+
+    getFullExportTables() {
+        const ui = Store.curr().ui;
+        let tables = this.raw || [];
+        if(ui.exportOnlyChecked && Array.isArray(ui.displayTables)) {
+            const selected = new Set(ui.displayTables);
+            tables = tables.filter(t => selected.has(t.name));
+        }
+        const joins = this.getEnabledJoinTables(true);
+        return [...tables, ...joins].map(t => ({
+            name: t.name || 'Sheet',
+            headers: t.headers || [],
+            rows: (t.rows || []).map(r => Array.isArray(r) ? r : (r.d || r.data || []))
+        }));
+    },
+
+    getPreviewExportTables() {
+        return this.rendered.map(r => ({
+            name: r.name || 'Sheet',
+            headers: r.headers,
+            rows: r.rows.map(row => row.d)
+        }));
+    },
+
     updateSourceEditorStats() {
         const stats = $('sourceEditorStats');
         if(!stats) return;
         const text = this.getSourceEditorText();
-        const lines = text ? text.split(/\n/).length : 0;
+        let lines = text ? 1 : 0;
+        for(let i = 0; i < text.length; i++) if(text.charCodeAt(i) === 10) lines++;
         stats.textContent = `${text.length} 字符 · ${lines} 行`;
+    },
+
+    scheduleSourceEditorStats() {
+        clearTimeout(this.sourceEditorStatsTimer);
+        this.sourceEditorStatsTimer = setTimeout(() => this.updateSourceEditorStats(), 180);
+    },
+
+    scheduleSourceEditorPersist() {
+        clearTimeout(this.sourceEditorPersistTimer);
+        this.sourceEditorPersistTimer = setTimeout(() => {
+            const large = $('rawInputLarge');
+            if(!large) return;
+            Store.curr().raw = large.value;
+            Store.save();
+        }, 900);
     },
 
     syncSourceEditorControls() {
@@ -2811,6 +3010,8 @@ const App = {
         const large = $('rawInputLarge');
         const main = $('rawInput');
         if(!large || !main) return;
+        clearTimeout(this.sourceEditorPersistTimer);
+        clearTimeout(this.sourceEditorStatsTimer);
         main.value = large.value;
         Store.curr().raw = large.value;
         Store.save();
@@ -2971,7 +3172,10 @@ validflag Time      Level   Message                 Code
         if(sourceParse) sourceParse.onclick = () => this.runFromSourceEditor(false);
         const rawLarge = $('rawInputLarge');
         if(rawLarge) {
-            rawLarge.oninput = () => this.syncSourceTextFromLarge();
+            rawLarge.oninput = () => {
+                this.scheduleSourceEditorStats();
+                this.scheduleSourceEditorPersist();
+            };
             rawLarge.addEventListener('paste', e => {
                 const data = e.clipboardData;
                 if(!data) return;
@@ -3107,16 +3311,11 @@ validflag Time      Level   Message                 Code
         $('selectColsBtn').onclick = () => this.modCols();
         $('themeBtn').onclick = () => Store.toggleTheme();
 
-        $('exportRawBtn').onclick = () => Exporter.toExcel(this.raw, 'raw');
-        $('exportPrevBtn').onclick = () => {
-            const data = this.rendered.map(r => ({
-                name: r.name || 'Sheet',
-                headers: r.headers,
-                rows: r.rows.map(row => row.d)
-            }));
-            Exporter.toExcel(data, 'preview');
-        };
-        $('exportTabBtn').onclick = () => Exporter.toJson({ kind:'table-tool-tabs', docs: Store.state.docs }, 'tabs');
+        $('exportRawBtn').onclick = () => Exporter.toExcel(this.raw, this.getExportPrefix('raw'));
+        const exportFullBtn = $('exportFullBtn');
+        if(exportFullBtn) exportFullBtn.onclick = () => Exporter.toExcel(this.getFullExportTables(), this.getExportPrefix('full'));
+        $('exportPrevBtn').onclick = () => Exporter.toExcel(this.getPreviewExportTables(), this.getExportPrefix('preview'));
+        $('exportTabBtn').onclick = () => Exporter.toJson({ kind:'table-tool-tabs', docs: Store.state.docs }, this.getExportPrefix('tabs'));
         $('importTabBtn').onclick = () => $('fileInputTab').click();
         $('fileInputTab').onchange = e => {
             const f = e.target.files[0]; if(!f) return;
@@ -3133,7 +3332,7 @@ validflag Time      Level   Message                 Code
             };
             r.readAsText(f);
         };
-        $('exportConfigBtn').onclick = () => Exporter.toJson({ kind:'table-tool-config', globalViews: Store.state.globalViews, docs: Store.state.docs.map(d=>({id:d.id, title:d.title, ui:d.ui})) }, 'config');
+        $('exportConfigBtn').onclick = () => Exporter.toJson({ kind:'table-tool-config', globalViews: Store.state.globalViews, docs: Store.state.docs.map(d=>({id:d.id, title:d.title, ui:d.ui})) }, this.getExportPrefix('config'));
         $('importConfigBtn').onclick = () => $('fileInputConfig').click();
         $('fileInputConfig').onchange = e => {
             const f = e.target.files[0]; if(!f) return;
@@ -3278,7 +3477,7 @@ validflag Time      Level   Message                 Code
         // Cell inline editing
         $('previewArea').addEventListener('dblclick', e => {
             const td = e.target.closest('td');
-            if(!td || !td.closest('table')) return;
+            if(!td || !td.closest('table') || td.classList.contains('row-header-cell')) return;
             e.stopPropagation();
             Select.clear();
             this.startCellEdit(td);
@@ -3405,6 +3604,95 @@ validflag Time      Level   Message                 Code
         document.querySelectorAll('.doc-tab').forEach(tab => this.clearTabDragMarkers(tab));
     },
 
+    buildColumnHeaderTable(t, res, tIdx, colFilters={}) {
+        const tbl = createEl('table');
+        tbl.dataset.idx = tIdx;
+        tbl.dataset.viewMode = 'column-header';
+        const thRow = createEl('tr');
+        res.headers.forEach((h, hIdx) => {
+            const th=createEl('th');
+            th.classList.add('filterable-th');
+            const hasFilter = colFilters[h] && colFilters[h].toString().trim();
+            th.title= hasFilter ? `已过滤：${colFilters[h]}` : '点击过滤该列（包含匹配，忽略大小写）';
+            if(hasFilter) th.style.color = 'var(--primary)';
+            const label = createEl('span','th-label');
+            label.textContent = h;
+            if(hasFilter) {
+                const dot = createEl('span','th-filter-dot');
+                label.appendChild(dot);
+                const clearBtn = createEl('span','th-filter-clear');
+                clearBtn.textContent = '×';
+                clearBtn.title = '清除该列过滤';
+                clearBtn.onclick = (ev) => { ev.stopPropagation(); this.clearColumnFilter(t.name, h); };
+                th.appendChild(clearBtn);
+            }
+            th.appendChild(label);
+            th.onclick = (ev) => { ev.stopPropagation(); this.promptColumnFilter(t.name, h, th); };
+            th.dataset.vc = hIdx;
+            thRow.appendChild(th);
+        });
+        const thead = createEl('thead'); thead.appendChild(thRow); tbl.appendChild(thead);
+        const tbody = createEl('tbody');
+        res.rows.forEach((r, rIdx) => {
+            const tr = createEl('tr');
+            if(r._hl) tr.className = 'highlight-row';
+            r.d.forEach((c, cIdx) => {
+                const td=createEl('td');
+                const v = c===undefined||c===null?'':c;
+                td.textContent=v;
+                if(String(v).length > 18) td.dataset.full=v;
+                td.dataset.r=rIdx; td.dataset.c=cIdx;
+                td.dataset.vr=rIdx; td.dataset.vc=cIdx;
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        tbl.appendChild(tbody);
+        return tbl;
+    },
+
+    buildRowHeaderTable(t, res, tIdx, colFilters={}) {
+        const tbl = createEl('table');
+        tbl.dataset.idx = tIdx;
+        tbl.dataset.viewMode = 'row-header';
+        const thead = createEl('thead');
+        const htr = createEl('tr');
+        const corner = createEl('th', 'row-header-th');
+        corner.textContent = '字段';
+        htr.appendChild(corner);
+        res.rows.forEach((_, rIdx) => {
+            const th = createEl('th');
+            th.textContent = `Row ${rIdx + 1}`;
+            th.dataset.vc = rIdx + 1;
+            htr.appendChild(th);
+        });
+        thead.appendChild(htr);
+        tbl.appendChild(thead);
+        const tbody = createEl('tbody');
+        res.headers.forEach((h, cIdx) => {
+            const tr = createEl('tr');
+            const hCell = createEl('td', 'row-header-cell filterable-th');
+            const hasFilter = colFilters[h] && colFilters[h].toString().trim();
+            hCell.textContent = h;
+            hCell.title = hasFilter ? `已过滤：${colFilters[h]}` : '点击过滤该字段';
+            if(hasFilter) hCell.style.color = 'var(--primary)';
+            hCell.onclick = ev => { ev.stopPropagation(); this.promptColumnFilter(t.name, h, hCell); };
+            tr.appendChild(hCell);
+            res.rows.forEach((r, rIdx) => {
+                const td = createEl('td');
+                const v = r.d[cIdx] === undefined || r.d[cIdx] === null ? '' : r.d[cIdx];
+                td.textContent = v;
+                if(String(v).length > 18) td.dataset.full = v;
+                td.dataset.r = rIdx; td.dataset.c = cIdx;
+                td.dataset.vr = cIdx; td.dataset.vc = rIdx;
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        tbl.appendChild(tbody);
+        return tbl;
+    },
+
     renderPreview() {
         if(this.activeEditor) this.finishCellEdit(true);
         const div = $('previewArea'); div.innerHTML = '';
@@ -3480,45 +3768,11 @@ validflag Time      Level   Message                 Code
             card.appendChild(meta);
             if(isCollapsed) { div.appendChild(card); return; }
 
-            const tbl = createEl('table'); tbl.dataset.idx = tIdx;
-            const thRow = createEl('tr');
-            res.headers.forEach(h => { 
-                const th=createEl('th'); 
-                th.classList.add('filterable-th');
-                const hasFilter = colFilters[h] && colFilters[h].toString().trim();
-                th.title= hasFilter ? `已过滤：${colFilters[h]}` : '点击过滤该列（包含匹配，忽略大小写）';
-                if(hasFilter) th.style.color = 'var(--primary)';
-                const label = createEl('span','th-label');
-                label.textContent = h;
-                if(hasFilter) {
-                    const dot = createEl('span','th-filter-dot');
-                    label.appendChild(dot);
-                    const clearBtn = createEl('span','th-filter-clear');
-                    clearBtn.textContent = '×';
-                    clearBtn.title = '清除该列过滤';
-                    clearBtn.onclick = (ev) => { ev.stopPropagation(); this.clearColumnFilter(t.name, h); };
-                    th.appendChild(clearBtn);
-                }
-                th.appendChild(label);
-                th.onclick = (ev) => { ev.stopPropagation(); this.promptColumnFilter(t.name, h, th); };
-                thRow.appendChild(th); 
-            });
-            const thead = createEl('thead'); thead.appendChild(thRow); tbl.appendChild(thead);
-            const tbody = createEl('tbody');
-            res.rows.forEach((r, rIdx) => {
-                const tr = createEl('tr');
-                if(r._hl) tr.className = 'highlight-row';
-                r.d.forEach((c, cIdx) => { 
-                    const td=createEl('td'); 
-                    const v = c===undefined||c===null?'':c; 
-                    td.textContent=v; 
-                    if(String(v).length > 18) td.dataset.full=v; 
-                    td.dataset.r=rIdx; td.dataset.c=cIdx; 
-                    tr.appendChild(td); 
-                });
-                tbody.appendChild(tr);
-            });
-            tbl.appendChild(tbody); card.appendChild(tbl); div.appendChild(card);
+            const mode = this.getTablePreviewMode(t.name);
+            this.appendPreviewModeToggle(meta, t.name, mode);
+            const tbl = mode === 'row-header' ? this.buildRowHeaderTable(t, res, tIdx, colFilters) : this.buildColumnHeaderTable(t, res, tIdx, colFilters);
+            card.appendChild(tbl);
+            div.appendChild(card);
         });
     },
 

@@ -31,7 +31,8 @@ function reset() {
     ],
     activeId: 'b',
     theme: 'light',
-    globalViews: []
+    globalViews: [],
+    nextAnalysisSeq: 1
   };
 }
 function assert(cond, msg) {
@@ -63,9 +64,17 @@ assert(Store.state.docs.length === 4, 'addDoc should append a new tab');
 assert(newDoc && newDoc.id && !oldIds.has(newDoc.id), 'addDoc should generate a unique id');
 assert(Store.state.activeId === newDoc.id, 'addDoc should activate the new tab');
 assert(newDoc.raw === '', 'new tab should start with an empty source');
+assert(newDoc.title === 'Analysis 4', 'new tab should use next available analysis number');
 assert(newDoc.ui && newDoc.ui.sidebarTab === 'data', 'new tab should have default sidebar UI');
 assert(newDoc.ui.importFormat === 'auto' && newDoc.ui.importHeaderMode === 'auto', 'new tab should have import defaults');
 const beforeRemove = Store.state.docs.map(d => d.id).join(',');
 assert(Store.removeDoc('missing') === false, 'removing a missing tab should fail safely');
 assert(Store.state.docs.map(d => d.id).join(',') === beforeRemove, 'removing a missing tab must not delete another tab');
-console.log('Tab interaction tests passed: 15');
+reset();
+assert(Store.removeDoc('b'), 'remove existing tab should succeed');
+const afterDelete = Store.addDoc();
+assert(afterDelete.title === 'Analysis 4', 'new tab after deletion should not reuse Analysis 2');
+reset();
+assert(Store.renameDoc('c', 'Analysis 2'), 'rename to duplicate should still succeed with suffix');
+assert(Store.state.docs[2].title === 'Analysis 2 (2)', 'duplicate rename should be made unique');
+console.log('Tab interaction tests passed: 18');

@@ -21,7 +21,11 @@ function assert(cond, msg) {
   'id="sourceEditorCloseBtn"',
   'id="sidebarDataTabBtn"',
   'id="sidebarConfigTabBtn"',
-  'id="addTabBtn" type="button"'
+  'id="addTabBtn" type="button"',
+  'id="exportFullBtn"',
+  '导出全量 Excel',
+  'table-view-toggle',
+  'row-header-cell'
 ].forEach(token => assert(html.includes(token), `missing ${token}`));
 [
   'openSourceEditor()',
@@ -30,7 +34,12 @@ function assert(cond, msg) {
   'syncSourceEditorControls()',
   'runFromSourceEditor(close=false)',
   'setSidebarTab(tabName=\'data\')',
-  'applySidebarTab(tabName=\'data\', persist=true)'
+  'applySidebarTab(tabName=\'data\', persist=true)',
+  'getFullExportTables()',
+  'getPreviewExportTables()',
+  'buildRowHeaderTable(t, res, tIdx, colFilters={})',
+  'buildColumnHeaderTable(t, res, tIdx, colFilters={})',
+  'scheduleSourceEditorPersist()'
 ].forEach(token => assert(script.includes(token), `missing method ${token}`));
 assert(script.includes("if(e.detail > 1) return;"), 'sidebar double-click should not toggle twice');
 assert(script.includes('const handleSidebarTabClick = e =>'), 'sidebar config tab should use shared click handler');
@@ -47,4 +56,9 @@ assert(script.includes("tabsContainer.addEventListener('dragstart'"), 'tabs shou
 assert(script.includes("tabsContainer.addEventListener('drop'"), 'tabs should have drop binding');
 assert(script.includes('Store.moveDoc(this.tabDrag.sourceId, tab.dataset.id, place)'), 'drag drop should reorder docs');
 assert(script.includes("escapeHtml(str='')") && script.includes('renderTabs()'), 'App should escape tab titles when rendering');
-console.log('UI interaction tests passed: 22');
+assert(script.includes("exportFullBtn.onclick = () => Exporter.toExcel(this.getFullExportTables(), this.getExportPrefix('full'))"), 'full export should use current tab title prefix');
+assert(script.includes('rawLarge.oninput = () => {') && script.includes('this.scheduleSourceEditorPersist();'), 'large editor input should be debounced');
+assert(script.includes('data-vr') && script.includes('startAutoScroll()'), 'preview selection should support visual coordinates and auto-scroll');
+assert(script.includes("td.classList.contains('row-header-cell')"), 'row-header labels should not behave like editable data cells');
+assert(script.includes('nextAnalysisSeq') && script.includes('getMaxAnalysisNumber()'), 'analysis titles should use a monotonic sequence');
+console.log('UI interaction tests passed: 31');
