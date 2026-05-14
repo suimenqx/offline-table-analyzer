@@ -19,4 +19,10 @@ assert(F.toText(matrix, 'csv') === 'id,name\n1,Alice\n2,"Bob, Jr."', 'csv copy s
 assert(F.toText(matrix, 'markdown').includes('| id  | name     |'), 'markdown copy should include pipe header');
 assert(F.toText(matrix, 'ascii').startsWith('+'), 'ascii copy should include border');
 assert(F.toHtml(matrix).includes('<table') && F.toHtml(matrix).includes('<th'), 'html clipboard should use table markup');
-console.log('Copy formatter tests passed: 5');
+const multiline = [['id', 'desc'], ['1', 'line1\nline2'], ['2', 'literal<br>break']];
+assert(F.toText(multiline, 'default') === 'id\tdesc\n1\t"line1\nline2"\n2\t"literal\nbreak"', 'default TSV should quote multiline cells and normalize br');
+assert(F.toText(multiline, 'csv') === 'id,desc\n1,"line1\nline2"\n2,"literal\nbreak"', 'csv should quote multiline cells');
+assert(F.toText(multiline, 'markdown').includes('line1<br>line2'), 'markdown should render multiline cells as br');
+assert(F.toText(multiline, 'ascii').includes('line1 line2'), 'ascii should flatten multiline cells');
+assert(F.toHtml(multiline).includes('line1<br>line2'), 'html clipboard should preserve visual line breaks');
+console.log('Copy formatter tests passed: 10');

@@ -217,7 +217,7 @@
         .table-view-toggle button { border: 0; background: transparent; color: var(--text-mid); padding: 4px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; cursor: pointer; }
         .table-view-toggle button.active { color: var(--primary); background: var(--primary-soft); }
         .row-header-th { position: sticky; left: 0; z-index: 6; min-width: 140px; max-width: 260px; background: var(--bg-elevated) !important; box-shadow: 1px 0 0 var(--border); }
-        td.row-header-cell { font-weight: 700; color: var(--text-strong); background: var(--bg-elevated) !important; position: sticky; left: 0; z-index: 4; box-shadow: 1px 0 0 var(--border); }
+        td.row-header-cell { font-weight: 700; color: var(--text-strong); background: var(--bg-elevated) !important; position: sticky; left: 0; z-index: 4; box-shadow: 1px 0 0 var(--border); white-space: nowrap; }
 
         .table-container { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; margin: 0 0 14px 0; display: flex; flex-direction: column; overflow: visible; box-shadow: var(--shadow-xs); }
         .table-meta { padding: 10px 14px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); display: flex; gap: 10px; font-size: 12px; color: var(--text-mid); align-items: center; flex-wrap: wrap; }
@@ -227,15 +227,16 @@
         .filterable-th .th-filter-clear { font-size: 11px; color: var(--text-tertiary); cursor: pointer; padding: 2px 4px; border-radius: 6px; }
         .filterable-th .th-filter-clear:hover { color: var(--primary); background: var(--bg-hover); }
         table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--font-table); font-size: 12px; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; cursor: cell; user-select: none; display: block; overflow: auto hidden; }
-        th, td { padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; text-align: left; }
-        th { background: linear-gradient(180deg, rgba(37,99,235,0.06), rgba(37,99,235,0)); color: var(--text-strong); font-weight: 700; position: sticky; top: 0; z-index: 5; }
+        th, td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+        th { background: linear-gradient(180deg, rgba(37,99,235,0.06), rgba(37,99,235,0)); color: var(--text-strong); font-weight: 700; position: sticky; top: 0; z-index: 5; white-space: nowrap; }
+        td { white-space: pre-wrap; }
         tbody tr:nth-child(even) td { background: rgba(15, 23, 42, 0.015); }
         tbody tr:hover td { background: rgba(37,99,235,0.06); }
         tr.highlight-row td { background: var(--highlight-row); }
         td.selected-cell { background: var(--selection-bg) !important; }
         td { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
         td:hover { position: relative; }
-        td[data-full]:hover::after { content: attr(data-full); position: absolute; left: 0; bottom: 100%; transform: translateY(-4px); background: var(--text-strong); color: var(--bg-card); padding: 6px 8px; border-radius: 6px; font-size: 11px; white-space: nowrap; z-index: 20; box-shadow: var(--shadow-xs); }
+        td[data-full]:hover::after { content: attr(data-full); position: absolute; left: 0; bottom: 100%; transform: translateY(-4px); background: var(--text-strong); color: var(--bg-card); padding: 6px 8px; border-radius: 6px; font-size: 11px; white-space: pre-wrap; max-width: 520px; z-index: 20; box-shadow: var(--shadow-xs); }
 
         /* Floating */
         #tooltip { position: fixed; background: #1e293b; color: white; padding: 8px 12px; border-radius: 10px; font-size: 12px; z-index: 9999; pointer-events: none; opacity: 0; transition: opacity 0.1s; max-width: 260px; line-height: 1.4; box-shadow: var(--shadow-md); }
@@ -1030,13 +1031,23 @@ const TableUtils = {
     normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
     lines(text='') { return this.normalizeText(text).split('\n'); },
     isEmptyRow(row=[]) { return !row || row.every(v => String(v ?? '').trim() === ''); },
-    trimRow(row=[]) { return row.map(v => String(v ?? '').replace(/\u00a0/g, ' ').trim()); },
+    normalizeCellText(value='', options={}) {
+        const convertHtmlBreaks = options.convertHtmlBreaks !== false;
+        let text = String(value ?? '').replace(/\u00a0/g, ' ');
+        if(convertHtmlBreaks) {
+            text = text
+                .replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '\n')
+                .replace(/<\s*br\s*\/?\s*>/gi, '\n');
+        }
+        return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    },
+    trimRow(row=[]) { return row.map(v => this.normalizeCellText(v).trim()); },
     maxWidth(rows=[]) { return rows.reduce((m, r) => Math.max(m, (r || []).length), 0); },
     generatedHeaders(width) { return Array.from({length: Math.max(0, width)}, (_, i) => `Column${i + 1}`); },
     ensureUniqueHeaders(headers=[]) {
         const seen = new Map();
         return headers.map((h, idx) => {
-            let base = String(h ?? '').trim();
+            let base = this.normalizeCellText(h).trim();
             if(!base) base = `Column${idx + 1}`;
             const key = base.toLowerCase();
             const next = (seen.get(key) || 0) + 1;
@@ -1186,7 +1197,7 @@ const HtmlTableParser = {
         const tables = [];
         const diagnostics = [];
         const used = new Set();
-        const getText = (value='') => String(value || '')
+        const getText = (value='') => TableUtils.normalizeCellText(String(value || '')
             .replace(/<br\s*\/?\s*>/gi, '\n')
             .replace(/<[^>]+>/g, '')
             .replace(/&nbsp;/gi, ' ')
@@ -1195,7 +1206,8 @@ const HtmlTableParser = {
             .replace(/&gt;/gi, '>')
             .replace(/&quot;/gi, '"')
             .replace(/&#39;/gi, "'")
-            .replace(/\s+/g, ' ')
+            .replace(/[^\S\n]+/g, ' ')
+            .replace(/ *\n */g, '\n'))
             .trim();
         const parseTableHtml = (tableHtml, idx) => {
             const matrix = [];
@@ -1528,6 +1540,16 @@ window.__OTA_TESTS__ = {
             const r = ImportEngine.parse({ text:'id\tname\n1\tAlice', html });
             this.assert(r.format === 'html-table', 'expected html table');
             this.assert(r.tables[0].headers[1] === 'name', 'expected html header');
+        });
+        test('literal html breaks become cell newlines', () => {
+            const r = ImportEngine.parse('id\tdesc\n1\tline1<br>line2\n2\tlineA&lt;br /&gt;lineB', { format:'excel-paste' });
+            this.assert(r.tables[0].rows[0][1] === 'line1\nline2', 'expected literal br converted to newline');
+            this.assert(r.tables[0].rows[1][1] === 'lineA\nlineB', 'expected escaped br converted to newline');
+        });
+        test('html table br tags become cell newlines', () => {
+            const html = '<table><tr><th>id</th><th>desc</th></tr><tr><td>1</td><td>line1<br>line2</td></tr></table>';
+            const r = ImportEngine.parse({ text:'', html });
+            this.assert(r.tables[0].rows[0][1] === 'line1\nline2', 'expected html br converted to newline');
         });
         test('semicolon delimited data is supported', () => {
             const r = ImportEngine.parse('id;name;score\n1;Alice;9\n2;Bob;8');
@@ -2589,12 +2611,15 @@ const ClipboardFormatter = {
             .replace(/'/g, '&#39;');
     },
     normalizeCell(value='') {
-        return String(value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        return String(value ?? '')
+            .replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '\n')
+            .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n');
     },
     toDelimited(matrix, delimiter='\t') {
         const quoteFor = (value) => {
             const text = this.normalizeCell(value);
-            if(delimiter === '\t') return text.replace(/\t/g, ' ');
             const mustQuote = text.includes(delimiter) || /["\n\r]/.test(text);
             const escaped = text.replace(/"/g, '""');
             return mustQuote ? `"${escaped}"` : escaped;
@@ -2629,7 +2654,8 @@ const ClipboardFormatter = {
     },
     toHtml(matrix) {
         if(!matrix || !matrix.length) return '<table></table>';
-        const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px;">${this.escapeHtml(cell)}</${tag}>`).join('')}</tr>`;
+        const htmlCell = cell => this.escapeHtml(this.normalizeCell(cell)).replace(/\n/g, '<br>');
+        const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
         return `<table border="1"><thead>${rowHtml(matrix[0], 'th')}</thead><tbody>${matrix.slice(1).map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
     toText(matrix, format='default') {
