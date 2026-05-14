@@ -189,9 +189,12 @@
         .source-card-title { display: flex; align-items: center; gap: 8px; }
         .source-card-actions { display: flex; align-items: center; gap: 6px; }
         .source-editor-shell { width: min(1180px, 94vw); height: 90vh; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; overflow: hidden; }
+        #sourceEditorModal.fullscreen-modal { padding: 0; background: var(--bg-app); backdrop-filter: none; }
+        #sourceEditorModal .source-editor-shell { width: 100vw; height: 100vh; border-radius: 0; border: 0; box-shadow: none; }
         .source-editor-head { min-height: 54px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
         .source-editor-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
         .source-editor-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        .copy-format-select { height: 28px; min-width: 112px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 12px; padding: 0 8px; }
         .source-editor-body { flex: 1; min-height: 0; padding: 12px; background: var(--bg-app); }
         #rawInputLarge { width: 100%; height: 100%; min-height: 0; resize: none; border-radius: 12px; padding: 14px; line-height: 1.55; white-space: pre; overflow: auto; font-family: var(--font-mono); background: var(--bg-card); border: 1px solid var(--border); }
         .source-editor-foot { padding: 10px 14px; border-top: 1px solid var(--border); background: var(--bg-elevated); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -310,7 +313,7 @@
         <div class="sidebar-header">
             <div class="logo sidebar-toggle" id="sidebarToggle" title="点击折叠 / 展开侧栏" tabindex="0">
                 <div class="logo-icon">T</div>
-                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.10</span></span>
+                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.11</span></span>
             </div>
         </div>
 
@@ -469,6 +472,12 @@
                 <button class="icon-btn sm" id="addTabBtn" type="button" title="新建页签">＋</button>
                 <div style="height:20px; width:1px; background:var(--border); margin:0 6px;"></div>
                 <button class="icon-btn sm" id="themeBtn" title="切换主题">◑</button>
+                <select id="copyFormatSelect" class="copy-format-select" title="复制表格时的纯文本格式，全局生效">
+                    <option value="default">复制: 默认</option>
+                    <option value="csv">复制: CSV</option>
+                    <option value="markdown">复制: Markdown</option>
+                    <option value="ascii">复制: ASCII</option>
+                </select>
                 <button class="sm" id="exportFullBtn" title="导出当前页签的全量数据 Excel">导出全量 Excel</button>
                 <button class="primary sm" id="exportPrevBtn" title="导出当前预览结果 Excel">导出预览 Excel</button>
             </div>
@@ -528,7 +537,7 @@
             <textarea id="rawInputLarge" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..."></textarea>
         </div>
         <div class="source-editor-foot">
-            <span class="muted">内容实时同步到左侧数据源；Ctrl/⌘ + Enter 解析，Esc 关闭。</span>
+            <span class="muted">Ctrl/⌘ + Enter 解析；点击“完成”或右上角关闭按钮返回主界面。</span>
             <span class="muted" id="sourceEditorStats">0 字符</span>
         </div>
     </div>
@@ -883,11 +892,12 @@ const Exporter = {
 };
 /* Core */
 const Store = {
-    state: { docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1 },
+    state: { docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default' },
     init() {
         try { const s = JSON.parse(localStorage.getItem('v16_4_store')); if(s && Array.isArray(s.docs)) this.state = s; } catch(e){}
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!this.state.globalViews) this.state.globalViews = [];
+        if(!['default','csv','markdown','ascii'].includes(this.state.copyFormat)) this.state.copyFormat = 'default';
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
         if(this.state.docs.length===0) this.addDoc();
@@ -1006,6 +1016,10 @@ const Store = {
     updateUI(k, v) { this.curr().ui[k]=v; this.save(); },
     updateRule(table, field, value) {
         const ui = this.curr().ui; if(!ui.rules[table]) ui.rules[table] = {}; ui.rules[table][field] = value; this.save();
+    },
+    setCopyFormat(format='default') {
+        this.state.copyFormat = ['default','csv','markdown','ascii'].includes(format) ? format : 'default';
+        this.save();
     },
     toggleTheme() { this.state.theme = this.state.theme==='light'?'dark':'light'; this.applyTheme(); this.save(); },
     applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); }
@@ -2563,6 +2577,75 @@ const JoinEditor = {
     }
 };
 
+
+/* Clipboard Formatting */
+const ClipboardFormatter = {
+    escapeHtml(str='') {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+    normalizeCell(value='') {
+        return String(value ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    },
+    toDelimited(matrix, delimiter='\t') {
+        const quoteFor = (value) => {
+            const text = this.normalizeCell(value);
+            if(delimiter === '\t') return text.replace(/\t/g, ' ');
+            const mustQuote = text.includes(delimiter) || /["\n\r]/.test(text);
+            const escaped = text.replace(/"/g, '""');
+            return mustQuote ? `"${escaped}"` : escaped;
+        };
+        return (matrix || []).map(row => (row || []).map(quoteFor).join(delimiter)).join('\n');
+    },
+    toMarkdown(matrix) {
+        if(!matrix || !matrix.length) return '';
+        const esc = value => this.normalizeCell(value).replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+        const widths = this.getWidths(matrix.map(row => row.map(esc)));
+        const line = row => `| ${row.map((cell, i) => esc(cell).padEnd(widths[i], ' ')).join(' | ')} |`;
+        const sep = `| ${widths.map(w => '-'.repeat(Math.max(3, w))).join(' | ')} |`;
+        const rows = [line(matrix[0]), sep];
+        matrix.slice(1).forEach(row => rows.push(line(row)));
+        return rows.join('\n');
+    },
+    toAscii(matrix) {
+        if(!matrix || !matrix.length) return '';
+        const clean = value => this.normalizeCell(value).replace(/\n/g, ' ');
+        const normalized = matrix.map(row => row.map(clean));
+        const widths = this.getWidths(normalized);
+        const border = '+' + widths.map(w => '-'.repeat(w + 2)).join('+') + '+';
+        const line = row => '| ' + row.map((cell, i) => String(cell).padEnd(widths[i], ' ')).join(' | ') + ' |';
+        const out = [border, line(normalized[0]), border];
+        normalized.slice(1).forEach(row => out.push(line(row)));
+        out.push(border);
+        return out.join('\n');
+    },
+    getWidths(matrix) {
+        const width = Math.max(0, ...(matrix || []).map(row => row.length));
+        return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
+    },
+    toHtml(matrix) {
+        if(!matrix || !matrix.length) return '<table></table>';
+        const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px;">${this.escapeHtml(cell)}</${tag}>`).join('')}</tr>`;
+        return `<table border="1"><thead>${rowHtml(matrix[0], 'th')}</thead><tbody>${matrix.slice(1).map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
+    },
+    toText(matrix, format='default') {
+        switch(format) {
+            case 'csv': return this.toDelimited(matrix, ',');
+            case 'markdown': return this.toMarkdown(matrix);
+            case 'ascii': return this.toAscii(matrix);
+            case 'default':
+            default: return this.toDelimited(matrix, '\t');
+        }
+    },
+    label(format='default') {
+        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII' })[format] || '默认';
+    }
+};
+
 /* Selection Logic */
 const Select = {
     start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
@@ -2594,6 +2677,15 @@ const Select = {
             this.stopAutoScroll();
         });
         document.addEventListener('copy', e => { if(this.start && this.end) { e.preventDefault(); this.copy(e); } });
+        document.addEventListener('keydown', e => {
+            if(!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'a') return;
+            const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+            if(['input','textarea','select'].includes(tag) || (document.activeElement && document.activeElement.isContentEditable)) return;
+            const table = this.tableEl || (this.start ? document.querySelector(`table[data-idx="${this.start.idx}"]`) : null);
+            if(!table) return;
+            e.preventDefault();
+            this.selectAll(table);
+        });
     },
     getCoord(td) {
         return {
@@ -2603,6 +2695,27 @@ const Select = {
         };
     },
     findVisualCell(tbl, r, c) { return tbl.querySelector(`td[data-vr="${r}"][data-vc="${c}"]`); },
+    getBounds(tbl) {
+        const cells = Array.from(tbl.querySelectorAll('tbody td:not(.row-header-cell)'));
+        if(!cells.length) return null;
+        const coords = cells.map(td => this.getCoord(td));
+        return {
+            minR: Math.min(...coords.map(c => c.r)),
+            maxR: Math.max(...coords.map(c => c.r)),
+            minC: Math.min(...coords.map(c => c.c)),
+            maxC: Math.max(...coords.map(c => c.c)),
+            idx: +(tbl.dataset.idx || 0)
+        };
+    },
+    selectAll(tbl=this.tableEl) {
+        const bounds = tbl && this.getBounds(tbl);
+        if(!bounds) return false;
+        this.tableEl = tbl;
+        this.start = { idx: bounds.idx, r: bounds.minR, c: bounds.minC };
+        this.end = { idx: bounds.idx, r: bounds.maxR, c: bounds.maxC };
+        this.draw();
+        return true;
+    },
     draw() {
         document.querySelectorAll('.selected-cell').forEach(e=>e.classList.remove('selected-cell'));
         if(!this.start) return;
@@ -2646,38 +2759,58 @@ const Select = {
         if(this.autoScrollRaf) cancelAnimationFrame(this.autoScrollRaf);
         this.autoScrollRaf = null;
     },
-    getHeaderText(tbl, c) {
-        const mode = tbl.dataset.viewMode || 'column-header';
-        if(mode === 'row-header') {
-            const ths = tbl.querySelectorAll('thead th');
-            return ths[c + 1] ? ths[c + 1].textContent : `Row ${c + 1}`;
-        }
+    getColumnHeaderText(tbl, c) {
         const ths = tbl.querySelectorAll('thead th');
         return ths[c] ? ths[c].textContent : '';
     },
-    copy(e) {
-        const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`);
-        const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
-        const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
-        let hHtml = '<thead><tr>'; let hText = '';
-        for(let c=minC; c<=maxC; c++) {
-           const txt = this.getHeaderText(tbl, c);
-           hHtml += `<th style="background:#444; color:#fff; border:1px solid #ccc;">${txt}</th>`; hText += txt + '\t';
+    getRowHeaderColumnText(tbl, c) {
+        const ths = tbl.querySelectorAll('thead th');
+        return ths[c + 1] ? ths[c + 1].textContent : `Row ${c + 1}`;
+    },
+    getRowHeaderText(tbl, r) {
+        const direct = tbl.querySelectorAll('tbody tr')[r];
+        const cell = direct && direct.querySelector('.row-header-cell');
+        return cell ? cell.textContent : `字段 ${r + 1}`;
+    },
+    buildClipboardMatrix(tbl, minR, maxR, minC, maxC) {
+        const mode = tbl.dataset.viewMode || 'column-header';
+        if(mode === 'row-header') {
+            const header = ['字段'];
+            for(let c=minC; c<=maxC; c++) header.push(this.getRowHeaderColumnText(tbl, c));
+            const matrix = [header];
+            for(let r=minR; r<=maxR; r++) {
+                const row = [this.getRowHeaderText(tbl, r)];
+                for(let c=minC; c<=maxC; c++) {
+                    const td = this.findVisualCell(tbl, r, c);
+                    row.push(td ? td.textContent : '');
+                }
+                matrix.push(row);
+            }
+            return matrix;
         }
-        hHtml += '</tr></thead>'; hText = hText.trimEnd() + '\n';
-        let bHtml = '<tbody>'; let bText = '';
+        const header = [];
+        for(let c=minC; c<=maxC; c++) header.push(this.getColumnHeaderText(tbl, c));
+        const matrix = [header];
         for(let r=minR; r<=maxR; r++) {
-            bHtml += '<tr>';
+            const row = [];
             for(let c=minC; c<=maxC; c++) {
                 const td = this.findVisualCell(tbl, r, c);
-                const v = td?td.textContent:''; bHtml += `<td style="border:1px solid #ccc;">${v}</td>`; bText += v + '\t';
+                row.push(td ? td.textContent : '');
             }
-            bHtml += '</tr>'; bText = bText.trimEnd() + '\n';
+            matrix.push(row);
         }
-        bHtml += '</tbody>';
-        e.clipboardData.setData('text/html', `<table border="1">${hHtml}${bHtml}</table>`);
-        e.clipboardData.setData('text/plain', hText + bText);
-        Toast.show(`已复制 ${maxR-minR+1} 行`);
+        return matrix;
+    },
+    copy(e) {
+        const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`);
+        if(!tbl) return;
+        const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
+        const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
+        const matrix = this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
+        const format = Store.state.copyFormat || 'default';
+        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix));
+        e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format));
+        Toast.show(`已复制 ${Math.max(0, matrix.length - 1)} 行 · ${ClipboardFormatter.label(format)}`);
     }
 };
 
@@ -2912,6 +3045,17 @@ const App = {
     setImportFormat(format) {
         Store.updateUI('importFormat', format || 'auto');
         this.run();
+    },
+
+    setCopyFormat(format='default') {
+        Store.setCopyFormat(format);
+        this.syncCopyFormatControl();
+        Toast.show(`复制格式：${ClipboardFormatter.label(Store.state.copyFormat)}`);
+    },
+
+    syncCopyFormatControl() {
+        const el = $('copyFormatSelect');
+        if(el) el.value = Store.state.copyFormat || 'default';
     },
 
     getParseOptions() {
@@ -3184,7 +3328,6 @@ validflag Time      Level   Message                 Code
                 if(html && /<table[\s>]/i.test(html)) this.lastPaste = { html, plain };
             });
             rawLarge.onkeydown = e => {
-                if(e.key === 'Escape') { e.preventDefault(); this.closeSourceEditor(); }
                 if((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this.runFromSourceEditor(false); }
             };
         }
@@ -3204,7 +3347,8 @@ validflag Time      Level   Message                 Code
         };
         const sourceModal = $('sourceEditorModal');
         if(sourceModal) sourceModal.addEventListener('click', e => {
-            if(e.target === sourceModal) this.closeSourceEditor();
+            // Full-page editor returns only through explicit 完成/关闭 actions.
+            if(e.target === sourceModal) e.stopPropagation();
         });
         const tabsContainer = $('tabsContainer');
         tabsContainer.onclick = e => {
@@ -3310,6 +3454,11 @@ validflag Time      Level   Message                 Code
         $('manageViewsBtn').onclick = e => { e.stopPropagation(); JoinEditor.modManageViews(); };
         $('selectColsBtn').onclick = () => this.modCols();
         $('themeBtn').onclick = () => Store.toggleTheme();
+        const copyFormatSelect = $('copyFormatSelect');
+        if(copyFormatSelect) {
+            copyFormatSelect.value = Store.state.copyFormat || 'default';
+            copyFormatSelect.onchange = e => this.setCopyFormat(e.target.value);
+        }
 
         $('exportRawBtn').onclick = () => Exporter.toExcel(this.raw, this.getExportPrefix('raw'));
         const exportFullBtn = $('exportFullBtn');
@@ -3493,6 +3642,7 @@ validflag Time      Level   Message                 Code
         $('checkHl').checked = d.ui.enableHighlight !== false;
         $('checkOnlyHl').checked = d.ui.onlyHighlighted || false;
         if($('sidebar')) this.setSidebarTab(d.ui.sidebarTab || 'data');
+        this.syncCopyFormatControl();
         this.run(false);
         this.renderPreview();
     },

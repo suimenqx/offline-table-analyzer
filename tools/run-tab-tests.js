@@ -77,4 +77,8 @@ assert(afterDelete.title === 'Analysis 4', 'new tab after deletion should not re
 reset();
 assert(Store.renameDoc('c', 'Analysis 2'), 'rename to duplicate should still succeed with suffix');
 assert(Store.state.docs[2].title === 'Analysis 2 (2)', 'duplicate rename should be made unique');
-console.log('Tab interaction tests passed: 18');
+Store.setCopyFormat('markdown');
+assert(Store.state.copyFormat === 'markdown', 'copy format should persist globally');
+Store.setCopyFormat('invalid');
+assert(Store.state.copyFormat === 'default', 'invalid copy format should reset to default');
+console.log('Tab interaction tests passed: 20');

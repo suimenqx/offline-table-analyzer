@@ -1,0 +1,22 @@
+const fs = require('fs');
+const vm = require('vm');
+const path = require('path');
+const htmlPath = path.join(__dirname, '..', 'offline_table_analyzer_v18.html');
+const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
+const script = html.split('<script>')[1].split('</script>')[0];
+const start = script.indexOf('/* Clipboard Formatting */');
+const end = script.indexOf('/* Selection Logic */');
+if (start < 0 || end < 0) throw new Error('Clipboard formatter markers not found');
+const code = script.slice(start, end) + '\nwindow.ClipboardFormatter = ClipboardFormatter;';
+const sandbox = { window: {}, console };
+vm.createContext(sandbox);
+vm.runInContext(code, sandbox, { filename: 'copy-format.js' });
+const F = sandbox.window.ClipboardFormatter;
+function assert(cond, msg) { if (!cond) throw new Error(msg); }
+const matrix = [['id', 'name'], ['1', 'Alice'], ['2', 'Bob, Jr.']];
+assert(F.toText(matrix, 'default') === 'id\tname\n1\tAlice\n2\tBob, Jr.', 'default copy should remain TSV');
+assert(F.toText(matrix, 'csv') === 'id,name\n1,Alice\n2,"Bob, Jr."', 'csv copy should quote comma cells');
+assert(F.toText(matrix, 'markdown').includes('| id  | name     |'), 'markdown copy should include pipe header');
+assert(F.toText(matrix, 'ascii').startsWith('+'), 'ascii copy should include border');
+assert(F.toHtml(matrix).includes('<table') && F.toHtml(matrix).includes('<th'), 'html clipboard should use table markup');
+console.log('Copy formatter tests passed: 5');

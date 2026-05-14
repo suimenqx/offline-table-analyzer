@@ -23,6 +23,9 @@ function assert(cond, msg) {
   'id="sidebarConfigTabBtn"',
   'id="addTabBtn" type="button"',
   'id="exportFullBtn"',
+  'id="copyFormatSelect"',
+  '复制: Markdown',
+  '复制: ASCII',
   '导出全量 Excel',
   'table-view-toggle',
   'row-header-cell'
@@ -39,7 +42,10 @@ function assert(cond, msg) {
   'getPreviewExportTables()',
   'buildRowHeaderTable(t, res, tIdx, colFilters={})',
   'buildColumnHeaderTable(t, res, tIdx, colFilters={})',
-  'scheduleSourceEditorPersist()'
+  'scheduleSourceEditorPersist()',
+  "setCopyFormat(format='default')",
+  'syncCopyFormatControl()',
+  'buildClipboardMatrix(tbl, minR, maxR, minC, maxC)'
 ].forEach(token => assert(script.includes(token), `missing method ${token}`));
 assert(script.includes("if(e.detail > 1) return;"), 'sidebar double-click should not toggle twice');
 assert(script.includes('const handleSidebarTabClick = e =>'), 'sidebar config tab should use shared click handler');
@@ -61,4 +67,8 @@ assert(script.includes('rawLarge.oninput = () => {') && script.includes('this.sc
 assert(script.includes('data-vr') && script.includes('startAutoScroll()'), 'preview selection should support visual coordinates and auto-scroll');
 assert(script.includes("td.classList.contains('row-header-cell')"), 'row-header labels should not behave like editable data cells');
 assert(script.includes('nextAnalysisSeq') && script.includes('getMaxAnalysisNumber()'), 'analysis titles should use a monotonic sequence');
-console.log('UI interaction tests passed: 31');
+assert(script.includes('ClipboardFormatter.toText(matrix, format)'), 'copy should support global text table formats');
+assert(script.includes("document.addEventListener('keydown', e => {") && script.includes('this.selectAll(table);'), 'ctrl+a should select all cells in active preview table');
+assert(html.includes('#sourceEditorModal .source-editor-shell { width: 100vw; height: 100vh;'), 'source editor should occupy the full browser viewport');
+assert(!script.includes("if(e.key === 'Escape') { e.preventDefault(); this.closeSourceEditor(); }"), 'source editor should not close implicitly with Escape');
+console.log('UI interaction tests passed: 38');
