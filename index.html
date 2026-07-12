@@ -3403,6 +3403,19 @@ const App = {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     },
+    formatBytes(bytes=0) {
+        if(bytes < 1024) return `${bytes} B`;
+        if(bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
+    sourceFileFormat(file) {
+        const name = String(file && file.name || '').toLowerCase();
+        if(/\.csv$/.test(name)) return 'csv';
+        if(/\.tsv$/.test(name)) return 'excel-paste';
+        if(/\.html?$/.test(name)) return 'html-table';
+        if(/\.(md|markdown)$/.test(name)) return 'pipe-table';
+        return 'auto';
+    },
     persistCurrentDocFromInputs() {
         const input = $('rawInput');
         const doc = Store.curr();
@@ -3594,6 +3607,36 @@ const App = {
         wrap.appendChild(colBtn);
         wrap.appendChild(rowBtn);
         meta.appendChild(wrap);
+    },
+
+    updateWorkspaceSummary() {
+        const title = $('workspaceTitle');
+        const summary = $('datasetSummary');
+        if(title) title.textContent = Store.curr().title || 'Analysis';
+        if(!summary) return;
+        const tableCount = this.raw.length;
+        const rows = this.raw.reduce((sum, table) => sum + (table.rows || []).length, 0);
+        const maxCols = this.raw.reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
+        const format = Parser.lastResult && Parser.lastResult.label;
+        summary.textContent = tableCount ? `${format || '已解析'} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列` : '所有处理均在本地浏览器完成';
+    },
+
+    updateStorageStatus(detail={}) {
+        const el = $('storageStatus');
+        if(!el) return;
+        const ok = detail.ok !== false && !Store.lastSaveError;
+        const bytes = Number(detail.bytes ?? Store.storageBytes) || 0;
+        const message = detail.message || (ok
+            ? (Store.state.persistRaw === false ? '临时数据模式 · 规则已保存' : `已保存 · ${this.formatBytes(bytes)}`)
+            : Store.lastSaveError || '保存失败');
+        el.textContent = message;
+        el.style.color = ok ? '' : 'var(--danger)';
+        const fill = $('storageMeterFill');
+        if(fill) {
+            const ratio = Math.min(100, bytes / (5 * 1024 * 1024) * 100);
+            fill.style.width = `${ratio}%`;
+            fill.style.background = ratio > 85 ? 'var(--danger)' : ratio > 65 ? 'var(--warning)' : 'var(--accent)';
+        }
     },
 
     updateImportSummary() {
@@ -4361,6 +4404,76 @@ validflag Time      Level   Message                 Code
         this.updateStorageStatus();
     },
 
+    applyStoredCellEdits() {
+        const edits = Store.curr().ui.cellEdits || {};
+        this.raw.forEach(table => {
+            const tableEdits = edits[`$${table.name}`];
+            if(!tableEdits) return;
+            Object.entries(tableEdits).forEach(([rowKey, cols]) => {
+                const rowIdx = Number(rowKey);
+                if(!Number.isInteger(rowIdx) || !table.rows[rowIdx] || !cols || typeof cols !== 'object') return;
+                Object.entries(cols).forEach(([colKey, value]) => {
+                    const colIdx = Number(colKey);
+                    if(Number.isInteger(colIdx) && colIdx >= 0 && colIdx < table.headers.length) table.rows[rowIdx][colIdx] = String(value ?? '');
+                });
+            });
+        });
+    },
+
+    scheduleSourceInputPersist() {
+        clearTimeout(this.sourceInputPersistTimer);
+        this.sourceInputPersistTimer = setTimeout(() => {
+            Store.curr().raw = $('rawInput').value;
+            Store.save();
+        }, 650);
+    },
+
+    loadSourceFile(file) {
+        if(!file) return;
+        if(file.size > MAX_IMPORT_BYTES) return Toast.show('文件超过 25 MB 安全限制', true);
+        const reader = new FileReader();
+        reader.onerror = () => Toast.show('无法读取该文件', true);
+        reader.onload = event => {
+            const text = String(event.target.result || '').replace(/^\uFEFF/, '');
+            $('rawInput').value = text;
+            const detected = this.sourceFileFormat(file);
+            if(detected === 'html-table') this.lastPaste = { html:text, plain:text, docId:Store.state.activeId };
+            else this.lastPaste = null;
+            Store.curr().raw = text;
+            const select = $('formatSelect');
+            if(select && select.value === 'auto' && detected !== 'auto') {
+                select.value = detected;
+                Store.curr().ui.importFormat = detected;
+            }
+            Store.save();
+            this.run();
+            Toast.show(`已导入 ${file.name}`);
+        };
+        reader.readAsText(file);
+    },
+
+    showDiagnostics() {
+        const result = Parser.lastResult || {};
+        const candidates = (result.candidates || []).map(item => `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : `识别分数 ${Math.round(item.score * 100)}%`}</span></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`).join('');
+        const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
+        this.modal('解析详情', `<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
+        document.querySelectorAll('.diagnostic-format-btn').forEach(button => {
+            button.onclick = () => { this.closeModal(); this.setImportFormat(button.dataset.format); };
+        });
+    },
+
+    showHelp() {
+        this.modal('帮助与快捷键', `<div class="shortcut-grid">
+            <span>解析当前数据源</span><kbd>Ctrl/⌘ Enter</kbd>
+            <span>新建分析页签</span><kbd>Ctrl/⌘ N</kbd>
+            <span>选择本地数据文件</span><kbd>Ctrl/⌘ O</kbd>
+            <span>保存当前工作区</span><kbd>Ctrl/⌘ S</kbd>
+            <span>撤销 / 重做单元格编辑</span><span><kbd>Ctrl/⌘ Z</kbd> <kbd>Ctrl/⌘ Y</kbd></span>
+            <span>重命名当前页签</span><kbd>F2</kbd>
+            <span>全选当前预览表</span><kbd>Ctrl/⌘ A</kbd>
+        </div><p class="muted" style="margin:16px 0 0;">支持 CSV、TSV、HTML、Markdown、ASCII、固定宽度文本与 CLI table-data。数据不会发送到网络。</p>`);
+    },
+
     run(render=true) {
         try {
             const started = performance.now();
@@ -4788,6 +4901,60 @@ validflag Time      Level   Message                 Code
         const ui = Store.curr().ui;
         if(!ui.collapsedTables) ui.collapsedTables = {};
         ui.collapsedTables[tableName] = !ui.collapsedTables[tableName];
+        Store.save();
+        this.renderPreview();
+    },
+
+    setCellEdit(tableName, rowIdx, colIdx, value, record=true) {
+        const table = this.raw.find(item => item.name === tableName && !item.isView);
+        if(!table || !table.rows[rowIdx] || colIdx < 0 || colIdx >= table.headers.length) return false;
+        const previous = String(table.rows[rowIdx][colIdx] ?? '');
+        const next = String(value ?? '');
+        if(previous === next) return false;
+        const ui = Store.curr().ui;
+        if(!ui.cellEdits) ui.cellEdits = {};
+        const tableKey = `$${tableName}`;
+        if(!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
+        if(!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
+        ui.cellEdits[tableKey][rowIdx][colIdx] = next;
+        table.rows[rowIdx][colIdx] = next;
+        if(record) {
+            this.editHistory.push({ tableName, rowIdx, colIdx, previous, next });
+            if(this.editHistory.length > 100) this.editHistory.shift();
+            this.editRedo = [];
+        }
+        Store.save();
+        this.updateUndoButtons();
+        return true;
+    },
+
+    undoCellEdit() {
+        const edit = this.editHistory.pop();
+        if(!edit) return;
+        this.setCellEdit(edit.tableName, edit.rowIdx, edit.colIdx, edit.previous, false);
+        this.editRedo.push(edit);
+        this.updateUndoButtons();
+        this.renderPreview();
+    },
+
+    redoCellEdit() {
+        const edit = this.editRedo.pop();
+        if(!edit) return;
+        this.setCellEdit(edit.tableName, edit.rowIdx, edit.colIdx, edit.next, false);
+        this.editHistory.push(edit);
+        this.updateUndoButtons();
+        this.renderPreview();
+    },
+
+    updateUndoButtons() {
+        if($('undoEditBtn')) $('undoEditBtn').disabled = this.editHistory.length === 0;
+        if($('redoEditBtn')) $('redoEditBtn').disabled = this.editRedo.length === 0;
+    },
+
+    setTablePage(tableName, page) {
+        const ui = Store.curr().ui;
+        if(!ui.tablePages) ui.tablePages = {};
+        ui.tablePages[tableName] = Math.max(1, Number(page) || 1);
         Store.save();
         this.renderPreview();
     },
