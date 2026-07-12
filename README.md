@@ -18,49 +18,58 @@ Operational data rarely arrives as a perfect spreadsheet. It is often copied fro
 
 ### Import and normalization
 
-- Legacy multi-table `cli-table-data`
-- CSV, including quoted commas, escaped quotes, and multiline cells
-- Excel/Google Sheets TSV paste
-- Semicolon-delimited data
-- HTML clipboard tables, including `colspan`, `rowspan`, and `<br>`
-- Markdown/pipe tables, including escaped pipes
-- ASCII/terminal tables
-- Fixed-width and whitespace-delimited text fallbacks
-- Automatic, forced-first-row, or generated headers
-- Duplicate/blank header normalization and visible parse diagnostics
-- Local CSV/TSV/TXT/HTML/Markdown file selection and drag-and-drop
+Source text is parsed through a 9-parser pipeline tried in this priority order:
+
+1. **CLI table-data** — legacy multi-table format with `table-data` and `validflag` markers
+2. **HTML clipboard tables** — including `colspan`, `rowspan`, and `<br>`
+3. **ASCII / terminal tables**
+4. **Markdown / pipe tables** — including escaped pipes
+5. **TSV / Excel paste**
+6. **CSV** — quoted commas, escaped quotes, multiline cells
+7. **Semicolon-delimited CSV**
+8. **Fixed-width text**
+9. **Whitespace-delimited plain text** (fallback)
+
+Additional import capabilities:
+
+- **Header modes**: automatic inference, forced first-row, or generated headers (`Column1`, `Column2`, …). CLI table-data uses `validflag` rows as headers. Duplicate and blank headers are normalized. Parse diagnostics are surfaced in the UI.
+- **Source input**: paste, drag-and-drop, or file picker. Format is auto-detected from file extension (`.csv` / `.tsv` / `.html` / `.htm` / `.md` / `.markdown`).
+- **Editors**: resizable source textarea (120–600 px) and a fullscreen source editor for large inputs.
+- 25 MB safety limit on source text and workspace files.
 
 ### Analysis workbench
 
-- Multiple named, reorderable analysis tabs
-- Global, table-level, and per-column filtering
-- Numeric comparisons, exact/contains/not-equal rules, regex, AND/OR, and quoted values
-- Highlight rules and focus-only mode
-- Per-table visible-column selection and collapse state
-- Column-header and transposed row-header previews
-- Paginated DOM rendering for large tables
-- Persisted cell corrections with undo/redo
+- **Multiple named, reorderable analysis tabs**, each with independent state.
+- **Three-level filtering**: global filter across all tables, per-table filter, and per-column filter. Rules support equals, contains, not-equal, numeric comparisons, regex, AND/OR logic, and quoted multi-word values.
+- **Highlight rules** with a highlight-only (focus) mode that hides non-matching rows.
+- **Per-table visible-column selection** and collapsible table cards.
+- **Column-header and transposed row-header preview modes** for inspecting wide or tall tables.
+- **Pagination**: 50, 100, 250, or 500 rows per page per table.
+- **Persisted cell corrections** with undo/redo (`Ctrl`+`Z` / `Ctrl`+`Y`).
 
 ### JOIN views
 
-- Inner, Left, Right, Full, Semi, and Anti joins
-- Multiple equality conditions
-- Source can be a raw table or another view
-- Dependency-cycle and missing-field validation
-- Output-column aliases and ordering
-- Match/unmatched row estimates
-- Collision-safe compound keys and correct preservation of `0`/`false`
+- Six join types: **Inner**, **Left**, **Right**, **Full**, **Semi**, and **Anti**.
+- **Multiple equality conditions** per view.
+- Either side can be a raw parsed table or an existing view (chained JOINs).
+- **Column search**, **aliases** (`col AS alias` or `col: alias`), and **drag-to-reorder** output columns.
+- **Auto-match** same-name columns across left and right sources.
+- **Dependency cycle detection** prevents circular view references.
+- Real-time **match/unmatched row estimates** during design.
+- **Collision-safe compound keys** and correct preservation of `0` and `false` values.
 
 ### Copy, export, and recovery
 
-- TSV, CSV, Markdown, and ASCII copy formats
-- Simultaneous HTML clipboard payload
-- Spreadsheet formula-injection protection for copied TSV/CSV
-- Preview, full-workspace-table, and raw Excel export
-- Versioned workspace backup and restore
-- Rule/configuration import and export
-- Optional temporary-data mode that does not persist raw source text
-- Visible local-save and storage-failure status
+- **Copy formats**: TSV (default), CSV, Markdown, and ASCII. Every copy also includes an HTML clipboard payload for pasting into rich-text editors.
+- **Spreadsheet formula injection protection**: cells starting with `=`, `+`, `@`, or a non-numeric `-` are prefixed to prevent accidental execution when pasting into spreadsheet applications.
+- **Excel export**:
+  - **Raw Excel** — the parsed tables as stored, before any filtering.
+  - **Full Excel** — select which tables and views to include, with display-column projection.
+  - **Preview Excel** — the currently filtered and paginated results.
+- **Versioned workspace backup** (JSON): export the entire workspace and restore it later, choosing to **replace** the current workspace or **append** each tab as a new analysis.
+- **Configuration export / import**: rules and views only, no raw data. 5 MB file limit. Useful for sharing analysis setups without exposing underlying data.
+- **Temporary data mode**: disable raw-text persistence so source data stays only in the current page session. Rules and preferences are still saved.
+- **Visible storage status** in the footer with a usage meter and clear failure reporting when `localStorage` quota is exceeded.
 
 ## Quick start
 
@@ -82,28 +91,44 @@ The application uses modern browser APIs including `localStorage`, `FileReader`,
 
 All parsing, filtering, JOIN processing, copying, and Excel generation happen in the browser. The application contains no external resources or network API calls.
 
-By default, the current workspace is stored in browser `localStorage` so it can survive a refresh. Disable **Save raw data on this device** to keep source text only in the current page session. Browser storage is limited; when saving fails, the status bar reports the failure and the in-memory data remains available for backup.
+By default, the current workspace is stored in browser `localStorage` under the key `ota_v20_workspace` so it can survive a refresh. Disable **Save raw data on this device** to keep source text only in the current page session. The **Clear local data** button removes all stored workspace data. A storage usage meter in the status bar helps monitor quota consumption. When saving fails (e.g., quota exceeded), the status bar reports the failure and the in-memory data remains available for backup.
 
 Read [PRIVACY.md](PRIVACY.md) before using the tool with sensitive data.
 
 ## Recommended limits
 
 - Maximum accepted source/workspace file: 25 MB
-- Default rendered page: 100 rows per table
+- Default rendered page: 100 rows per table (switchable to 50, 250, or 500)
 - For very large datasets, keep raw-data persistence disabled and export a workspace backup before closing the page
 - XLSX files can be exported but are not imported
 - JOIN conditions are equality-based; data types are compared as represented in the parsed table
+
+## Other features
+
+- **Dark / light theme** toggle, persisted across sessions.
+- **Responsive sidebar**: collapses to a drawer on viewports narrower than 760 px.
+- **Keyboard shortcuts**:
+  - `Ctrl`+`Enter` — parse current source
+  - `Ctrl`+`N` — new analysis tab
+  - `Ctrl`+`O` — open local data file
+  - `Ctrl`+`S` — save workspace
+  - `Ctrl`+`Z` / `Ctrl`+`Y` — undo/redo cell edits
+  - `Ctrl`+`A` — select all in current preview table
+  - `F2` — rename current tab
+  - `?` — help and shortcut reference
+- **Reduced motion** support via `prefers-reduced-motion: reduce`.
+- **ARIA semantics** across the UI, including roles, labels, and live regions for assistive technology.
 
 ## Development
 
 Runtime dependencies are intentionally zero. Node.js is used only for validation.
 
 ```bash
-npm test
-npm run validate:release
+npm test              # runs all 5 test suites
+npm run validate:release  # release readiness check
 ```
 
-The test suite covers parser formats, copy serialization, state/storage behavior, JOIN correctness, syntax, UI contracts, accessibility markers, and offline release constraints.
+The test suite covers parser formats, copy serialization, state/storage behavior, JOIN correctness, syntax checks, UI contracts, accessibility markers, and offline release constraints.
 
 ## Documentation
 
@@ -122,4 +147,3 @@ Issues and pull requests are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING
 ## License
 
 [MIT](LICENSE)
-

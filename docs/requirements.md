@@ -73,83 +73,144 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Use a single `20` workspace schema and `20.0.0` application version.
-- Migrate the legacy `v16_4_store` once and remove it only after a successful v20 write.
-- Catch quota/security failures and keep in-memory data usable.
-- Show saved/failed state and estimated storage use.
-- Support temporary raw-data mode.
-- Never overwrite an unreadable saved workspace with an empty default workspace.
+- Schema version `20`, application version `20.0.0`.
+- Single key `ota_v20_workspace`; migrate legacy `v16_4_store` once and remove it only after a successful v20 write.
+- Catch `QuotaExceededError` in `save()` and report the specific failure in the status bar; in-memory data remains usable.
+- Show saved/failed state, estimated storage use (`json.length * 2` for UTF-16 approximation), and a usage meter in the status bar.
+- Support temporary raw-data mode via the `persistRaw` flag: when false, raw source strings are serialized as empty to save space.
+- The `loadFailed` flag prevents destructive overwrite of an unreadable workspace with an empty default.
+- Clear local data removes `ota_v20_workspace`, all legacy keys, and `v16_4_inputHeight`.
 
 ### R2 — zero silent truncation
 
-- Preserve overflow cells rather than truncating them.
-- Expand legacy CLI headers when rows contain additional cells.
-- Return parser diagnostics through the public import result.
-- Explain format candidates and permit a one-click manual correction.
+- Rows shorter than the max column width are padded with empty strings rather than truncated.
+- Overflow cells (longer than headers) are preserved and flagged via a `ROW_WIDTH_MISMATCH` diagnostic.
+- The CLI parser expands headers when rows contain extra columns (the `validflag` line determines the header set).
+- Parser diagnostics and format candidates (with confidence scores) are returned through the public `ImportEngine.parse()` result.
+- Diagnostics are visible via a "Details" button and include format candidates with one-click correction to switch parsers.
 
 ### R3 — safe imports and rendering
 
-- Limit source/workspace imports to 25 MB and configuration imports to 5 MB.
-- Validate workspace kind, schema, document count, nesting depth, and dangerous object keys.
-- Normalize imported IDs, names, UI defaults, and active tab.
-- Escape or use DOM text APIs for user-derived names and headers.
-- Block dangerous object-key names for tables and views.
+- Source/workspace imports: 25 MB limit (`MAX_IMPORT_BYTES = 25 * 1024 * 1024`).
+- Configuration imports: 5 MB limit (hardcoded in the file input handler).
+- Workspace import validates `kind` (`ota-workspace` or `table-tool-tabs`), schema forward-compatibility, and doc count (≤100).
+- Recursive safety check via `isSafePayload`: depth ≤12 levels, ≤2000 keys per object, ≤10000 array items, blocks `__proto__`, `prototype`, `constructor`.
+- Imported IDs are deduplicated and titles are enforced unique across the workspace.
+- User-derived names and headers are escaped or rendered via DOM text APIs; dangerous object-key names are blocked for table and view names.
 
 ### R4 — data-correct JOINs
 
-- Use collision-safe compound keys.
-- Reject missing relation fields.
-- Preserve numeric zero and boolean false.
-- Normalize duplicate output headers.
-- Detect dependency cycles before save.
-- Add Right, Full, Semi, and Anti joins.
+- Compound keys use `JSON.stringify` of typed tuples `[typeof value, value ?? null]` for collision safety.
+- Missing relation fields (columns not present in either table) are rejected by `parsePairs`.
+- Numeric `0` and boolean `false` are preserved correctly in composite keys.
+- Duplicate output headers are normalized via `TableUtils.ensureUniqueHeaders`.
+- Dependency cycles are detected via DFS graph traversal before save.
+- All six JOIN types implemented: Inner, Left, Right, Full, Semi, Anti.
 
 ### R5 — large-table protection
 
-- Limit rendered DOM rows through per-table pagination.
-- Permit 50, 100, 250, or 500 visible rows per page.
-- Continue exporting the full filtered result, not only the current page.
-- Show input size, table count, row count, and slow-parse feedback.
-- Reject a single source above the documented safety limit.
+- Per-table pagination limits rendered DOM rows; page sizes: 50, 100, 250, 500 (enforced in `normalizeDoc`).
+- Full filtered result is exported regardless of the current page.
+- Source size is checked before parse: `sourceText.length * 2 > MAX_IMPORT_BYTES`.
+- For slow parses (>800 ms elapsed), a Toast notification shows the parse time.
+- A single source above 25 MB is rejected at the input stage.
 
 ### R6 — complete existing controls
 
-- “Export displayed columns” must project focus columns during full export.
-- Export options must restore on tab changes.
-- HTML clipboard state must not leak across tabs or later plain-text edits.
-- Full-screen Escape behavior must be documented and synchronize before closing.
-- Cell corrections must persist as a non-destructive overlay and support undo/redo.
+- "Export displayed columns": when `exportCols === 'shown'`, `projectTableForExport` projects focus columns during full export.
+- Export options (`exportOnlyChecked`, `exportCols`) are stored per-tab in the doc UI state and restored on tab changes.
+- HTML clipboard state is scoped to the current tab via `docId` tracking in `lastPaste`; it is cleared on tab switch or plain-text edit.
+- Full-screen source editor Escape behavior synchronizes back to the main input via `syncSourceTextFromLarge()` before closing with `closeSourceEditor()`.
+- Cell corrections are persisted as a non-destructive overlay in `ui.cellEdits`, applied during `applyStoredCellEdits()`, and support session undo/redo.
 
 ### R7 — accessible responsive workbench
 
-- Present the primary journey as Import → Parse → Analyze → Export.
-- Use visible parse and save states.
-- Provide real button/tab/dialog semantics and keyboard tab activation/rename/close.
-- Offer shortcuts for parse, file import, save, new tab, help, and edit undo/redo.
-- Keep focus visible, respect reduced motion, and provide forced-color fallbacks.
-- Use a narrow-screen drawer fallback.
+- Primary workflow: sidebar data tab → parse button → config tab/preview → export buttons (Import → Parse → Analyze → Export).
+- Visible parse states via `parseStatus` element with ready/warning/error CSS classes.
+- Status bar shows storage status, usage meter fill, and saved timestamp.
+- Keyboard: tab activation (Enter/Space), rename (F2), close (Delete), arrow key navigation.
+- Shortcuts: Ctrl+Enter (parse), Ctrl+N (new tab), Ctrl+O (file import), Ctrl+S (save), Ctrl+Z/Ctrl+Y (undo/redo cell edits), Ctrl+A (select all), F2 (rename tab), ? (help).
+- CSS rules for `prefers-reduced-motion: reduce` (animations/transitions set to 0.01 ms) and `forced-colors: active` (borders, selection outline).
+- Mobile: below 760 px, the sidebar becomes a fixed drawer with a toggle button.
 
 ### R8 — open-source release quality
 
 - Include README, license, privacy, security, contribution, conduct, changelog, architecture, user guide, roadmap, CI, and issue templates.
-- Keep one authoritative application file.
-- Remove production test hooks and historical duplicate HTML files.
-- Run parser, copy, Store, JOIN, UI, syntax, and offline-release validation in CI.
+- One authoritative application file (`index.html`).
+- Production test hooks and historical duplicate HTML files removed.
+- Five test suites (`run-parser-tests`, `run-copy-tests`, `run-tab-tests`, `run-join-tests`, `run-ui-tests`) plus one release validator (`validate-release.js`).
+- CI runs on ubuntu-latest, windows-latest, and macos-latest.
 
 ## 4. v20 additions delivered
 
-- Redesigned workbench and responsive layout.
-- File selection and drag/drop import.
-- Format candidates, parse diagnostics, and correction controls.
-- Safe Store writes, temporary-data mode, status bar, and workspace schema migration.
-- Versioned workspace import/export validation.
-- Pagination and per-tab page-size state.
-- Persisted cell corrections and 100-step session undo/redo.
-- Right/Full/Semi/Anti JOINs and JOIN correctness fixes.
-- `rowspan`, escaped Markdown pipe, malformed CSV diagnostics, and quoted filter values.
-- Spreadsheet formula-prefix protection.
-- Restored displayed-column export semantics.
-- Open-source repository metadata and cross-platform Node CI.
+### Workbench and layout
+- Redesigned workbench with a responsive layout, sidebar, and top navigation.
+- Narrow-screen (<1100 px) and mobile (<760 px) breakpoints with a drawer sidebar and toggle button.
+- Resizable source input editor with height persistence in `localStorage`.
+
+### Import and parsing
+- File selection via button and drag/drop import with automatic format detection from file extension.
+- Nine parsers: CLI table-data, HTML, ASCII, Markdown/pipe, Excel-paste (TSV), CSV, semicolon-CSV, fixed-width, plain text.
+- Format candidates returned with confidence scores; one-click format switching via the "Details" diagnostic dialog.
+- Parse-time Toast notification when parsing exceeds 800 ms.
+- `ROW_WIDTH_MISMATCH` diagnostics for mismatched rows (overflow preserved, short rows padded).
+- CLI parser header expansion when rows have more columns than headers.
+- Legacy `[PREFIX] table-data` markers supported.
+- `rowspan` preservation in HTML tables and escaped Markdown pipe handling.
+
+### Persistence and data safety
+- Schema version 20 with single key `ota_v20_workspace` and legacy `v16_4_store` migration.
+- `QuotaExceededError` detection with actionable error message in the status bar.
+- `loadFailed` flag prevents destructive overwrite of corrupted workspaces.
+- Temporary raw-data mode (`persistRaw`: false serializes empty raw strings, true persists full source).
+- Storage bytes estimated as `json.length * 2` with a visual usage meter in the status bar.
+- Clear local data removes all v20 and v16 legacy keys.
+- Workspace import validates kind, schema forward-compatibility, doc count (≤100), and structural safety.
+- Config import with title-based matching, automatic ID deduplication, and a prompt to create new docs for unmatched configs.
+- Versioned workspace/configuration export in JSON format.
+
+### JOIN engine
+- All six JOIN types: Inner, Left, Right, Full, Semi, Anti.
+- Compound keys via `JSON.stringify` of typed tuples; preserves `0` and `false`.
+- Missing relation fields rejected; dependency cycle detection via DFS.
+- Duplicate output headers normalized.
+- JOIN editor enhancements: column search, "only selected" filter, drag-reorder output columns, auto-match relations, help panel.
+- Match/unmatched row estimates and dependency chain visualization.
+- View management with batch delete and batch JSON export.
+
+### Table display and interaction
+- Per-table pagination (50/100/250/500 rows per page) with page size persisted per tab.
+- Column-header and row-header (transposed) preview orientation per table.
+- Visual rectangular cell selection with auto-scroll, Ctrl+A for select-all.
+- Cell inline editing with non-destructive overlay (`ui.cellEdits`), 100-step session undo/redo.
+- Per-column contains filters with popover UI.
+- Global, per-table, and highlight/only-highlighted filter modes with quoted filter values and regex support.
+- Collapsible table cards with row/show/filter counters.
+
+### Export and copy
+- Raw, full, and filtered-preview export to Excel (.xlsx) with sanitized sheet names.
+- "Export displayed columns" semantics: `exportCols === 'shown'` projects focus columns.
+- Per-tab export options: `exportOnlyChecked` (visible tables only) and `exportCols`.
+- Copy: four text formats (default/TSV, CSV, Markdown, ASCII) plus HTML clipboard content.
+- Spreadsheet formula-prefix protection (`spreadsheetSafe` toggle).
+- Workspace and configuration JSON export.
+
+### Accessibility and UX
+- Keyboard shortcuts: Ctrl+Enter (parse), Ctrl+N (new tab), Ctrl+O (file import), Ctrl+S (save), Ctrl+Z/Ctrl+Y (undo/redo), Ctrl+A (select all), F2 (rename tab), ? (help).
+- Tab activation (Enter/Space), rename (F2), close (Delete), arrow key navigation, drag-reorder.
+- `prefers-reduced-motion: reduce` and `forced-colors: active` CSS media query support.
+- Toast notifications for parse time, save status, copy count, and errors.
+- Status bar with storage status, usage meter, and saved timestamp.
+- Parse status indicator with ready/warning/error visual states.
+
+### Repository and testing
+- Five test suites: parser, copy, Store/tab, JOIN, UI syntax.
+- One release validator checking version, script count, network-free, accessibility, and file presence.
+- CI on ubuntu-latest, windows-latest, and macos-latest via GitHub Actions.
+- Repository metadata: README, LICENSE, changelog, architecture, user guide, roadmap, security, privacy, contribution, conduct, issue templates, pull request template.
+
+### Sample data
+- Three built-in CLI sample tables: Inventory (products/stock), Orders (customer orders), SystemLogs (log entries).
 
 ## 5. Explicit non-goals for 20.0.0
 

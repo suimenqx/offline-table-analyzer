@@ -4,6 +4,12 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## 20.0.0 — 2026-07-12
 
+### Documentation
+
+- Completed full audit of all project directories and files; removed empty `.agents`, `doc`, and `tests` directories.
+- Brought architecture, requirements, user guide, README, and README.zh-CN up to date with the v20.0.0 implementation.
+- Expanded the user guide from 10 to 16 sections covering file auto-detection, full filter syntax, config import/export, sidebar layout, and the complete keyboard shortcut reference.
+
 ### New workbench
 
 - Redesigned the application around the Import → Parse → Analyze → Export workflow.

@@ -16,13 +16,13 @@ Node scripts under `tools/` extract logical sections from the HTML for regressio
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
 | `HeaderResolver` | Header inference and forced header modes |
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
-| Parser adapters | CLI, CSV, TSV, HTML, Markdown, ASCII, fixed-width, and plain text |
+| Parser adapters | 9 adapters: `CliTableDataParser`, `HtmlTableParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `PlainTextTableParser` |
 | `ImportEngine` | Manual/automatic adapter selection, candidates, normalized result and diagnostics |
 | `Joiner` | Equality JOIN execution, statistics, dependency safety, projection |
-| `JoinEditor` | View design and management UI |
+| `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
 | `ClipboardFormatter` | TSV/CSV/Markdown/ASCII/HTML serialization and formula-prefix protection |
-| `Select` | Visual-coordinate range selection, auto-scroll, copy matrix construction |
-| `App` | UI orchestration, parsing, pagination, filtering, corrections, file/workspace flows |
+| `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
+| `App` | UI orchestration, parsing, pagination, filtering, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading |
 
 ## 3. Core data model
 
@@ -50,20 +50,28 @@ raw
 ui:
   displayTables
   enabledViews
+  targetTable
   rules
   columnFilters
   collapsedTables
   previewModes
   tablePages
-  pageSize
+  pageSize (100)
   cellEdits
-  importFormat
-  importHeaderMode
-  exportOnlyChecked
-  exportCols
+  sidebarTab ("data")
+  importFormat ("auto")
+  importHeaderMode ("auto")
+  exportOnlyChecked (false)
+  exportCols ("all")
 ```
 
-Cell corrections are stored as an overlay keyed by table, source row, and source column. Parsing starts from the unchanged source text and reapplies the overlay. This preserves the original input while keeping corrections stable across filtering, pagination, orientation changes, and reloads.
+Cell corrections are stored as a nested overlay in `cellEdits`, keyed by `$${tableName}` → row index → column index → new value:
+
+```text
+{ "$table1": { 0: { 2: "corrected" }, 5: { 1: "fixed" } } }
+```
+
+Parsing starts from the unchanged source text and reapplies the overlay. This preserves the original input while keeping corrections stable across filtering, pagination, orientation changes, and reloads. An edit history stack (max 100) and redo stack support undo/redo.
 
 ### Normalized table
 
@@ -81,24 +89,26 @@ All downstream operations consume this shape regardless of the original source f
 ## 4. Data flow
 
 ```text
-paste / drop / file
+paste / drop / file / fullscreen editor
   → source text + optional clipboard HTML
   → ImportEngine format scoring or manual adapter
   → adapter parse
   → HeaderResolver and TableUtils normalization
   → diagnostics + normalized tables
-  → persisted correction overlay
+  → persisted correction overlay + edit undo/redo
   → filters/highlights/focus columns
-  → optional JOIN views
+  → optional JOIN views (dependency cycle check → execution)
   → paginated DOM preview
-  → clipboard / preview XLSX / full XLSX / workspace JSON
+  → clipboard / preview XLSX / full XLSX / workspace JSON / config JSON
 ```
+
+Drag-and-drop of local files onto the source area is supported. A fullscreen source editor is available for working with large inputs. Config import/export (`table-tool-config` kind, 5 MB limit) transfers rules, filters, views, and UI settings across documents.
 
 The full processed result remains in memory for export, while only the selected page is materialized as table DOM.
 
 ## 5. Persistence and migration
 
-`ota_v20_workspace` is the authoritative browser key. On startup, the Store first tries this key, then the legacy `v16_4_store`. A legacy key is removed only after the v20 payload is written successfully.
+`ota_v20_workspace` is the authoritative browser key. On startup, the Store first tries this key, then the legacy `v16_4_store`. A legacy key is removed only after the v20 payload is written successfully. `clearLocalData()` also removes the legacy `v16_4_inputHeight` key.
 
 Writes are guarded. Quota or security failures update visible status and do not discard the in-memory workspace. If a saved JSON payload cannot be read, automatic writes are blocked so the unreadable value is not silently replaced; users may restore a backup or explicitly clear local data.
 
@@ -108,7 +118,7 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 
 - Preview values use `textContent`.
 - Dynamic names used in templates pass through a single escaping helper; select options use DOM `Option` objects.
-- Imported JSON has size, kind, schema, depth, count, and dangerous-key checks.
+- Workspace import: `kind` must be `'ota-workspace'` or `'table-tool-tabs'`, depth limit 12 levels, max 100 docs, max 2000 keys per object, prototype poison keys (`__proto__`, `prototype`, `constructor`) rejected. Config import: `kind` must be `'table-tool-config'`, file size capped at 5 MB.
 - Table/view names that map to JavaScript prototype keys are rejected or replaced.
 - JOIN compound keys use typed JSON tuples.
 - Clipboard delimiters prefix common spreadsheet-formula starters by default.
@@ -122,10 +132,12 @@ Web Workers, IndexedDB document storage, streaming export, and virtual scrolling
 
 ## 8. Testing architecture
 
-- `run-parser-tests.js`: parser formats, malformed input, diagnostics, normalization.
-- `run-copy-tests.js`: copy formats, multiline cells, HTML, formula protection.
-- `run-tab-tests.js`: tab rules, Store migration shape, temporary mode, quota failures, workspace imports.
-- `run-join-tests.js`: all JOIN types, compound-key collisions, missing fields, duplicate headers, cycles.
+All test scripts reside under `tools/`:
+
+- `run-parser-tests.js`: parser formats (all 9 adapters), malformed input, diagnostics, normalization.
+- `run-copy-tests.js`: copy formats (CSV/TSV/Markdown/ASCII/HTML/text), multiline cells, HTML escaping, formula protection.
+- `run-tab-tests.js`: tab rules, Store migration shape, temporary mode, quota failures, workspace imports, config import/export.
+- `run-join-tests.js`: all JOIN types, compound-key collisions, missing fields, duplicate headers, dependency cycle detection.
 - `run-ui-tests.js`: full-script syntax and static interaction/accessibility contracts.
 - `validate-release.js`: version consistency, single inline script, offline assets/APIs, required community files.
 
