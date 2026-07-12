@@ -1,7 +1,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
-const htmlPath = path.join(__dirname, '..', 'offline_table_analyzer_v18.html');
+const htmlPath = path.join(__dirname, '..', 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
 const script = html.split('<script>')[1].split('</script>')[0];
 const start = script.indexOf('/* Core */');
@@ -9,6 +9,7 @@ const end = script.indexOf('/* Import Engine */');
 if (start < 0 || end < 0) throw new Error('Core markers not found');
 const code = script.slice(start, end) + '\nwindow.Store = Store;';
 const storage = new Map();
+let quotaFail = false;
 const sandbox = {
   console,
   alert() {},
@@ -16,7 +17,11 @@ const sandbox = {
   document: { documentElement: { setAttribute() {} } },
   localStorage: {
     getItem(key) { return storage.has(key) ? storage.get(key) : null; },
-    setItem(key, value) { storage.set(key, String(value)); }
+    setItem(key, value) {
+      if(quotaFail) { const error = new Error('quota'); error.name = 'QuotaExceededError'; throw error; }
+      storage.set(key, String(value));
+    },
+    removeItem(key) { storage.delete(key); }
   }
 };
 vm.createContext(sandbox);
@@ -81,4 +86,27 @@ Store.setCopyFormat('markdown');
 assert(Store.state.copyFormat === 'markdown', 'copy format should persist globally');
 Store.setCopyFormat('invalid');
 assert(Store.state.copyFormat === 'default', 'invalid copy format should reset to default');
-console.log('Tab interaction tests passed: 20');
+reset();
+Store.state.docs[0].raw = 'sensitive';
+Store.state.persistRaw = false;
+assert(Store.save(), 'temporary mode save should succeed');
+const serialized = JSON.parse(storage.get('ota_v20_workspace'));
+assert(serialized.docs[0].raw === '', 'temporary mode must not persist raw data');
+assert(Store.state.docs[0].raw === 'sensitive', 'temporary mode must retain in-memory raw data');
+quotaFail = true;
+assert(Store.save() === false, 'quota failure must be reported');
+assert(Store.lastSaveError.includes('空间不足'), 'quota failure should have an actionable message');
+quotaFail = false;
+reset();
+const importedCount = Store.importWorkspace({
+  kind:'ota-workspace', schemaVersion:20,
+  docs:[{ id:'a', title:'Analysis 1', raw:'id,name\n1,Alice', ui:{} }],
+  globalViews:[]
+}, true);
+assert(importedCount === 1, 'workspace should import one tab');
+assert(new Set(Store.state.docs.map(d => d.id)).size === Store.state.docs.length, 'workspace import must normalize duplicate ids');
+assert(new Set(Store.state.docs.map(d => d.title)).size === Store.state.docs.length, 'workspace import must normalize duplicate titles');
+let rejected = false;
+try { Store.importWorkspace({ kind:'ota-workspace', schemaVersion:999, docs:[{}] }); } catch(error) { rejected = true; }
+assert(rejected, 'future workspace schema must be rejected');
+console.log('Tab and storage tests passed: 28');

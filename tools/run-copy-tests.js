@@ -1,7 +1,7 @@
 const fs = require('fs');
 const vm = require('vm');
 const path = require('path');
-const htmlPath = path.join(__dirname, '..', 'offline_table_analyzer_v18.html');
+const htmlPath = path.join(__dirname, '..', 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
 const script = html.split('<script>')[1].split('</script>')[0];
 const start = script.indexOf('/* Clipboard Formatting */');
@@ -25,4 +25,8 @@ assert(F.toText(multiline, 'csv') === 'id,desc\n1,"line1\nline2"\n2,"literal\nbr
 assert(F.toText(multiline, 'markdown').includes('line1<br>line2'), 'markdown should render multiline cells as br');
 assert(F.toText(multiline, 'ascii').includes('line1 line2'), 'ascii should flatten multiline cells');
 assert(F.toHtml(multiline).includes('line1<br>line2'), 'html clipboard should preserve visual line breaks');
-console.log('Copy formatter tests passed: 10');
+const formulas = [['value'], ['=CMD()'], ['+1+1'], ['-10'], ['@SUM(A1:A2)']];
+const safe = F.toText(formulas, 'csv');
+assert(safe.includes("'=CMD()") && safe.includes("'+1+1") && safe.includes("'@SUM"), 'dangerous spreadsheet formulas should be text-prefixed');
+assert(safe.includes('\n-10\n'), 'negative numbers should remain numeric text');
+console.log('Copy formatter tests passed: 12');

@@ -1,12 +1,10 @@
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
-const htmlPath = path.join(__dirname, '..', 'offline_table_analyzer_v18.html');
+const vm = require('vm');
+const htmlPath = path.join(__dirname, '..', 'index.html');
 const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
 const script = html.split('<script>')[1].split('</script>')[0];
-const scriptPath = path.join('/tmp', 'offline_table_analyzer_v18_script_check.js');
-fs.writeFileSync(scriptPath, script, 'utf8');
-execFileSync('node', ['--check', scriptPath], { stdio: 'pipe' });
+new vm.Script(script, { filename: 'offline-table-analyzer-v20.js' });
 function assert(cond, msg) {
   if (!cond) throw new Error(msg);
 }
@@ -24,9 +22,22 @@ function assert(cond, msg) {
   'id="addTabBtn" type="button"',
   'id="exportFullBtn"',
   'id="copyFormatSelect"',
+  'id="sourceDropZone"',
+  'id="sourceFileInput"',
+  'id="diagnosticsBtn"',
+  'id="persistRawToggle"',
+  'id="pageSizeSelect"',
+  'id="storageStatus"',
+  'id="undoEditBtn"',
+  'id="redoEditBtn"',
+  'id="helpBtn"',
   '复制: Markdown',
   '复制: ASCII',
-  '导出全量 Excel',
+  '全量 Excel',
+  'Right Join',
+  'Full Join',
+  'Semi Join',
+  'Anti Join',
   'table-view-toggle',
   'row-header-cell'
 ].forEach(token => assert(html.includes(token), `missing ${token}`));
@@ -46,6 +57,13 @@ function assert(cond, msg) {
   "setCopyFormat(format='default')",
   'syncCopyFormatControl()',
   'buildClipboardMatrix(tbl, minR, maxR, minC, maxC)'
+  ,'loadSourceFile(file)'
+  ,'showDiagnostics()'
+  ,'setCellEdit(tableName, rowIdx, colIdx, value, record=true)'
+  ,'undoCellEdit()'
+  ,'redoCellEdit()'
+  ,'setTablePage(tableName, page)'
+  ,'updateStorageStatus(detail={})'
 ].forEach(token => assert(script.includes(token), `missing method ${token}`));
 assert(script.includes("if(e.detail > 1) return;"), 'sidebar double-click should not toggle twice');
 assert(script.includes('const handleSidebarTabClick = e =>'), 'sidebar config tab should use shared click handler');
@@ -70,5 +88,8 @@ assert(script.includes('nextAnalysisSeq') && script.includes('getMaxAnalysisNumb
 assert(script.includes('ClipboardFormatter.toText(matrix, format)'), 'copy should support global text table formats');
 assert(script.includes("document.addEventListener('keydown', e => {") && script.includes('this.selectAll(table);'), 'ctrl+a should select all cells in active preview table');
 assert(html.includes('#sourceEditorModal .source-editor-shell { width: 100vw; height: 100vh;'), 'source editor should occupy the full browser viewport');
-assert(!script.includes("if(e.key === 'Escape') { e.preventDefault(); this.closeSourceEditor(); }"), 'source editor should not close implicitly with Escape');
-console.log('UI interaction tests passed: 38');
+assert(script.includes("if(e.key === 'Escape') { e.preventDefault(); this.closeSourceEditor(); }"), 'source editor Escape behavior should be explicit and synchronized');
+assert(script.includes("new vm.Script") === false, 'production script should not contain the Node test harness');
+assert(html.includes('prefers-reduced-motion'), 'reduced motion support should be present');
+assert(html.includes('role="tablist"') && html.includes('aria-live="polite"'), 'core accessibility semantics should be present');
+console.log('UI interaction tests passed: 57');

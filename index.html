@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>离线表格分析器 V18.6</title>
+    <title>Offline Table Analyzer v20.0.0</title>
     <style>
         /* --- Design Tokens --- */
         :root {
@@ -164,7 +164,7 @@
         .doc-tab.drag-over-after { box-shadow: inset -2px 0 0 var(--primary); }
         .doc-tab-title { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; cursor: text; }
         .doc-tab-title-input { width: 120px; height: 22px; border: 1px solid var(--primary); border-radius: 6px; padding: 0 6px; color: var(--text-main); background: var(--bg-card); font: inherit; font-weight: 700; outline: none; }
-        .doc-tab-close { font-size: 14px; opacity: 0.6; border-radius: 50%; width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; }
+        .doc-tab-close { font-size: 14px; opacity: 0.6; border-radius: 50%; width: 18px; height: 18px; min-width: 18px; padding: 0; border: 0; background: transparent; color: inherit; display: flex; align-items: center; justify-content: center; }
         .doc-tab-close:hover { background: rgba(0,0,0,0.08); opacity: 1; }
 
         /* Cards & Blocks */
@@ -299,52 +299,224 @@
         .join-hints { font-size: 11px; color: var(--text-weak); }
 
         /* Empty State */
-        .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-weak); margin-top: 40px; }
-        .empty svg { width: 120px; height: 120px; opacity: 0.5; }
+        .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-weak); margin: auto; min-height: 320px; text-align: center; padding: 32px; }
+        .empty-visual { width: 84px; height: 70px; border: 1px solid var(--border-strong); border-radius: 16px; background: linear-gradient(135deg, var(--bg-card), var(--bg-elevated)); box-shadow: var(--shadow-xs); display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 13px; transform: rotate(-2deg); }
+        .empty-visual span { border-radius: 4px; background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent); }
+
+        /* --- v20 Workbench --- */
+        :root {
+            --primary: #5b5bd6;
+            --primary-hover: #4848bd;
+            --primary-soft: #eeeeff;
+            --accent: #0f9f8f;
+            --accent-soft: #e8f8f5;
+            --danger: #d14343;
+            --warning: #b66a12;
+            --success: #16856f;
+            --bg-app: #f3f3f0;
+            --bg-card: #ffffff;
+            --bg-elevated: #f8f8f6;
+            --border: #deded9;
+            --border-strong: #c7c7c0;
+            --text-strong: #202124;
+            --text-mid: #5f6268;
+            --text-weak: #898d94;
+            --radius-sm: 7px;
+            --radius-md: 12px;
+            --shadow-xs: 0 1px 2px rgba(20, 20, 26, 0.05), 0 8px 24px rgba(20, 20, 26, 0.035);
+            --shadow-md: 0 20px 56px rgba(20, 20, 26, 0.18);
+        }
+        [data-theme="dark"] {
+            --primary: #a7a7ff;
+            --primary-hover: #c2c2ff;
+            --primary-soft: #30304f;
+            --accent: #64d8c8;
+            --accent-soft: #153d38;
+            --danger: #ff8585;
+            --warning: #f5b663;
+            --success: #6dd8c4;
+            --bg-app: #17181b;
+            --bg-card: #202125;
+            --bg-elevated: #26272c;
+            --border: #35363d;
+            --border-strong: #4a4c55;
+            --text-strong: #f4f4f5;
+            --text-mid: #c3c5cb;
+            --text-weak: #92959e;
+        }
+        *:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+        button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+        body { letter-spacing: 0.005em; }
+        button { box-shadow: none; }
+        button.primary { box-shadow: none; }
+        button.tonal { background: var(--primary-soft); color: var(--primary); border-color: transparent; }
+        button.tonal:hover { border-color: color-mix(in srgb, var(--primary) 34%, transparent); }
+        button.text-button { border-color: transparent; background: transparent; color: var(--text-mid); }
+        .app-shell { min-height: 0; }
+        .sidebar { width: 372px; min-width: 320px; box-shadow: none; }
+        .sidebar-header { height: 64px; padding: 0 14px 0 12px; background: var(--bg-card); }
+        .logo.sidebar-toggle { width: 100%; height: 44px; border: 0; background: transparent; padding: 0 4px; justify-content: flex-start; border-radius: 10px; }
+        .logo.sidebar-toggle:hover { background: var(--bg-elevated); }
+        .logo-icon { width: 34px; height: 34px; border-radius: 10px; background: var(--text-strong); color: var(--bg-card); box-shadow: none; font-size: 12px; letter-spacing: -1px; }
+        .logo-copy { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+        .logo-copy small { color: var(--text-weak); font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; }
+        .version-pill { margin-left: auto; padding: 3px 7px; border: 1px solid var(--border); border-radius: 999px; color: var(--text-weak); font-size: 10px; font-weight: 700; }
+        .sidebar-tabs { padding: 0 12px 10px; }
+        .seg-control { padding: 3px; background: var(--bg-elevated); border-radius: 9px; }
+        .seg-btn { height: 30px; }
+        .seg-btn.active { border-color: transparent; color: var(--text-strong); }
+        .sidebar-scroll { padding: 0 12px 12px; gap: 10px; }
+        .card { border-radius: 12px; box-shadow: none; margin-bottom: 0; }
+        .card-header { min-height: 43px; padding: 9px 11px; background: var(--bg-card); }
+        .card-body { padding: 10px 11px; }
+        .source-card-title { flex-direction: column; align-items: flex-start; gap: 0; }
+        .source-drop-zone { border: 1px dashed transparent; border-radius: 10px; transition: border-color .15s, background .15s; }
+        .source-drop-zone.drag-over { border-color: var(--primary); background: var(--primary-soft); }
+        #rawInput { min-height: 150px; height: 260px; max-height: 520px; padding: 11px; background: var(--bg-elevated); border: 1px solid transparent !important; border-radius: 9px !important; }
+        #rawInput:focus { border-color: var(--primary) !important; background: var(--bg-card); }
+        .source-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 7px; align-items: center; }
+        .source-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .78fr); gap: 7px; margin-top: 8px; }
+        .source-options .format-select { width: 100%; }
+        .source-utilities { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 8px; }
+        .source-utilities button { flex: 1 1 auto; }
+        .parse-status { display: flex; align-items: center; gap: 7px; min-height: 30px; margin-top: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-mid); font-size: 11px; }
+        .parse-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-weak); flex: 0 0 auto; }
+        .parse-status.ready .parse-status-dot { background: var(--success); }
+        .parse-status.warning .parse-status-dot { background: var(--warning); }
+        .parse-status.error .parse-status-dot { background: var(--danger); }
+        .parse-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .privacy-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 9px; background: var(--accent-soft); color: var(--text-mid); margin-top: 8px; font-size: 11px; }
+        .privacy-toggle input { accent-color: var(--accent); }
+        .privacy-toggle label { margin: 0; font-size: 11px; font-weight: 650; color: inherit; }
+        .main-content { background: var(--bg-app); }
+        .top-nav { min-height: 58px; height: auto; padding: 9px 14px; box-shadow: none; gap: 14px; }
+        .doc-tabs { max-width: none; flex: 1; min-width: 0; }
+        .doc-tab { height: 34px; border-radius: 8px; flex: 0 0 auto; }
+        .doc-tab.active { color: var(--text-strong); background: var(--bg-elevated); border-color: var(--border); }
+        .workspace-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+        .workspace-actions .action-divider { height: 22px; width: 1px; background: var(--border); margin: 0 2px; }
+        .workspace-subbar { min-height: 44px; padding: 7px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg-card) 72%, var(--bg-app)); }
+        .workspace-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .workspace-summary strong { font-size: 12px; }
+        .workspace-summary span { color: var(--text-weak); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .subbar-actions { display: flex; align-items: center; gap: 6px; }
+        #toggleSidebarMobileBtn { display: none; }
+        .compact-select { width: auto; min-width: 92px; height: 28px; padding: 0 7px; font-size: 11px; }
+        .preview-area { padding: 14px 16px 18px; gap: 12px; background: var(--bg-app); }
+        .table-container { border-radius: 12px; box-shadow: none; overflow: hidden; margin: 0; }
+        .table-meta { min-height: 46px; padding: 8px 11px; background: var(--bg-card); position: sticky; top: -14px; z-index: 8; }
+        .meta-tag { background: var(--bg-elevated); border: 1px solid var(--border); padding: 3px 7px; }
+        table { background: var(--bg-card); max-height: calc(100vh - 238px); overflow: auto; }
+        th, td { padding: 8px 11px; }
+        th { background: var(--bg-elevated); }
+        .table-pagination { min-height: 40px; padding: 6px 10px; display: flex; align-items: center; justify-content: flex-end; gap: 7px; border-top: 1px solid var(--border); background: var(--bg-card); color: var(--text-weak); font-size: 11px; }
+        .table-pagination button { height: 26px; min-width: 28px; padding: 0 7px; }
+        .statusbar { min-height: 30px; padding: 4px 14px; border-top: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-weak); font-size: 10px; }
+        .statusbar-group { display: flex; align-items: center; gap: 12px; min-width: 0; }
+        .status-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+        .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--success); }
+        .status-dot.error { background: var(--danger); }
+        .local-badge { color: var(--accent); font-weight: 750; }
+        .statusbar button { height: 22px; padding: 0 6px; font-size: 10px; }
+        .modal { width: min(560px, calc(100vw - 32px)); }
+        .modal-body { padding: 16px; overflow-y: auto; flex: 1; }
+        .diagnostic-list { display: flex; flex-direction: column; gap: 7px; }
+        .diagnostic-item { padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-elevated); }
+        .diagnostic-item strong { display: block; margin-bottom: 2px; }
+        .shortcut-grid { display: grid; grid-template-columns: 1fr auto; gap: 9px 18px; align-items: center; }
+        kbd { padding: 2px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--bg-elevated); color: var(--text-mid); font: 10px var(--font-mono); }
+        .storage-meter { width: 76px; height: 5px; border-radius: 999px; background: var(--border); overflow: hidden; }
+        .storage-meter span { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s ease; }
+        .source-editor-head, .source-editor-foot { background: var(--bg-card); }
+        #rawInputLarge { border-radius: 10px; }
+        .sidebar.collapsed { width: 64px; min-width: 64px; }
+        .sidebar.collapsed .sidebar-header { padding: 0 10px; }
+        .sidebar.collapsed .logo.sidebar-toggle { justify-content: center; padding: 0; }
+        .sidebar.collapsed .version-pill, .sidebar.collapsed .logo-copy { display: none; }
+
+        @media (max-width: 1100px) {
+            .sidebar { width: 330px; min-width: 300px; }
+            .workspace-actions .optional-action { display: none; }
+            .copy-format-select { min-width: 96px; }
+            .join-grid { grid-template-columns: 1fr; overflow-y: auto; }
+            .join-col, .join-map { min-height: 300px; }
+            .join-shell { height: 94vh; }
+        }
+        @media (max-width: 760px) {
+            .sidebar { position: fixed; inset: 0 auto 0 0; width: min(360px, 92vw); min-width: 0; z-index: 80; transform: translateX(0); transition: transform .18s ease; }
+            .sidebar.collapsed { width: min(360px, 92vw); min-width: 0; transform: translateX(-100%); }
+            .sidebar.collapsed .sidebar-tabs, .sidebar.collapsed .sidebar-scroll, .sidebar.collapsed .sidebar-content, .sidebar.collapsed .segmented, .sidebar.collapsed .sidebar-heading { display: block; }
+            .sidebar.collapsed .logo-copy { display: flex; }
+            .sidebar.collapsed .version-pill { display: inline-flex; }
+            .main-content { width: 100%; }
+            .top-nav { padding: 7px 9px; }
+            .workspace-actions { gap: 3px; }
+            .workspace-actions .copy-format-select, .workspace-actions .export-secondary { display: none; }
+            .workspace-subbar { padding: 7px 10px; }
+            #toggleSidebarMobileBtn { display: inline-flex; }
+            .preview-area { padding: 9px; }
+            .table-meta { top: -9px; }
+            .statusbar { padding: 4px 9px; }
+            .statusbar .status-secondary { display: none; }
+            .source-editor-tools { width: 100%; justify-content: flex-start; }
+            .source-editor-head { align-items: flex-start; flex-direction: column; }
+            .join-meta { grid-template-columns: 1fr; overflow-y: auto; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+        }
+        @media (forced-colors: active) {
+            button, input, select, textarea, .card, .table-container { border: 1px solid CanvasText; }
+            .selected-cell { outline: 2px solid Highlight !important; }
+        }
     </style>
 </head>
 <body>
 
-<div id="tooltip"></div>
-<div id="toast">Ready</div>
+<div id="tooltip" role="tooltip"></div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true">Ready</div>
 
 <div class="app-shell">
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="分析控制面板">
         <div class="sidebar-header">
-            <div class="logo sidebar-toggle" id="sidebarToggle" title="点击折叠 / 展开侧栏" tabindex="0">
-                <div class="logo-icon">T</div>
-                <span class="logo-text">Smart Parser <span style="font-weight:400; opacity:0.6; font-size:12px;">v18.11</span></span>
-            </div>
+            <button class="logo sidebar-toggle" id="sidebarToggle" type="button" title="折叠或展开控制面板" aria-label="折叠或展开控制面板" aria-expanded="true">
+                <span class="logo-icon" aria-hidden="true">OTA</span>
+                <span class="logo-copy"><span>Offline Table Analyzer</span><small>Local data workbench</small></span>
+                <span class="version-pill">v20</span>
+            </button>
         </div>
 
         <div class="sidebar-tabs">
-            <div class="seg-control">
-                <button class="seg-btn active" id="sidebarDataTabBtn" data-tab-btn="data" type="button">数据源</button>
-                <button class="seg-btn" id="sidebarConfigTabBtn" data-tab-btn="config" type="button">配置规则</button>
+            <div class="seg-control" role="tablist" aria-label="控制面板">
+                <button class="seg-btn active" id="sidebarDataTabBtn" data-tab-btn="data" type="button" role="tab" aria-selected="true">数据源</button>
+                <button class="seg-btn" id="sidebarConfigTabBtn" data-tab-btn="config" type="button" role="tab" aria-selected="false">分析规则</button>
             </div>
         </div>
         <div class="sidebar-scroll">
             <div class="sidebar-pane active" data-tab="data">
-                <div class="card" style="box-shadow:none;">
+                <div class="card">
                     <div class="card-header" style="border-bottom:1px solid var(--border);">
                         <div class="source-card-title">
-                            <span class="card-title">数据源</span>
-                            <span class="muted" style="font-size:12px;">粘贴/拖拽输入</span>
+                            <span class="card-title">导入数据</span>
+                            <span class="muted" style="font-size:11px;">粘贴、拖放或选择本地文件</span>
                         </div>
                         <div class="source-card-actions">
-                            <button class="icon-btn sm" id="expandSourceBtn" title="打开大编辑空间">⛶</button>
+                            <button class="sm text-button" id="expandSourceBtn" type="button" title="打开全屏编辑器">全屏编辑</button>
                         </div>
                     </div>
-                    <div class="card-body">
+                    <div class="card-body source-drop-zone" id="sourceDropZone">
                         <div class="textarea-shell">
-                            <textarea id="rawInput" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..." style="border:none; border-radius:12px; resize:none; line-height:1.5; white-space: pre; overflow-x: auto;"></textarea>
+                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" placeholder="粘贴 CSV、TSV、网页表格、Markdown、ASCII 或 CLI table-data…" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
-                    </div>
-                    <div class="card-body" style="border-top:1px solid var(--border); display:flex; align-items:center; justify-content:flex-start; gap:8px; padding-top:10px;">
-                        <div class="flex gap-2" style="align-items:center; justify-content:flex-start; flex-wrap:nowrap;">
-                            <button class="sm btn-soft-primary" id="parseBtn" style="min-width:72px;">解析</button>
+                        <div class="source-actions">
+                            <button class="primary" id="parseBtn" type="button">解析数据</button>
+                            <button id="importSourceBtn" type="button" title="导入 CSV、TSV、TXT、HTML 或 Markdown 文件">选择文件</button>
+                            <button id="clearBtn" type="button" title="清空当前数据源">清空</button>
+                            <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,text/html">
+                        </div>
+                        <div class="source-options">
                             <select id="formatSelect" class="format-select" title="输入格式">
                                 <option value="auto">自动识别</option>
                                 <option value="cli-table-data">CLI table-data</option>
@@ -362,12 +534,23 @@
                                 <option value="first-row">首行表头</option>
                                 <option value="none">无表头</option>
                             </select>
-                            <button class="sm btn-soft-primary" id="clearBtn" title="清空输入" style="min-width:72px;">清空</button>
-                            <button class="icon-btn sm" id="sampleLink" title="加载示例并解析">⭐</button>
-                            <button class="icon-btn sm" id="exportRawBtn" title="导出原始">📊</button>
-                            <button class="icon-btn sm" id="exportTabBtn" title="导出页签">⬇</button>
-                            <button class="icon-btn sm" id="importTabBtn" title="导入页签">⬆</button>
-                            <input type="file" id="fileInputTab" class="hidden" accept=".json">
+                        </div>
+                        <div class="parse-status" id="parseStatus" role="status" aria-live="polite">
+                            <span class="parse-status-dot" aria-hidden="true"></span>
+                            <span class="parse-status-text" id="parseStatusText">等待输入数据</span>
+                            <button class="sm text-button hidden" id="diagnosticsBtn" type="button">详情</button>
+                        </div>
+                        <div class="privacy-toggle">
+                            <input type="checkbox" id="persistRawToggle" checked>
+                            <label for="persistRawToggle">在此设备保存原始数据</label>
+                            <span class="help-icon" data-tip="关闭后，原始数据只保留在当前页面内；刷新页面后不会恢复。分析规则和界面偏好仍会保存。">?</span>
+                        </div>
+                        <div class="source-utilities" aria-label="数据源工具">
+                            <button class="sm" id="sampleLink" type="button">加载示例</button>
+                            <button class="sm" id="exportRawBtn" type="button" title="导出解析后的原始表">原始 Excel</button>
+                            <button class="sm" id="exportTabBtn" type="button" title="备份整个工作区">备份工作区</button>
+                            <button class="sm" id="importTabBtn" type="button" title="恢复工作区备份">恢复备份</button>
+                            <input type="file" id="fileInputTab" class="hidden" accept=".json,application/json">
                         </div>
                     </div>
                 </div>
@@ -452,6 +635,11 @@
                                     <option value="all">导出全量列</option>
                                     <option value="shown">仅导出展示列</option>
                                 </select>
+                                <label class="checkbox-row" style="margin-top:6px;">
+                                    <input type="checkbox" id="checkFormulaSafe" checked>
+                                    <span>安全复制公式前缀</span>
+                                    <span class="help-icon" data-tip="复制 TSV/CSV 时，为 =、+、-、@ 开头的潜在电子表格公式添加文本前缀，避免粘贴后意外执行。">?</span>
+                                </label>
                             </div>
                             <div class="flex gap-2">
                                 <button class="sm" id="exportConfigBtn" title="导出配置">导出配置</button>
@@ -466,30 +654,60 @@
     </aside>
 
     <!-- Main Content -->
-    <main class="main-content">
-        <nav class="top-nav">
-            <div class="doc-tabs" id="tabsContainer"></div>
-            <div class="flex items-center gap-2">
-                <button class="icon-btn sm" id="addTabBtn" type="button" title="新建页签">＋</button>
-                <div style="height:20px; width:1px; background:var(--border); margin:0 6px;"></div>
-                <button class="icon-btn sm" id="themeBtn" title="切换主题">◑</button>
+    <main class="main-content" aria-label="表格分析工作区">
+        <nav class="top-nav" aria-label="分析页签和导出操作">
+            <div class="doc-tabs" id="tabsContainer" role="tablist" aria-label="分析页签"></div>
+            <div class="workspace-actions">
+                <button class="sm tonal" id="addTabBtn" type="button" title="新建分析页签（Ctrl/⌘ + N）">新建页签</button>
+                <span class="action-divider" aria-hidden="true"></span>
+                <button class="icon-btn sm optional-action" id="undoEditBtn" type="button" title="撤销单元格编辑" disabled aria-label="撤销单元格编辑">↶</button>
+                <button class="icon-btn sm optional-action" id="redoEditBtn" type="button" title="重做单元格编辑" disabled aria-label="重做单元格编辑">↷</button>
+                <button class="icon-btn sm" id="themeBtn" type="button" title="切换明暗主题" aria-label="切换明暗主题">◐</button>
                 <select id="copyFormatSelect" class="copy-format-select" title="复制表格时的纯文本格式，全局生效">
-                    <option value="default">复制: 默认</option>
+                    <option value="default">复制: TSV</option>
                     <option value="csv">复制: CSV</option>
                     <option value="markdown">复制: Markdown</option>
                     <option value="ascii">复制: ASCII</option>
                 </select>
-                <button class="sm" id="exportFullBtn" title="导出当前页签的全量数据 Excel">导出全量 Excel</button>
-                <button class="primary sm" id="exportPrevBtn" title="导出当前预览结果 Excel">导出预览 Excel</button>
+                <button class="sm export-secondary" id="exportFullBtn" type="button" title="导出当前页签的全量数据">全量 Excel</button>
+                <button class="primary sm" id="exportPrevBtn" type="button" title="导出当前筛选后的预览结果">导出预览</button>
+                <button class="icon-btn sm" id="helpBtn" type="button" title="帮助与快捷键" aria-label="帮助与快捷键">?</button>
             </div>
         </nav>
-        <div class="preview-area" id="previewArea"></div>
+        <div class="workspace-subbar">
+            <div class="workspace-summary">
+                <strong id="workspaceTitle">未解析</strong>
+                <span id="datasetSummary">所有处理均在本地浏览器完成</span>
+            </div>
+            <div class="subbar-actions">
+                <label for="pageSizeSelect" class="muted" style="margin:0;font-size:11px;">每页</label>
+                <select id="pageSizeSelect" class="compact-select" title="每张表最多渲染的行数">
+                    <option value="50">50 行</option>
+                    <option value="100" selected>100 行</option>
+                    <option value="250">250 行</option>
+                    <option value="500">500 行</option>
+                </select>
+                <button class="sm text-button" id="toggleSidebarMobileBtn" type="button">数据与规则</button>
+            </div>
+        </div>
+        <div class="preview-area" id="previewArea" aria-live="polite"></div>
+        <footer class="statusbar">
+            <div class="statusbar-group">
+                <span class="status-item local-badge"><span class="status-dot"></span>100% 本地离线</span>
+                <span class="status-item" id="storageStatus">尚未保存</span>
+                <span class="storage-meter status-secondary" title="浏览器本地存储占用估算"><span id="storageMeterFill"></span></span>
+            </div>
+            <div class="statusbar-group">
+                <span class="status-item status-secondary" id="keyboardHint">Ctrl/⌘ + Enter 解析 · 双击单元格编辑</span>
+                <button class="text-button" id="clearLocalDataBtn" type="button">清除本地数据</button>
+            </div>
+        </footer>
     </main>
 </div>
 
 <!-- Modal Container (Blocking) -->
-<div id="modalOverlay" class="modal-bg hidden">
-    <div id="modalContent" class="modal"></div>
+<div id="modalOverlay" class="modal-bg hidden" role="presentation">
+    <div id="modalContent" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
 </div>
 <div id="filterPopover" class="filter-popover hidden">
     <div class="fp-header">
@@ -504,12 +722,12 @@
 </div>
 
 <!-- Fullscreen Data Source Editor -->
-<div id="sourceEditorModal" class="fullscreen-modal hidden">
+<div id="sourceEditorModal" class="fullscreen-modal hidden" role="dialog" aria-modal="true" aria-labelledby="sourceEditorHeading">
     <div class="source-editor-shell">
         <div class="source-editor-head">
             <div class="source-editor-title">
                 <div class="eyebrow">Data Source</div>
-                <div style="font-weight:800; font-size:16px;">大编辑空间</div>
+                <div style="font-weight:800; font-size:16px;" id="sourceEditorHeading">全屏数据源编辑器</div>
             </div>
             <div class="source-editor-tools">
                 <select id="formatSelectLarge" class="format-select" title="输入格式">
@@ -538,14 +756,14 @@
             <textarea id="rawInputLarge" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..."></textarea>
         </div>
         <div class="source-editor-foot">
-            <span class="muted">Ctrl/⌘ + Enter 解析；点击“完成”或右上角关闭按钮返回主界面。</span>
+            <span class="muted">Ctrl/⌘ + Enter 解析；Esc、完成或关闭按钮都会同步内容并返回。</span>
             <span class="muted" id="sourceEditorStats">0 字符</span>
         </div>
     </div>
 </div>
 
 <!-- Fullscreen Join Designer -->
-<div id="joinModal" class="fullscreen-modal hidden">
+<div id="joinModal" class="fullscreen-modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeTitle">
     <div class="join-shell">
         <div class="join-head">
             <div class="join-head-left">
@@ -598,6 +816,10 @@
                             <select id="jeType" class="sm" style="height:32px;">
                                 <option value="inner">Inner Join · 仅匹配</option>
                                 <option value="left">Left Join · 保留左表</option>
+                                <option value="right">Right Join · 保留右表</option>
+                                <option value="full">Full Join · 保留两侧</option>
+                                <option value="semi">Semi Join · 左表有匹配</option>
+                                <option value="anti">Anti Join · 左表无匹配</option>
                             </select>
                             <button class="sm" id="jeAutoRel">自动匹配</button>
                             <button class="sm" id="jeAddRel">添加条件</button>
@@ -892,16 +1114,56 @@ const Exporter = {
     toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
 };
 /* Core */
+const APP_VERSION = '20.0.0';
+const WORKSPACE_SCHEMA_VERSION = 20;
+const STORE_KEY = 'ota_v20_workspace';
+const LEGACY_STORE_KEYS = ['v16_4_store'];
+const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
+
 const Store = {
-    state: { docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default' },
+    state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
+    lastSaveError: null,
+    storageBytes: 0,
+    migratedFrom: null,
+    saveTimer: null,
+    loadFailed: false,
     init() {
-        try { const s = JSON.parse(localStorage.getItem('v16_4_store')); if(s && Array.isArray(s.docs)) this.state = s; } catch(e){}
+        let loaded = null;
+        try {
+            const current = localStorage.getItem(STORE_KEY);
+            if(current) loaded = JSON.parse(current);
+            if(!loaded) {
+                for(const key of LEGACY_STORE_KEYS) {
+                    const legacy = localStorage.getItem(key);
+                    if(!legacy) continue;
+                    const parsed = JSON.parse(legacy);
+                    if(parsed && Array.isArray(parsed.docs)) {
+                        loaded = parsed;
+                        this.migratedFrom = key;
+                        break;
+                    }
+                }
+            }
+        } catch(e) {
+            this.lastSaveError = `读取本地工作区失败：${e.message}`;
+            this.loadFailed = true;
+        }
+        if(loaded && Array.isArray(loaded.docs)) this.state = Object.assign({}, this.state, loaded);
+        this.state.schemaVersion = WORKSPACE_SCHEMA_VERSION;
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
-        if(!this.state.globalViews) this.state.globalViews = [];
+        if(!Array.isArray(this.state.globalViews)) this.state.globalViews = [];
         if(!['default','csv','markdown','ascii'].includes(this.state.copyFormat)) this.state.copyFormat = 'default';
+        if(typeof this.state.spreadsheetSafe !== 'boolean') this.state.spreadsheetSafe = true;
+        if(typeof this.state.persistRaw !== 'boolean') this.state.persistRaw = true;
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
-        if(this.state.docs.length===0) this.addDoc();
+        if(this.state.docs.length===0) {
+            if(this.loadFailed) {
+                const doc = this.normalizeDoc({ id:this.generateDocId(), title:'Analysis 1', raw:'', ui:{} }, 0);
+                this.state.docs.push(doc);
+                this.state.activeId = doc.id;
+            } else this.addDoc();
+        }
         const seenIds = new Set();
         this.state.docs.forEach((d, idx) => {
             this.normalizeDoc(d, idx);
@@ -911,11 +1173,116 @@ const Store = {
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
         if(!this.state.docs.some(d => d.id === this.state.activeId)) this.state.activeId = this.state.docs[0] && this.state.docs[0].id;
         this.applyTheme();
-        this.save();
+        if(this.loadFailed) this.notifyStorage(false, this.lastSaveError);
+        else this.save();
     },
-    save() { localStorage.setItem('v16_4_store', JSON.stringify(this.state)); },
+    serializeState() {
+        const payload = JSON.parse(JSON.stringify(this.state));
+        payload.schemaVersion = WORKSPACE_SCHEMA_VERSION;
+        payload.appVersion = APP_VERSION;
+        if(payload.persistRaw === false) payload.docs.forEach(doc => { doc.raw = ''; });
+        return payload;
+    },
+    notifyStorage(ok, message='') {
+        if(typeof document === 'undefined' || typeof document.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') return;
+        document.dispatchEvent(new CustomEvent('ota:storage', { detail:{ ok, message, bytes:this.storageBytes, savedAt:this.state.lastSavedAt } }));
+    },
+    save() {
+        if(this.loadFailed) {
+            this.notifyStorage(false, this.lastSaveError || '本地工作区读取失败；请先备份或清除损坏的数据');
+            return false;
+        }
+        try {
+            this.state.schemaVersion = WORKSPACE_SCHEMA_VERSION;
+            this.state.lastSavedAt = new Date().toISOString();
+            const json = JSON.stringify(this.serializeState());
+            localStorage.setItem(STORE_KEY, json);
+            this.storageBytes = json.length * 2;
+            this.lastSaveError = null;
+            if(this.migratedFrom && typeof localStorage.removeItem === 'function') {
+                localStorage.removeItem(this.migratedFrom);
+                this.migratedFrom = null;
+            }
+            this.notifyStorage(true, this.state.persistRaw === false ? '规则已保存，原始数据仅保留在本次会话' : '工作区已保存到此设备');
+            return true;
+        } catch(e) {
+            this.lastSaveError = e && e.name === 'QuotaExceededError'
+                ? '本地存储空间不足；当前页面数据仍在，请立即备份工作区或关闭原始数据持久化。'
+                : `本地保存失败：${e.message || e}`;
+            this.notifyStorage(false, this.lastSaveError);
+            return false;
+        }
+    },
+    scheduleSave(delay=320) {
+        if(typeof setTimeout !== 'function') return this.save();
+        clearTimeout(this.saveTimer);
+        this.saveTimer = setTimeout(() => this.save(), delay);
+        return true;
+    },
+    clearLocalData() {
+        try {
+            if(typeof localStorage.removeItem === 'function') {
+                localStorage.removeItem(STORE_KEY);
+                LEGACY_STORE_KEYS.forEach(key => localStorage.removeItem(key));
+                localStorage.removeItem('v16_4_inputHeight');
+            }
+            this.loadFailed = false;
+            this.lastSaveError = null;
+            return true;
+        } catch(e) {
+            this.lastSaveError = `清除本地数据失败：${e.message || e}`;
+            return false;
+        }
+    },
+    isSafePayload(value, depth=0) {
+        if(depth > 12) return false;
+        if(value === null || ['string','number','boolean'].includes(typeof value)) return true;
+        if(Array.isArray(value)) return value.length <= 10000 && value.every(item => this.isSafePayload(item, depth + 1));
+        if(typeof value !== 'object') return false;
+        const keys = Object.keys(value);
+        if(keys.some(key => ['__proto__','prototype','constructor'].includes(key))) return false;
+        return keys.length <= 2000 && keys.every(key => this.isSafePayload(value[key], depth + 1));
+    },
+    importWorkspace(payload, merge=false) {
+        if(!payload || typeof payload !== 'object' || !this.isSafePayload(payload)) throw new Error('工作区文件包含不安全或过深的数据结构');
+        if(!['ota-workspace','table-tool-tabs'].includes(payload.kind)) throw new Error('不是受支持的工作区文件');
+        if(!Array.isArray(payload.docs) || payload.docs.length === 0 || payload.docs.length > 100) throw new Error('工作区页签数量无效');
+        if(payload.schemaVersion && payload.schemaVersion > WORKSPACE_SCHEMA_VERSION) throw new Error('该工作区由更高版本创建');
+        const imported = payload.docs.map((doc, idx) => {
+            if(!doc || typeof doc !== 'object') throw new Error(`第 ${idx + 1} 个页签无效`);
+            const raw = typeof doc.raw === 'string' ? doc.raw : '';
+            if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`页签“${doc.title || idx + 1}”的数据超过 25 MB 限制`);
+            return { id:typeof doc.id === 'string' ? doc.id : '', title:typeof doc.title === 'string' ? doc.title : `Analysis ${idx + 1}`, raw, ui:(doc.ui && typeof doc.ui === 'object') ? doc.ui : {} };
+        });
+        const base = merge ? this.state.docs.slice() : [];
+        const usedIds = new Set(base.map(doc => doc.id));
+        imported.forEach(doc => {
+            if(!doc.id || usedIds.has(doc.id)) doc.id = this.generateDocId();
+            usedIds.add(doc.id);
+            base.push(doc);
+        });
+        this.state.docs = base;
+        const usedTitles = new Set();
+        this.state.docs.forEach((doc, idx) => {
+            this.normalizeDoc(doc, idx);
+            const clean = String(doc.title || `Analysis ${idx + 1}`).replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim() || `Analysis ${idx + 1}`;
+            let title = clean.slice(0, 40), suffixNo = 2;
+            while(usedTitles.has(title)) {
+                const suffix = ` (${suffixNo++})`;
+                title = `${clean.slice(0, Math.max(1, 40 - suffix.length))}${suffix}`;
+            }
+            doc.title = title;
+            usedTitles.add(title);
+        });
+        if(Array.isArray(payload.globalViews)) this.state.globalViews = payload.globalViews.slice(0, 500);
+        this.state.activeId = imported[0].id;
+        this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1);
+        this.loadFailed = false;
+        this.save();
+        return imported.length;
+    },
     createDefaultUI() {
-        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto" };
+        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, tablePages:{}, pageSize:100, cellEdits:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto", exportOnlyChecked:false, exportCols:'all' };
     },
     normalizeDoc(doc, idx=0) {
         if(!doc.id) doc.id = this.generateDocId();
@@ -927,6 +1294,9 @@ const Store = {
         if(!doc.ui.columnFilters) doc.ui.columnFilters = {};
         if(!doc.ui.collapsedTables) doc.ui.collapsedTables = {};
         if(!doc.ui.previewModes) doc.ui.previewModes = {};
+        if(!doc.ui.tablePages) doc.ui.tablePages = {};
+        if(!doc.ui.cellEdits) doc.ui.cellEdits = {};
+        if(![50,100,250,500].includes(Number(doc.ui.pageSize))) doc.ui.pageSize = 100;
         if(!doc.ui.sidebarTab) doc.ui.sidebarTab = 'data';
         if(!doc.ui.importFormat) doc.ui.importFormat = 'auto';
         if(!doc.ui.importHeaderMode) doc.ui.importHeaderMode = 'auto';
@@ -1014,12 +1384,20 @@ const Store = {
         if(!d) d = this.addDoc();
         return this.normalizeDoc(d, this.state.docs.indexOf(d));
     },
-    updateUI(k, v) { this.curr().ui[k]=v; this.save(); },
+    updateUI(k, v) { this.curr().ui[k]=v; this.scheduleSave(); },
     updateRule(table, field, value) {
-        const ui = this.curr().ui; if(!ui.rules[table]) ui.rules[table] = {}; ui.rules[table][field] = value; this.save();
+        const ui = this.curr().ui; if(!ui.rules[table]) ui.rules[table] = {}; ui.rules[table][field] = value; this.scheduleSave();
     },
     setCopyFormat(format='default') {
         this.state.copyFormat = ['default','csv','markdown','ascii'].includes(format) ? format : 'default';
+        this.save();
+    },
+    setPersistRaw(enabled=true) {
+        this.state.persistRaw = enabled !== false;
+        this.save();
+    },
+    setSpreadsheetSafe(enabled=true) {
+        this.state.spreadsheetSafe = enabled !== false;
         this.save();
     },
     toggleTheme() { this.state.theme = this.state.theme==='light'?'dark':'light'; this.applyTheme(); this.save(); },
@@ -1064,13 +1442,13 @@ const TableUtils = {
                 diagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', table:tableName, row:idx + 1, message:`${tableName} 第 ${idx + 1} 行列数为 ${r.length}，目标列数为 ${width}` });
             }
             while(r.length < width) r.push('');
-            if(width && r.length > width) r.length = width;
             out.push(r);
         });
         return out;
     },
     makeTableName(base, index, used) {
         let name = (base || `Table ${index + 1}`).trim() || `Table ${index + 1}`;
+        if(['__proto__','prototype','constructor'].includes(name)) name = `Table ${index + 1}`;
         let final = name, i = 2;
         while(used.has(final)) final = `${name}_${i++}`;
         used.add(final);
@@ -1153,8 +1531,10 @@ const HeaderResolver = {
 };
 
 const Delimited = {
+    lastDiagnostics: [],
     parse(text='', delimiter=',') {
         const input = TableUtils.normalizeText(text);
+        this.lastDiagnostics = [];
         const rows = [];
         let row = [], cell = '', inQuotes = false;
         for(let i=0; i<input.length; i++) {
@@ -1171,6 +1551,7 @@ const Delimited = {
             if(ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
             cell += ch;
         }
+        if(inQuotes) this.lastDiagnostics.push({ level:'warning', code:'UNCLOSED_QUOTE', message:'检测到未闭合的引号字段；已按当前内容继续解析' });
         row.push(cell); rows.push(row);
         return rows.filter(r => !TableUtils.isEmptyRow(r));
     },
@@ -1211,10 +1592,14 @@ const HtmlTableParser = {
             .trim();
         const parseTableHtml = (tableHtml, idx) => {
             const matrix = [];
+            const rowSpans = [];
             let explicitHeader = false;
             const trMatches = tableHtml.match(/<tr[\s\S]*?<\/tr>/gi) || [];
             trMatches.forEach(trHtml => {
                 const cells = [];
+                rowSpans.forEach((remaining, col) => {
+                    if(remaining > 0) { cells[col] = ''; rowSpans[col] = remaining - 1; }
+                });
                 const cellRe = /<(td|th)([^>]*)>([\s\S]*?)<\/\1>/gi;
                 let m;
                 while((m = cellRe.exec(trHtml)) !== null) {
@@ -1224,8 +1609,15 @@ const HtmlTableParser = {
                     if(tag === 'th') explicitHeader = true;
                     const spanMatch = /colspan\s*=\s*["']?(\d+)/i.exec(attrs);
                     const span = Math.max(1, parseInt(spanMatch ? spanMatch[1] : '1', 10) || 1);
+                    const rowSpanMatch = /rowspan\s*=\s*["']?(\d+)/i.exec(attrs);
+                    const rowSpan = Math.max(1, parseInt(rowSpanMatch ? rowSpanMatch[1] : '1', 10) || 1);
                     const value = getText(body);
-                    for(let i=0; i<span; i++) cells.push(i === 0 ? value : '');
+                    let col = 0;
+                    while(cells[col] !== undefined) col++;
+                    for(let i=0; i<span; i++) {
+                        cells[col + i] = i === 0 ? value : '';
+                        if(rowSpan > 1) rowSpans[col + i] = rowSpan - 1;
+                    }
                 }
                 if(cells.length) matrix.push(cells);
             });
@@ -1261,7 +1653,11 @@ function createDelimitedParser({ id, label, delimiter, tableName, confidence }) 
         confidence(source) { return confidence(source); },
         parse(source, options={}) {
             const matrix = Delimited.parse(source.text || '', delimiter);
-            return buildSingleTableResult(matrix, tableName, id, options, { delimiter });
+            const result = buildSingleTableResult(matrix, tableName, id, options, { delimiter });
+            if(Delimited.lastDiagnostics.length) {
+                result.diagnostics.push(...Delimited.lastDiagnostics);
+            }
+            return result;
         }
     };
 }
@@ -1312,18 +1708,32 @@ const PipeTableParser = {
             let s = l.trim();
             if(s.startsWith('|')) s = s.slice(1);
             if(s.endsWith('|')) s = s.slice(0, -1);
-            return s.split('|').map(v => v.trim());
+            return splitPipeCells(s);
         }).filter(r => !TableUtils.isEmptyRow(r));
         return buildSingleTableResult(rows, 'Pipe Table 1', this.id, options, { delimiter:'|' }, hasMdSep || options.hasHeader);
     }
 };
+
+function splitPipeCells(line='') {
+    const cells = [];
+    let cell = '', escaped = false;
+    for(const ch of String(line)) {
+        if(escaped) { cell += ch; escaped = false; continue; }
+        if(ch === '\\') { escaped = true; continue; }
+        if(ch === '|') { cells.push(cell.trim()); cell = ''; continue; }
+        cell += ch;
+    }
+    if(escaped) cell += '\\';
+    cells.push(cell.trim());
+    return cells;
+}
 
 function splitPipeRows(lines) {
     return lines.map(l => {
         let s = l.trim();
         if(s.startsWith('|')) s = s.slice(1);
         if(s.endsWith('|')) s = s.slice(0, -1);
-        return s.split('|').map(v => v.trim());
+        return splitPipeCells(s);
     }).filter(r => !TableUtils.isEmptyRow(r));
 }
 
@@ -1390,10 +1800,14 @@ const CliTableDataParser = {
         const finalize = () => {
             if(!cur) return;
             if(cur.headers.length) {
-                cur.rows = TableUtils.normalizeRows(cur.rows, cur.headers.length, [], cur.name);
+                const diagnostics = [];
+                const widest = TableUtils.maxWidth(cur.rows);
+                while(cur.headers.length < widest) cur.headers.push(`Column${cur.headers.length + 1}`);
+                cur.headers = TableUtils.ensureUniqueHeaders(cur.headers);
+                cur.rows = TableUtils.normalizeRows(cur.rows, cur.headers.length, diagnostics, cur.name);
                 cur.sourceType = this.id;
                 cur.meta = { mode:cur.mode || 'WS', hasHeader:true, generatedHeaders:false, headerRule:'validflag' };
-                cur.diagnostics = [];
+                cur.diagnostics = diagnostics;
                 tables.push(cur);
             }
             cur = null;
@@ -1407,7 +1821,7 @@ const CliTableDataParser = {
             if(cur.mode === 'FIXED') return ranges.map(r => (r.s >= line.length) ? '' : line.substring(r.s, Math.min(r.e, line.length)).trim());
             if(cur.mode === 'TAB') return Delimited.parse(trim, '\t')[0] || [];
             if(cur.mode === 'CSV') return Delimited.parse(trim, ',')[0] || [];
-            if(cur.mode === 'PIPE') return trim.replace(/^\||\|$/g, '').split('|').map(v => v.trim());
+            if(cur.mode === 'PIPE') return splitPipeCells(trim.replace(/^\||\|$/g, ''));
             return wsParts;
         };
         const setValidFlagHeader = (line) => {
@@ -1424,7 +1838,7 @@ const CliTableDataParser = {
             }
             if((line.match(/\|/g) || []).length >= 2) {
                 cur.mode = 'PIPE';
-                cur.headers = TableUtils.ensureUniqueHeaders(trim.replace(/^\||\|$/g, '').split('|').map(v => v.trim()));
+                cur.headers = TableUtils.ensureUniqueHeaders(splitPipeCells(trim.replace(/^\||\|$/g, '')));
                 return;
             }
             cur.mode = 'FIXED';
@@ -1455,7 +1869,7 @@ const CliTableDataParser = {
             cur.rows.push(parseByMode(line));
         });
         finalize();
-        return { tables, diagnostics:[] };
+        return { tables, diagnostics:tables.flatMap(table => table.diagnostics || []) };
     }
 };
 
@@ -1467,15 +1881,21 @@ const ImportEngine = {
         source.text = TableUtils.normalizeText(source.text);
         const selectedType = options.format && options.format !== 'auto' ? options.format : null;
         let chosen = selectedType ? this.getParser(selectedType) : null;
+        let scored = [];
         if(!chosen) {
-            const scored = this.parsers.map(parser => ({ parser, score: Math.max(0, Math.min(1, parser.confidence(source, options) || 0)) }))
+            scored = this.parsers.map(parser => ({ parser, score: Math.max(0, Math.min(1, parser.confidence(source, options) || 0)) }))
                 .filter(c => c.score > 0)
                 .sort((a,b) => b.score - a.score);
             chosen = scored[0] && scored[0].parser;
         }
-        if(!chosen) return { tables:[], format:'empty', label:'空输入' };
+        if(!chosen) return { tables:[], format:'empty', label:'空输入', diagnostics:[], candidates:[] };
         const parsed = chosen.parse(source, options);
-        return { tables:parsed.tables || [], format:chosen.id, label:chosen.label };
+        const tables = parsed.tables || [];
+        const diagnostics = Array.isArray(parsed.diagnostics) ? parsed.diagnostics : tables.flatMap(table => table.diagnostics || []);
+        const candidates = selectedType
+            ? [{ id:chosen.id, label:chosen.label, score:1, manual:true }]
+            : scored.slice(0, 3).map(item => ({ id:item.parser.id, label:item.parser.label, score:item.score, manual:false }));
+        return { tables, format:chosen.id, label:chosen.label, diagnostics, candidates, sourceLength:source.text.length };
     }
 };
 
@@ -1490,111 +1910,12 @@ const Parser = {
         } catch(e) {
             console.error(e);
             Toast.show('解析出错: ' + e.message, true);
-            this.lastResult = { tables:[], format:'error', label:'解析错误' };
+            this.lastResult = { tables:[], format:'error', label:'解析错误', diagnostics:[{ level:'error', code:'PARSE_ERROR', message:e.message || String(e) }], candidates:[] };
             return [];
         }
     }
 };
 
-
-/* Parser regression tests, exposed for development and safe to ignore in production. */
-window.__OTA_TESTS__ = {
-    assert(cond, msg) { if(!cond) throw new Error(msg); },
-    runAll() {
-        const cases = [];
-        const test = (name, fn) => cases.push({name, fn});
-        test('cli-table-data parses legacy multi-table data', () => {
-            const r = ImportEngine.parse('table-data Users\nvalidflag ID Name\n1 100 Alice\n1 101 Bob\n\ntable-data Orders\nvalidflag OrderID UserID\n1 5001 100');
-            this.assert(r.tables.length === 2, 'expected 2 tables');
-            this.assert(r.tables[0].headers.includes('validflag'), 'expected validflag header');
-            this.assert(r.tables[0].rows.length === 2, 'expected rows');
-        });
-        test('csv parser supports quoted comma and escaped quotes', () => {
-            const r = ImportEngine.parse('id,name,comment\n1,Alice,"hello, world"\n2,Bob,"a ""quoted"" value"');
-            this.assert(r.format === 'csv', 'expected csv');
-            this.assert(r.tables[0].rows[0][2] === 'hello, world', 'quoted comma failed');
-            this.assert(r.tables[0].rows[1][2] === 'a "quoted" value', 'escaped quotes failed');
-        });
-        test('header resolver generates friendly headers', () => {
-            const r = ImportEngine.parse('1,Alice,20\n2,Bob,30');
-            this.assert(r.tables[0].headers[0] === 'Column1', 'expected generated Column1');
-            this.assert(r.tables[0].rows.length === 2, 'first row must remain data');
-        });
-        test('excel copied data parses as tab-delimited', () => {
-            const r = ImportEngine.parse('id\tname\tage\n1\tAlice\t20\n2\tBob\t30');
-            this.assert(r.format === 'excel-paste', 'expected excel-paste');
-            this.assert(r.tables[0].headers[1] === 'name', 'expected header');
-        });
-        test('markdown pipe table parses header separator', () => {
-            const r = ImportEngine.parse('| id | name |\n|----|------|\n| 1 | Alice |');
-            this.assert(r.format === 'pipe-table', 'expected pipe table');
-            this.assert(r.tables[0].headers[0] === 'id', 'expected header');
-        });
-        test('ascii table parses terminal borders', () => {
-            const r = ImportEngine.parse('+----+-------+\n| id | name  |\n+----+-------+\n| 1  | Alice |\n+----+-------+');
-            this.assert(r.format === 'ascii-table', 'expected ascii table');
-            this.assert(r.tables[0].rows[0][1] === 'Alice', 'expected Alice');
-        });
-        test('html table parser uses clipboard html', () => {
-            const html = '<table><tr><th>id</th><th>name</th></tr><tr><td>1</td><td>Alice</td></tr></table>';
-            const r = ImportEngine.parse({ text:'id\tname\n1\tAlice', html });
-            this.assert(r.format === 'html-table', 'expected html table');
-            this.assert(r.tables[0].headers[1] === 'name', 'expected html header');
-        });
-        test('literal html breaks become cell newlines', () => {
-            const r = ImportEngine.parse('id\tdesc\n1\tline1<br>line2\n2\tlineA&lt;br /&gt;lineB', { format:'excel-paste' });
-            this.assert(r.tables[0].rows[0][1] === 'line1\nline2', 'expected literal br converted to newline');
-            this.assert(r.tables[0].rows[1][1] === 'lineA\nlineB', 'expected escaped br converted to newline');
-        });
-        test('html table br tags become cell newlines', () => {
-            const html = '<table><tr><th>id</th><th>desc</th></tr><tr><td>1</td><td>line1<br>line2</td></tr></table>';
-            const r = ImportEngine.parse({ text:'', html });
-            this.assert(r.tables[0].rows[0][1] === 'line1\nline2', 'expected html br converted to newline');
-        });
-        test('semicolon delimited data is supported', () => {
-            const r = ImportEngine.parse('id;name;score\n1;Alice;9\n2;Bob;8');
-            this.assert(r.format === 'semicolon-csv', 'expected semicolon parser');
-            this.assert(r.tables[0].rows[1][1] === 'Bob', 'expected Bob');
-        });
-        test('fixed width web copied text parses by multi-space gaps', () => {
-            const r = ImportEngine.parse('id   name       age\n1    Alice      20\n2    Bob        30');
-            this.assert(r.format === 'fixed-width', 'expected fixed-width');
-            this.assert(r.tables[0].headers[1] === 'name', 'expected name header');
-        });
-        test('duplicate and blank headers are normalized', () => {
-            const r = ImportEngine.parse('id,,id\n1,Alice,100');
-            this.assert(r.tables[0].headers.join('|') === 'id|Column2|id_2', 'expected normalized headers');
-        });
-        test('row width mismatch keeps data without blocking parse', () => {
-            const r = ImportEngine.parse('id,name,age\n1,Alice,20\n2,Bob\n3,Cindy,25,extra');
-            this.assert(r.tables[0].rows.length === 3, 'expected all rows preserved');
-        });
-        test('cli-table-data accepts prefixed legacy marker and validflag header only', () => {
-            const sample = '[TEST]d c d r table-data table-data Inventory\nvalidflag ID      Product       Category    Stock   Price\n 1        1001    Widget_A      Hardware    50      10.50\n 1        1002    Widget_B      Hardware    0       25.00';
-            const r = ImportEngine.parse(sample);
-            this.assert(r.format === 'cli-table-data', 'expected cli table parser');
-            this.assert(r.tables.length === 1, 'expected one table');
-            this.assert(r.tables[0].name === 'Inventory', 'expected Inventory name');
-            this.assert(r.tables[0].headers.join('|') === 'validflag|ID|Product|Category|Stock|Price', 'expected legacy validflag headers');
-            this.assert(r.tables[0].rows[0][2] === 'Widget_A', 'expected Widget_A row');
-            this.assert(r.tables[0].meta.generatedHeaders === false, 'cli parser must not generate headers');
-        });
-        test('manual format selection can force csv', () => {
-            const r = ImportEngine.parse('a,b\n1,2', { format:'csv' });
-            this.assert(r.format === 'csv', 'expected forced csv');
-            this.assert(r.tables[0].headers[0] === 'a', 'expected csv header');
-        });
-        test('header mode can force first row as data', () => {
-            const r = ImportEngine.parse('id,name\n1,Alice', { headerMode:'none' });
-            this.assert(r.tables[0].headers[0] === 'Column1', 'expected generated header');
-            this.assert(r.tables[0].rows[0][0] === 'id', 'expected first row as data');
-        });
-        const failures = [];
-        cases.forEach(c => { try { c.fn(); } catch(e) { failures.push(`${c.name}: ${e.message}`); } });
-        if(failures.length) throw new Error(failures.join('\n'));
-        return { passed:cases.length, failed:0 };
-    }
-};
 
 /* Joiner */
 const Joiner = {
@@ -1630,31 +1951,72 @@ const Joiner = {
             .map(t => this.parseSelectToken(t))
             .filter(Boolean);
     },
+    parsePairs(cfg, L, R) {
+        if(!cfg || typeof cfg.on !== 'string') return [];
+        const pairs = cfg.on.split(',').map(s => {
+            const p = s.split('=');
+            return p.length === 2 ? [p[0].trim(), p[1].trim()] : null;
+        }).filter(Boolean);
+        return pairs.filter(([leftCol, rightCol]) => L.headers.includes(leftCol) && R.headers.includes(rightCol));
+    },
+    compositeKey(row, map, cols) {
+        return JSON.stringify(cols.map(col => {
+            const idx = map.get(col);
+            const value = idx === undefined ? null : row[idx];
+            return [typeof value, value ?? null];
+        }));
+    },
+    hasDependencyCycle(cfg, views=[], rawNames=[]) {
+        const graph = new Map();
+        views.forEach(view => {
+            if(view && view.view && view.view !== cfg.view) graph.set(view.view, [view.left, view.right].filter(name => !rawNames.includes(name)));
+        });
+        graph.set(cfg.view, [cfg.left, cfg.right].filter(name => !rawNames.includes(name)));
+        const visiting = new Set(), visited = new Set();
+        const walk = name => {
+            if(visiting.has(name)) return true;
+            if(visited.has(name) || !graph.has(name)) return false;
+            visiting.add(name);
+            for(const dep of graph.get(name)) if(walk(dep)) return true;
+            visiting.delete(name);
+            visited.add(name);
+            return false;
+        };
+        return walk(cfg.view);
+    },
     stats(rawTables, cfg, views=[], stack=[]) {
         const L = this.resolve(cfg.left, rawTables, views, stack);
         const R = this.resolve(cfg.right, rawTables, views, stack);
         if(!L || !R) return null;
-        const pairs = cfg.on.split(',').map(s => { const p=s.split('='); return p.length===2 ? [p[0].trim(), p[1].trim()] : null; }).filter(p=>p);
+        const pairs = this.parsePairs(cfg, L, R);
         if(!pairs.length) return null;
         const rIdx = new Map();
+        const rMap = new Map(R.headers.map((h,i)=>[h,i]));
         R.rows.forEach(r => {
-            const k = pairs.map(p => { const i=R.headers.indexOf(p[1]); return i>-1?r[i]:''; }).join('|||');
+            const k = this.compositeKey(r, rMap, pairs.map(p => p[1]));
             if(!rIdx.has(k)) rIdx.set(k,[]); rIdx.get(k).push(r);
         });
         let matched = 0;
+        let leftMatched = 0;
         let leftOnly = 0;
         const leftKeys = new Set();
         const lMap = new Map(L.headers.map((h,i)=>[h,i]));
         L.rows.forEach(lr => {
-            const k = pairs.map(p => { const i=lMap.get(p[0]); return i!==undefined?lr[i]:''; }).join('|||');
+            const k = this.compositeKey(lr, lMap, pairs.map(p => p[0]));
             leftKeys.add(k);
             const matches = rIdx.get(k);
-            if(matches) matched += matches.length;
+            if(matches) { matched += matches.length; leftMatched++; }
             else leftOnly++;
         });
         let rightOnly = 0;
         rIdx.forEach((rows, k) => { if(!leftKeys.has(k)) rightOnly += rows.length; });
-        const outRows = (cfg.type === 'left') ? matched + leftOnly : matched;
+        const outRows = ({
+            left:matched + leftOnly,
+            right:matched + rightOnly,
+            full:matched + leftOnly + rightOnly,
+            semi:leftMatched,
+            anti:leftOnly
+        })[cfg.type] ?? matched;
         return { matched, leftOnly, rightOnly, outRows, leftRows: L.rows.length, rightRows: R.rows.length };
     },
     run(rawTables, cfg, views=[], stack=[]) {
@@ -1662,30 +2024,37 @@ const Joiner = {
         const R = this.resolve(cfg.right, rawTables, views, stack);
         if(!L || !R) return null;
 
-        const pairs = cfg.on.split(',').map(s => { const p=s.split('='); return p.length===2 ? [p[0].trim(), p[1].trim()] : null; }).filter(p=>p);
+        const pairs = this.parsePairs(cfg, L, R);
         const cols = this.buildSelectTokens(cfg.select);
+        if(!pairs.length || !cols.length) return null;
         
         const rIdx = new Map();
+        const rMap = new Map(R.headers.map((h,i)=>[h,i]));
         R.rows.forEach(r => {
-            const k = pairs.map(p => { const i=R.headers.indexOf(p[1]); return i>-1?r[i]:''; }).join('|||');
+            const k = this.compositeKey(r, rMap, pairs.map(p => p[1]));
             if(!rIdx.has(k)) rIdx.set(k,[]); rIdx.get(k).push(r);
         });
 
         const rows = [];
-        const lMap = new Map(L.headers.map((h,i)=>[h,i])), rMap = new Map(R.headers.map((h,i)=>[h,i]));
+        const matchedRight = new Set();
+        const lMap = new Map(L.headers.map((h,i)=>[h,i]));
         L.rows.forEach(lr => {
-            const k = pairs.map(p => { const i=lMap.get(p[0]); return i!==undefined?lr[i]:''; }).join('|||');
+            const k = this.compositeKey(lr, lMap, pairs.map(p => p[0]));
             const matches = rIdx.get(k);
-            if(matches) matches.forEach(rr => rows.push({l:lr, r:rr}));
-            else if(cfg.type==='left') rows.push({l:lr, r:null});
+            if(matches && matches.length) {
+                matches.forEach(rr => matchedRight.add(rr));
+                if(cfg.type === 'semi') rows.push({l:lr, r:matches[0]});
+                else if(cfg.type !== 'anti') matches.forEach(rr => rows.push({l:lr, r:rr}));
+            } else if(['left','full','anti'].includes(cfg.type)) rows.push({l:lr, r:null});
         });
+        if(['right','full'].includes(cfg.type)) R.rows.forEach(rr => { if(!matchedRight.has(rr)) rows.push({l:null, r:rr}); });
 
-        const headers = cols.map(t => t.alias || t.col || t.raw);
+        const headers = TableUtils.ensureUniqueHeaders(cols.map(t => t.alias || t.col || t.raw));
         const resRows = rows.map(({l, r}) => cols.map(t => {
             const src = (t.side === 'right' || t.side === 'r') ? 'right' : 'left';
             const col = t.col;
-            if(src==='left') return l[lMap.get(col)]||'';
-            return r ? (r[rMap.get(col)]||'') : '';
+            if(src==='left') return l ? (l[lMap.get(col)] ?? '') : '';
+            return r ? (r[rMap.get(col)] ?? '') : '';
         }));
         return { name: `JOIN:${cfg.view}`, headers, rows: resRows, isView: true };
     }
@@ -1712,6 +2081,161 @@ const JoinEditor = {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
     },
+    formatBytes(bytes=0) {
+        if(bytes < 1024) return `${bytes} B`;
+        if(bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    },
+    updateStorageStatus(detail={}) {
+        const el = $('storageStatus');
+        if(!el) return;
+        const ok = detail.ok !== false && !Store.lastSaveError;
+        const bytes = Number(detail.bytes ?? Store.storageBytes) || 0;
+        const message = detail.message || (ok
+            ? (Store.state.persistRaw === false ? '临时数据模式 · 规则已保存' : `已保存 · ${this.formatBytes(bytes)}`)
+            : Store.lastSaveError || '保存失败');
+        el.textContent = message;
+        el.style.color = ok ? '' : 'var(--danger)';
+        const fill = $('storageMeterFill');
+        if(fill) {
+            const ratio = Math.min(100, bytes / (5 * 1024 * 1024) * 100);
+            fill.style.width = `${ratio}%`;
+            fill.style.background = ratio > 85 ? 'var(--danger)' : ratio > 65 ? 'var(--warning)' : 'var(--accent)';
+        }
+    },
+    updateWorkspaceSummary() {
+        const title = $('workspaceTitle');
+        const summary = $('datasetSummary');
+        if(title) title.textContent = Store.curr().title || 'Analysis';
+        if(!summary) return;
+        const tableCount = this.raw.length;
+        const rows = this.raw.reduce((sum, table) => sum + (table.rows || []).length, 0);
+        const maxCols = this.raw.reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
+        const format = Parser.lastResult && Parser.lastResult.label;
+        summary.textContent = tableCount ? `${format || '已解析'} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列` : '所有处理均在本地浏览器完成';
+    },
+    scheduleSourceInputPersist() {
+        clearTimeout(this.sourceInputPersistTimer);
+        this.sourceInputPersistTimer = setTimeout(() => {
+            Store.curr().raw = $('rawInput').value;
+            Store.save();
+        }, 650);
+    },
+    sourceFileFormat(file) {
+        const name = String(file && file.name || '').toLowerCase();
+        if(/\.csv$/.test(name)) return 'csv';
+        if(/\.tsv$/.test(name)) return 'excel-paste';
+        if(/\.html?$/.test(name)) return 'html-table';
+        if(/\.(md|markdown)$/.test(name)) return 'pipe-table';
+        return 'auto';
+    },
+    loadSourceFile(file) {
+        if(!file) return;
+        if(file.size > MAX_IMPORT_BYTES) return Toast.show('文件超过 25 MB 安全限制', true);
+        const reader = new FileReader();
+        reader.onerror = () => Toast.show('无法读取该文件', true);
+        reader.onload = event => {
+            const text = String(event.target.result || '').replace(/^\uFEFF/, '');
+            $('rawInput').value = text;
+            const detected = this.sourceFileFormat(file);
+            if(detected === 'html-table') this.lastPaste = { html:text, plain:text, docId:Store.state.activeId };
+            else this.lastPaste = null;
+            Store.curr().raw = text;
+            const select = $('formatSelect');
+            if(select && select.value === 'auto' && detected !== 'auto') {
+                select.value = detected;
+                Store.curr().ui.importFormat = detected;
+            }
+            Store.save();
+            this.run();
+            Toast.show(`已导入 ${file.name}`);
+        };
+        reader.readAsText(file);
+    },
+    applyStoredCellEdits() {
+        const edits = Store.curr().ui.cellEdits || {};
+        this.raw.forEach(table => {
+            const tableEdits = edits[`$${table.name}`];
+            if(!tableEdits) return;
+            Object.entries(tableEdits).forEach(([rowKey, cols]) => {
+                const rowIdx = Number(rowKey);
+                if(!Number.isInteger(rowIdx) || !table.rows[rowIdx] || !cols || typeof cols !== 'object') return;
+                Object.entries(cols).forEach(([colKey, value]) => {
+                    const colIdx = Number(colKey);
+                    if(Number.isInteger(colIdx) && colIdx >= 0 && colIdx < table.headers.length) table.rows[rowIdx][colIdx] = String(value ?? '');
+                });
+            });
+        });
+    },
+    setCellEdit(tableName, rowIdx, colIdx, value, record=true) {
+        const table = this.raw.find(item => item.name === tableName && !item.isView);
+        if(!table || !table.rows[rowIdx] || colIdx < 0 || colIdx >= table.headers.length) return false;
+        const previous = String(table.rows[rowIdx][colIdx] ?? '');
+        const next = String(value ?? '');
+        if(previous === next) return false;
+        const ui = Store.curr().ui;
+        if(!ui.cellEdits) ui.cellEdits = {};
+        const tableKey = `$${tableName}`;
+        if(!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
+        if(!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
+        ui.cellEdits[tableKey][rowIdx][colIdx] = next;
+        table.rows[rowIdx][colIdx] = next;
+        if(record) {
+            this.editHistory.push({ tableName, rowIdx, colIdx, previous, next });
+            if(this.editHistory.length > 100) this.editHistory.shift();
+            this.editRedo = [];
+        }
+        Store.save();
+        this.updateUndoButtons();
+        return true;
+    },
+    undoCellEdit() {
+        const edit = this.editHistory.pop();
+        if(!edit) return;
+        this.setCellEdit(edit.tableName, edit.rowIdx, edit.colIdx, edit.previous, false);
+        this.editRedo.push(edit);
+        this.updateUndoButtons();
+        this.renderPreview();
+    },
+    redoCellEdit() {
+        const edit = this.editRedo.pop();
+        if(!edit) return;
+        this.setCellEdit(edit.tableName, edit.rowIdx, edit.colIdx, edit.next, false);
+        this.editHistory.push(edit);
+        this.updateUndoButtons();
+        this.renderPreview();
+    },
+    updateUndoButtons() {
+        if($('undoEditBtn')) $('undoEditBtn').disabled = this.editHistory.length === 0;
+        if($('redoEditBtn')) $('redoEditBtn').disabled = this.editRedo.length === 0;
+    },
+    setTablePage(tableName, page) {
+        const ui = Store.curr().ui;
+        if(!ui.tablePages) ui.tablePages = {};
+        ui.tablePages[tableName] = Math.max(1, Number(page) || 1);
+        Store.save();
+        this.renderPreview();
+    },
+    showDiagnostics() {
+        const result = Parser.lastResult || {};
+        const candidates = (result.candidates || []).map(item => `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : `识别分数 ${Math.round(item.score * 100)}%`}</span></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`).join('');
+        const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
+        this.modal('解析详情', `<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
+        document.querySelectorAll('.diagnostic-format-btn').forEach(button => {
+            button.onclick = () => { this.closeModal(); this.setImportFormat(button.dataset.format); };
+        });
+    },
+    showHelp() {
+        this.modal('帮助与快捷键', `<div class="shortcut-grid">
+            <span>解析当前数据源</span><kbd>Ctrl/⌘ Enter</kbd>
+            <span>新建分析页签</span><kbd>Ctrl/⌘ N</kbd>
+            <span>选择本地数据文件</span><kbd>Ctrl/⌘ O</kbd>
+            <span>保存当前工作区</span><kbd>Ctrl/⌘ S</kbd>
+            <span>撤销 / 重做单元格编辑</span><span><kbd>Ctrl/⌘ Z</kbd> <kbd>Ctrl/⌘ Y</kbd></span>
+            <span>重命名当前页签</span><kbd>F2</kbd>
+            <span>全选当前预览表</span><kbd>Ctrl/⌘ A</kbd>
+        </div><p class="muted" style="margin:16px 0 0;">支持 CSV、TSV、HTML、Markdown、ASCII、固定宽度文本与 CLI table-data。数据不会发送到网络。</p>`);
+    },
     isNameConflict(name, excludeIdx=-1) {
         const rawNames = App.raw.map(t => t.name);
         const viewNames = Store.state.globalViews.filter((_,i)=>i!==excludeIdx).map(v => v.view);
@@ -1730,7 +2254,7 @@ const JoinEditor = {
     modManageViews() {
         const vs = Store.state.globalViews;
         const getFieldCount = (select) => (select || '').split(',').filter(Boolean).length;
-        const joinTypeLabel = { 'inner': 'Inner Join', 'left': 'Left Join' };
+        const joinTypeLabel = { inner:'Inner Join', left:'Left Join', right:'Right Join', full:'Full Join', semi:'Semi Join', anti:'Anti Join' };
 
         const renderList = (filterText = '') => {
             const filtered = vs.map((v, i) => ({ ...v, originalIndex: i }))
@@ -1995,9 +2519,12 @@ const JoinEditor = {
         $('jeName').value = v.view;
         $('jeType').value = v.type;
 
-        const opts = App.getAvailableTables().map(n => `<option value="${n}">${n}</option>`).join('');
-        $('jeLeftTable').innerHTML = opts;
-        $('jeRightTable').innerHTML = opts;
+        const availableTables = App.getAvailableTables();
+        ['jeLeftTable','jeRightTable'].forEach(id => {
+            const select = $(id);
+            select.replaceChildren();
+            availableTables.forEach(name => select.add(new Option(name, name)));
+        });
 
         if (v.left) $('jeLeftTable').value = v.left;
         else if ($('jeLeftTable').options.length > 0) $('jeLeftTable').selectedIndex = 0;
@@ -2208,6 +2735,7 @@ const JoinEditor = {
         const warnings = [];
         const name = $('jeName').value.trim();
         if(!name) errors.push('请填写视图名称');
+        if(['__proto__','prototype','constructor'].includes(name)) errors.push('该视图名称不可使用');
         if(name && this.isNameConflict(name, this.state.editIdx)) errors.push('视图名称与已有表/视图冲突');
         if(!$('jeLeftTable').value || !$('jeRightTable').value) errors.push('请选择左右表');
 
@@ -2216,11 +2744,17 @@ const JoinEditor = {
         const validRels = rels.filter(r => r.l && r.r);
         if(invalidRels.length) errors.push('关联条件存在空字段');
         if(validRels.length === 0) errors.push('至少配置一个关联条件');
+        const leftCols = App.getCols($('jeLeftTable').value);
+        const rightCols = App.getCols($('jeRightTable').value);
+        if(validRels.some(rel => !leftCols.includes(rel.l) || !rightCols.includes(rel.r))) errors.push('关联条件引用了不存在的字段');
         if(this.state.order.length === 0) errors.push('至少选择一个输出列');
+
+        const cfg = this.getCurrentConfig();
+        if(name && Joiner.hasDependencyCycle(cfg, Store.state.globalViews, App.raw.map(table => table.name))) errors.push('视图依赖会形成循环');
 
         const headers = this.state.order.map(o => (o.alias || o.col || '').trim()).filter(Boolean);
         const dupes = headers.filter((h,i) => headers.indexOf(h) !== i);
-        if(dupes.length) warnings.push(`输出列重名: ${Array.from(new Set(dupes)).join(', ')}`);
+        if(dupes.length) warnings.push(`输出列重名将自动去重: ${Array.from(new Set(dupes)).join(', ')}`);
 
         return { ok: errors.length === 0, errors, warnings };
     },
@@ -2617,9 +3151,16 @@ const ClipboardFormatter = {
             .replace(/\r\n/g, '\n')
             .replace(/\r/g, '\n');
     },
+    protectSpreadsheetFormula(value='') {
+        const text = this.normalizeCell(value);
+        const enabled = typeof Store === 'undefined' || !Store.state || Store.state.spreadsheetSafe !== false;
+        if(!enabled) return text;
+        const dangerous = /^[=+@]/.test(text) || (/^-/.test(text) && !/^-\d+(?:\.\d+)?$/.test(text));
+        return dangerous ? `'${text}` : text;
+    },
     toDelimited(matrix, delimiter='\t') {
         const quoteFor = (value) => {
-            const text = this.normalizeCell(value);
+            const text = this.protectSpreadsheetFormula(value);
             const mustQuote = text.includes(delimiter) || /["\n\r]/.test(text);
             const escaped = text.replace(/"/g, '""');
             return mustQuote ? `"${escaped}"` : escaped;
@@ -2654,7 +3195,7 @@ const ClipboardFormatter = {
     },
     toHtml(matrix) {
         if(!matrix || !matrix.length) return '<table></table>';
-        const htmlCell = cell => this.escapeHtml(this.normalizeCell(cell)).replace(/\n/g, '<br>');
+        const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
         const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
         return `<table border="1"><thead>${rowHtml(matrix[0], 'th')}</thead><tbody>${matrix.slice(1).map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
@@ -2848,6 +3389,12 @@ const App = {
     tabDrag: { sourceId:null },
     sourceEditorPersistTimer: null,
     sourceEditorStatsTimer: null,
+    sourceInputPersistTimer: null,
+    sourceEditorReturnFocus: null,
+    modalReturnFocus: null,
+    editHistory: [],
+    editRedo: [],
+    lastPaste: null,
     escapeHtml(str='') {
         return String(str)
             .replace(/&/g, '&amp;')
@@ -2884,9 +3431,14 @@ const App = {
         return true;
     },
     init() {
+        document.title = `Offline Table Analyzer v${APP_VERSION}`;
         Store.init(); Select.init();
         this.bindSidebar(); this.bindAccordions();
         this.bind(); this.renderTabs(); this.loadDoc();
+        if(window.matchMedia && window.matchMedia('(max-width: 760px)').matches) {
+            $('sidebar').classList.add('collapsed');
+            $('sidebarToggle').setAttribute('aria-expanded', 'false');
+        }
         this.initInputResizer();
 
         // Picker Logic
@@ -3046,6 +3598,20 @@ const App = {
 
     updateImportSummary() {
         this.syncImportControls();
+        const status = $('parseStatus');
+        const text = $('parseStatusText');
+        const details = $('diagnosticsBtn');
+        const result = Parser.lastResult || {};
+        const diagnostics = result.diagnostics || [];
+        const rowCount = (result.tables || []).reduce((sum, table) => sum + (table.rows || []).length, 0);
+        if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
+        if(text) {
+            if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
+            else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${diagnostics.length} 项提示` : ''}`;
+            else text.textContent = '等待输入数据';
+        }
+        if(details) details.classList.toggle('hidden', !(result.candidates && result.candidates.length) && diagnostics.length === 0);
+        this.updateWorkspaceSummary();
     },
 
     syncImportControls() {
@@ -3088,7 +3654,7 @@ const App = {
         const d = Store.curr();
         const text = $('rawInput').value;
         const last = this.lastPaste || {};
-        const html = last.html && last.plain && text.trim() === last.plain.trim() ? last.html : '';
+        const html = last.html && last.plain && last.docId === Store.state.activeId && text.trim() === last.plain.trim() ? last.html : '';
         const formatEl = $('formatSelect');
         const headerEl = $('headerModeSelect');
         const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
@@ -3114,6 +3680,16 @@ const App = {
             return cfg ? Joiner.run(this.raw, cfg, Store.state.globalViews) : null;
         }).filter(Boolean);
     },
+    projectTableForExport(table, shownOnly=false) {
+        const headers = table.headers || [];
+        const rows = (table.rows || []).map(row => Array.isArray(row) ? row : (row.d || row.data || []));
+        if(!shownOnly) return { name:table.name || 'Sheet', headers, rows };
+        const focus = ((Store.curr().ui.rules || {})[table.name] || {}).focus;
+        if(!Array.isArray(focus) || focus.length === 0) return { name:table.name || 'Sheet', headers, rows };
+        const indexes = focus.map(name => headers.indexOf(name)).filter(index => index >= 0);
+        if(!indexes.length) return { name:table.name || 'Sheet', headers, rows };
+        return { name:table.name || 'Sheet', headers:indexes.map(index => headers[index]), rows:rows.map(row => indexes.map(index => row[index])) };
+    },
 
     getFullExportTables() {
         const ui = Store.curr().ui;
@@ -3123,11 +3699,8 @@ const App = {
             tables = tables.filter(t => selected.has(t.name));
         }
         const joins = this.getEnabledJoinTables(true);
-        return [...tables, ...joins].map(t => ({
-            name: t.name || 'Sheet',
-            headers: t.headers || [],
-            rows: (t.rows || []).map(r => Array.isArray(r) ? r : (r.d || r.data || []))
-        }));
+        const shownOnly = ui.exportCols === 'shown';
+        return [...tables, ...joins].map(table => this.projectTableForExport(table, shownOnly));
     },
 
     getPreviewExportTables() {
@@ -3193,6 +3766,7 @@ const App = {
         const large = $('rawInputLarge');
         const main = $('rawInput');
         if(!modal || !large || !main) return;
+        this.sourceEditorReturnFocus = document.activeElement;
         large.value = main.value || '';
         this.syncSourceEditorControls();
         this.updateSourceEditorStats();
@@ -3206,6 +3780,8 @@ const App = {
         const modal = $('sourceEditorModal');
         if(modal) modal.classList.add('hidden');
         document.body.classList.remove('modal-open');
+        if(this.sourceEditorReturnFocus && typeof this.sourceEditorReturnFocus.focus === 'function') this.sourceEditorReturnFocus.focus();
+        this.sourceEditorReturnFocus = null;
     },
 
     runFromSourceEditor(close=false) {
@@ -3241,7 +3817,11 @@ const App = {
     bindSidebar() {
         const sidebar = $('sidebar');
         const toggle = $('sidebarToggle');
-        const toggleSidebar = () => { if(sidebar) sidebar.classList.toggle('collapsed'); };
+        const toggleSidebar = () => {
+            if(!sidebar) return;
+            sidebar.classList.toggle('collapsed');
+            if(toggle) toggle.setAttribute('aria-expanded', sidebar.classList.contains('collapsed') ? 'false' : 'true');
+        };
         if(toggle) {
             toggle.onclick = (e) => {
                 if(e.detail > 1) return;
@@ -3290,7 +3870,12 @@ const App = {
             addTabBtn.onclick = e => this.createNewTab(e);
         }
         const doParse = () => this.run();
-        const doClear = () => { $('rawInput').value=''; this.run(); };
+        const doClear = () => {
+            $('rawInput').value='';
+            this.lastPaste = null;
+            Store.curr().ui.cellEdits = {};
+            this.run();
+        };
         $('parseBtn').onclick = doParse;
         $('clearBtn').onclick = doClear;
         const formatSelect = $('formatSelect');
@@ -3324,14 +3909,39 @@ validflag Time      Level   Message                 Code
         const sampleBtn = $('sampleBtn'); if(sampleBtn) sampleBtn.onclick = loadSample;
         const sampleLink = $('sampleLink'); if(sampleLink) sampleLink.onclick = loadSample;
 
-        $('rawInput').oninput = e => { Store.curr().raw = e.target.value; Store.save(); };
+        $('rawInput').oninput = e => {
+            Store.curr().raw = e.target.value;
+            if(this.lastPaste && String(e.target.value).trim() !== String(this.lastPaste.plain || '').trim()) this.lastPaste = null;
+            this.scheduleSourceInputPersist();
+        };
         $('rawInput').addEventListener('paste', e => {
             const data = e.clipboardData;
             if(!data) return;
             const html = data.getData('text/html');
             const plain = data.getData('text/plain');
-            if(html && /<table[\s>]/i.test(html)) this.lastPaste = { html, plain };
+            this.lastPaste = html && /<table[\s>]/i.test(html) ? { html, plain, docId:Store.state.activeId } : null;
         });
+        const importSourceBtn = $('importSourceBtn');
+        const sourceFileInput = $('sourceFileInput');
+        if(importSourceBtn && sourceFileInput) importSourceBtn.onclick = () => sourceFileInput.click();
+        if(sourceFileInput) sourceFileInput.onchange = e => {
+            const file = e.target.files && e.target.files[0];
+            this.loadSourceFile(file);
+            e.target.value = '';
+        };
+        const sourceDropZone = $('sourceDropZone');
+        if(sourceDropZone) {
+            ['dragenter','dragover'].forEach(type => sourceDropZone.addEventListener(type, e => { e.preventDefault(); sourceDropZone.classList.add('drag-over'); }));
+            ['dragleave','drop'].forEach(type => sourceDropZone.addEventListener(type, e => { e.preventDefault(); sourceDropZone.classList.remove('drag-over'); }));
+            sourceDropZone.addEventListener('drop', e => this.loadSourceFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]));
+        }
+        if($('diagnosticsBtn')) $('diagnosticsBtn').onclick = () => this.showDiagnostics();
+        if($('persistRawToggle')) $('persistRawToggle').onchange = e => {
+            Store.setPersistRaw(e.target.checked);
+            this.updateStorageStatus();
+            Toast.show(e.target.checked ? '原始数据将保存在此设备' : '已切换为临时数据模式');
+        };
+        if($('checkFormulaSafe')) $('checkFormulaSafe').onchange = e => Store.setSpreadsheetSafe(e.target.checked);
         const expandSourceBtn = $('expandSourceBtn');
         if(expandSourceBtn) expandSourceBtn.onclick = () => this.openSourceEditor();
         const sourceClose = $('sourceEditorCloseBtn');
@@ -3343,6 +3953,7 @@ validflag Time      Level   Message                 Code
         const rawLarge = $('rawInputLarge');
         if(rawLarge) {
             rawLarge.oninput = () => {
+                if(this.lastPaste && String(rawLarge.value).trim() !== String(this.lastPaste.plain || '').trim()) this.lastPaste = null;
                 this.scheduleSourceEditorStats();
                 this.scheduleSourceEditorPersist();
             };
@@ -3351,10 +3962,11 @@ validflag Time      Level   Message                 Code
                 if(!data) return;
                 const html = data.getData('text/html');
                 const plain = data.getData('text/plain');
-                if(html && /<table[\s>]/i.test(html)) this.lastPaste = { html, plain };
+                this.lastPaste = html && /<table[\s>]/i.test(html) ? { html, plain, docId:Store.state.activeId } : null;
             });
             rawLarge.onkeydown = e => {
                 if((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this.runFromSourceEditor(false); }
+                if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); this.syncSourceTextFromLarge(); Toast.show('工作区已保存'); }
             };
         }
         const formatLarge = $('formatSelectLarge');
@@ -3376,6 +3988,8 @@ validflag Time      Level   Message                 Code
             // Full-page editor returns only through explicit 完成/关闭 actions.
             if(e.target === sourceModal) e.stopPropagation();
         });
+        const modalOverlay = $('modalOverlay');
+        if(modalOverlay) modalOverlay.addEventListener('click', e => { if(e.target === modalOverlay) this.closeModal(); });
         const tabsContainer = $('tabsContainer');
         tabsContainer.onclick = e => {
             if(e.target.closest('.doc-tab-title-input')) return;
@@ -3400,6 +4014,24 @@ validflag Time      Level   Message                 Code
             const id = tab.dataset.id;
             if(Store.state.activeId !== id) this.activateTab(id);
             setTimeout(() => this.startTabRename(id), 0);
+        };
+        tabsContainer.onkeydown = e => {
+            const tab = e.target.closest('.doc-tab');
+            if(!tab || e.target.closest('.doc-tab-title-input')) return;
+            const tabs = Array.from(tabsContainer.querySelectorAll('.doc-tab'));
+            const index = tabs.indexOf(tab);
+            if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.activateTab(tab.dataset.id); }
+            if(e.key === 'F2') { e.preventDefault(); e.stopPropagation(); this.startTabRename(tab.dataset.id); }
+            if(e.key === 'Delete' && Store.state.docs.length > 1) {
+                e.preventDefault();
+                if(Store.removeDoc(tab.dataset.id)) { this.renderTabs(); this.loadDoc(); }
+            }
+            if(['ArrowLeft','ArrowRight'].includes(e.key)) {
+                e.preventDefault();
+                const offset = e.key === 'ArrowRight' ? 1 : -1;
+                const next = tabs[(index + offset + tabs.length) % tabs.length];
+                if(next) this.activateTab(next.dataset.id);
+            }
         };
         tabsContainer.addEventListener('dragstart', e => {
             const tab = e.target.closest('.doc-tab');
@@ -3480,6 +4112,28 @@ validflag Time      Level   Message                 Code
         $('manageViewsBtn').onclick = e => { e.stopPropagation(); JoinEditor.modManageViews(); };
         $('selectColsBtn').onclick = () => this.modCols();
         $('themeBtn').onclick = () => Store.toggleTheme();
+        if($('helpBtn')) $('helpBtn').onclick = () => this.showHelp();
+        if($('undoEditBtn')) $('undoEditBtn').onclick = () => this.undoCellEdit();
+        if($('redoEditBtn')) $('redoEditBtn').onclick = () => this.redoCellEdit();
+        if($('pageSizeSelect')) $('pageSizeSelect').onchange = e => {
+            const ui = Store.curr().ui;
+            ui.pageSize = Number(e.target.value) || 100;
+            ui.tablePages = {};
+            Store.save();
+            this.renderPreview();
+        };
+        if($('toggleSidebarMobileBtn')) $('toggleSidebarMobileBtn').onclick = () => {
+            const sidebar = $('sidebar');
+            if(sidebar) sidebar.classList.toggle('collapsed');
+        };
+        if($('clearLocalDataBtn')) $('clearLocalDataBtn').onclick = () => {
+            if(!confirm('确定清除本浏览器中保存的全部工作区数据？建议先备份工作区。')) return;
+            if(Store.clearLocalData()) {
+                Toast.show('本地数据已清除，刷新页面后生效');
+                $('storageStatus').textContent = '本地数据已清除';
+            } else Toast.show(Store.lastSaveError || '清除失败', true);
+        };
+        document.addEventListener('ota:storage', event => this.updateStorageStatus(event.detail || {}));
         const copyFormatSelect = $('copyFormatSelect');
         if(copyFormatSelect) {
             copyFormatSelect.value = Store.state.copyFormat || 'default';
@@ -3490,19 +4144,34 @@ validflag Time      Level   Message                 Code
         const exportFullBtn = $('exportFullBtn');
         if(exportFullBtn) exportFullBtn.onclick = () => Exporter.toExcel(this.getFullExportTables(), this.getExportPrefix('full'));
         $('exportPrevBtn').onclick = () => Exporter.toExcel(this.getPreviewExportTables(), this.getExportPrefix('preview'));
-        $('exportTabBtn').onclick = () => Exporter.toJson({ kind:'table-tool-tabs', docs: Store.state.docs }, this.getExportPrefix('tabs'));
+        $('exportTabBtn').onclick = () => Exporter.toJson({
+            kind:'ota-workspace',
+            schemaVersion:WORKSPACE_SCHEMA_VERSION,
+            appVersion:APP_VERSION,
+            exportedAt:new Date().toISOString(),
+            docs:Store.state.docs,
+            globalViews:Store.state.globalViews,
+            preferences:{ theme:Store.state.theme, copyFormat:Store.state.copyFormat, persistRaw:Store.state.persistRaw, spreadsheetSafe:Store.state.spreadsheetSafe }
+        }, this.getExportPrefix('workspace'));
         $('importTabBtn').onclick = () => $('fileInputTab').click();
         $('fileInputTab').onchange = e => {
             const f = e.target.files[0]; if(!f) return;
+            if(f.size > MAX_IMPORT_BYTES) { Toast.show('工作区文件超过 25 MB 限制', true); e.target.value=''; return; }
             const r = new FileReader();
             r.onload = evt => {
                 try {
                     const d = JSON.parse(evt.target.result);
-                    if(d.kind !== 'table-tool-tabs') throw new Error();
-                    if(confirm('覆盖现有? (取消则追加)')) Store.state.docs = d.docs;
-                    else Store.state.docs = Store.state.docs.concat(d.docs);
-                    Store.save(); App.renderTabs(); App.loadDoc(); Toast.show('导入成功');
-                } catch(e){ alert('格式错误'); }
+                    const replace = confirm('确定：替换当前工作区\n取消：把备份追加为新页签');
+                    const count = Store.importWorkspace(d, !replace);
+                    if(d.preferences && typeof d.preferences === 'object') {
+                        if(['light','dark'].includes(d.preferences.theme)) Store.state.theme = d.preferences.theme;
+                        if(['default','csv','markdown','ascii'].includes(d.preferences.copyFormat)) Store.state.copyFormat = d.preferences.copyFormat;
+                        if(typeof d.preferences.persistRaw === 'boolean') Store.state.persistRaw = d.preferences.persistRaw;
+                        if(typeof d.preferences.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = d.preferences.spreadsheetSafe;
+                        Store.applyTheme(); Store.save();
+                    }
+                    App.renderTabs(); App.loadDoc(); Toast.show(`已恢复 ${count} 个页签`);
+                } catch(error){ Toast.show(`工作区导入失败：${error.message || '格式错误'}`, true); }
                 e.target.value = '';
             };
             r.readAsText(f);
@@ -3511,33 +4180,34 @@ validflag Time      Level   Message                 Code
         $('importConfigBtn').onclick = () => $('fileInputConfig').click();
         $('fileInputConfig').onchange = e => {
             const f = e.target.files[0]; if(!f) return;
+            if(f.size > 5 * 1024 * 1024) { Toast.show('配置文件超过 5 MB 限制', true); e.target.value=''; return; }
             const r = new FileReader();
             r.onload = evt => {
                 try {
                     const d = JSON.parse(evt.target.result);
-                    if(d.kind !== 'table-tool-config') throw new Error();
+                    if(d.kind !== 'table-tool-config' || !Store.isSafePayload(d)) throw new Error('配置结构无效');
 
                     // 更新全局视图
-                    if(d.globalViews) {
+                    if(Array.isArray(d.globalViews)) {
                         const oldCount = Store.state.globalViews.length;
-                        Store.state.globalViews = d.globalViews;
+                        Store.state.globalViews = d.globalViews.slice(0, 500).filter(view => view && typeof view === 'object' && typeof view.view === 'string');
                         Toast.show(`全局视图已更新 (${oldCount} → ${d.globalViews.length} 个)`, false, 2000);
                     }
 
                     // 更新文档配置
-                    if(d.docs && d.docs.length > 0) {
+                    if(Array.isArray(d.docs) && d.docs.length > 0 && d.docs.length <= 100) {
                         let appliedCount = 0;
                         let ignoredDocs = [];
                         let createdDocs = [];
 
-                        d.docs.forEach(x => {
+                        d.docs.filter(x => x && typeof x === 'object').forEach(x => {
                             // 优先使用 title 匹配（更符合用户预期），如果 title 不存在才用 id 匹配
                             let t = Store.state.docs.find(y => y.title === x.title);
                             if(!t) t = Store.state.docs.find(y => y.id === x.id);
 
                             if(t) {
                                 // 匹配到文档，更新配置
-                                t.ui = x.ui;
+                                if(x.ui && typeof x.ui === 'object') t.ui = x.ui;
                                 appliedCount++;
                             } else {
                                 // 没有匹配到，记录下来
@@ -3553,14 +4223,8 @@ validflag Time      Level   Message                 Code
                                 ignoredDocs.forEach((docName, idx) => {
                                     const config = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
                                     if(config) {
-                                        const newDoc = {
-                                            id: Date.now().toString() + '_' + idx,
-                                            title: config.title,
-                                            raw: '',
-                                            ui: config.ui
-                                        };
-                                        Store.state.docs.push(newDoc);
-                                        createdDocs.push(config.title);
+                                        const newDoc = Store.addDoc({ title:config.title, raw:'', ui:(config.ui && typeof config.ui === 'object') ? config.ui : {} });
+                                        createdDocs.push(newDoc.title);
                                     }
                                 });
 
@@ -3634,11 +4298,25 @@ validflag Time      Level   Message                 Code
 
         document.addEventListener('keydown', e => {
             const sourceModal = $('sourceEditorModal');
-            if(sourceModal && !sourceModal.classList.contains('hidden') && e.key === 'Escape') {
-                e.preventDefault();
-                this.closeSourceEditor();
+            if(sourceModal && !sourceModal.classList.contains('hidden')) {
+                if(e.key === 'Escape') { e.preventDefault(); this.closeSourceEditor(); }
                 return;
             }
+            const modalOverlay = $('modalOverlay');
+            if(modalOverlay && !modalOverlay.classList.contains('hidden')) {
+                if(e.key === 'Escape') { e.preventDefault(); this.closeModal(); }
+                return;
+            }
+            const mod = e.ctrlKey || e.metaKey;
+            const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName || '');
+            if(mod && e.key.toLowerCase() === 'enter') { e.preventDefault(); this.run(); return; }
+            if(mod && e.key.toLowerCase() === 'n') { e.preventDefault(); this.createNewTab(e); return; }
+            if(mod && e.key.toLowerCase() === 'o') { e.preventDefault(); $('sourceFileInput').click(); return; }
+            if(mod && e.key.toLowerCase() === 's') { e.preventDefault(); this.persistCurrentDocFromInputs(); Toast.show('工作区已保存'); return; }
+            if(mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undoCellEdit(); return; }
+            if(mod && !typing && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); this.redoCellEdit(); return; }
+            if(e.key === 'F2' && !typing) { e.preventDefault(); this.startTabRename(Store.state.activeId); return; }
+            if(e.key === '?' && !typing) { e.preventDefault(); this.showHelp(); return; }
             if($('joinModal').classList.contains('hidden')) return;
             if(!$('modalOverlay').classList.contains('hidden')) return;
             if(e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); }
@@ -3661,26 +4339,42 @@ validflag Time      Level   Message                 Code
 
     loadDoc() {
         const d = Store.curr();
+        this.lastPaste = null;
+        this.editHistory = [];
+        this.editRedo = [];
+        this.updateUndoButtons();
         $('rawInput').value = d.raw || '';
         $('globalFilter').value = d.ui.globalFilter || '';
         const formatSelect = $('formatSelect'); if(formatSelect) formatSelect.value = d.ui.importFormat || 'auto';
         const headerModeSelect = $('headerModeSelect'); if(headerModeSelect) headerModeSelect.value = d.ui.importHeaderMode || 'auto';
         $('checkHl').checked = d.ui.enableHighlight !== false;
         $('checkOnlyHl').checked = d.ui.onlyHighlighted || false;
+        $('checkExpSelected').checked = d.ui.exportOnlyChecked || false;
+        $('expColSelect').value = d.ui.exportCols || 'all';
+        if($('pageSizeSelect')) $('pageSizeSelect').value = String(d.ui.pageSize || 100);
+        if($('persistRawToggle')) $('persistRawToggle').checked = Store.state.persistRaw !== false;
+        if($('checkFormulaSafe')) $('checkFormulaSafe').checked = Store.state.spreadsheetSafe !== false;
         if($('sidebar')) this.setSidebarTab(d.ui.sidebarTab || 'data');
         this.syncCopyFormatControl();
         this.run(false);
         this.renderPreview();
+        this.updateStorageStatus();
     },
 
     run(render=true) {
         try {
-            Store.curr().raw = $('rawInput').value; Store.save();
-            this.raw = Parser.parse($('rawInput').value, this.getParseOptions());
+            const started = performance.now();
+            const sourceText = $('rawInput').value;
+            if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
+            Store.curr().raw = sourceText; Store.save();
+            this.raw = Parser.parse(sourceText, this.getParseOptions());
+            this.applyStoredCellEdits();
             this.updateImportSummary();
             this.updSelects();
             if(render) this.renderPreview();
             this.updChips();
+            const elapsed = Math.round(performance.now() - started);
+            if(this.raw.length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
         } catch(e) {
             console.error(e);
             Toast.show("解析错误: " + e.message, true);
@@ -3711,12 +4405,12 @@ validflag Time      Level   Message                 Code
         const tableNames = this.raw.map(t => t.name);
         const tsRaw = ui.displayTables;
         const ts = (tsRaw===null || tsRaw===undefined) ? null : (tsRaw || []).filter(n => tableNames.includes(n));
-        $('tablesTrigger').innerHTML = (ts===null) ? `<span class="chip" style="background:var(--bg-hover); color:var(--text-secondary); border-color:transparent;">默认全显</span>` : (ts.length ? ts.map(n=>`<span class="chip">${n}</span>`).join('') : `<span class="placeholder">无</span>`);
+        $('tablesTrigger').innerHTML = (ts===null) ? `<span class="chip" style="background:var(--bg-hover); color:var(--text-secondary); border-color:transparent;">默认全显</span>` : (ts.length ? ts.map(n=>`<span class="chip">${this.escapeHtml(n)}</span>`).join('') : `<span class="placeholder">无</span>`);
         const viewNames = Store.state.globalViews.map(v => v.view);
         const vsRaw = ui.enabledViews || [];
         const vs = vsRaw.filter(v => viewNames.includes(v));
         if(vs.length !== vsRaw.length) Store.updateUI('enabledViews', vs);
-        $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>`<span class="chip">${n}</span>`).join('') : `<span class="placeholder">未启用</span>`;
+        $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>`<span class="chip">${this.escapeHtml(n)}</span>`).join('') : `<span class="placeholder">未启用</span>`;
     },
 
     renderTabs() {
@@ -3727,7 +4421,8 @@ validflag Time      Level   Message                 Code
             const title = d.title || `Analysis ${idx + 1}`;
             const safeTitle = this.escapeHtml(title);
             const safeId = this.escapeHtml(d.id);
-            return `<div class="doc-tab ${d.id===Store.state.activeId?'active':''}" data-id="${safeId}" draggable="true" title="${safeTitle}"><span class="doc-tab-title">${safeTitle}</span><span class="doc-tab-close" draggable="false" title="关闭">×</span></div>`;
+            const active = d.id === Store.state.activeId;
+            return `<div class="doc-tab ${active?'active':''}" data-id="${safeId}" draggable="true" title="${safeTitle}" role="tab" aria-selected="${active?'true':'false'}" tabindex="${active?'0':'-1'}"><span class="doc-tab-title">${safeTitle}</span><button class="doc-tab-close" type="button" draggable="false" title="关闭" aria-label="关闭 ${safeTitle}">×</button></div>`;
         }).join('');
     },
 
@@ -3783,11 +4478,15 @@ validflag Time      Level   Message                 Code
     buildColumnHeaderTable(t, res, tIdx, colFilters={}) {
         const tbl = createEl('table');
         tbl.dataset.idx = tIdx;
+        tbl.dataset.tableName = t.name;
         tbl.dataset.viewMode = 'column-header';
+        tbl.setAttribute('aria-label', `${t.name} 列表头预览`);
         const thRow = createEl('tr');
         res.headers.forEach((h, hIdx) => {
             const th=createEl('th');
             th.classList.add('filterable-th');
+            th.tabIndex = 0;
+            th.setAttribute('role', 'button');
             const hasFilter = colFilters[h] && colFilters[h].toString().trim();
             th.title= hasFilter ? `已过滤：${colFilters[h]}` : '点击过滤该列（包含匹配，忽略大小写）';
             if(hasFilter) th.style.color = 'var(--primary)';
@@ -3804,6 +4503,7 @@ validflag Time      Level   Message                 Code
             }
             th.appendChild(label);
             th.onclick = (ev) => { ev.stopPropagation(); this.promptColumnFilter(t.name, h, th); };
+            th.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.promptColumnFilter(t.name, h, th); } };
             th.dataset.vc = hIdx;
             thRow.appendChild(th);
         });
@@ -3819,6 +4519,12 @@ validflag Time      Level   Message                 Code
                 if(String(v).length > 18) td.dataset.full=v;
                 td.dataset.r=rIdx; td.dataset.c=cIdx;
                 td.dataset.vr=rIdx; td.dataset.vc=cIdx;
+                td.dataset.resultRow = r._resultIndex ?? rIdx;
+                if(!r._readOnly) {
+                    td.dataset.sourceRow = r._sourceRow;
+                    td.dataset.sourceCol = r._sourceCols[cIdx];
+                    td.title = '双击编辑；修改会作为当前页签的修订保存';
+                }
                 tr.appendChild(td);
             });
             tbody.appendChild(tr);
@@ -3830,15 +4536,17 @@ validflag Time      Level   Message                 Code
     buildRowHeaderTable(t, res, tIdx, colFilters={}) {
         const tbl = createEl('table');
         tbl.dataset.idx = tIdx;
+        tbl.dataset.tableName = t.name;
         tbl.dataset.viewMode = 'row-header';
+        tbl.setAttribute('aria-label', `${t.name} 行表头预览`);
         const thead = createEl('thead');
         const htr = createEl('tr');
         const corner = createEl('th', 'row-header-th');
         corner.textContent = '字段';
         htr.appendChild(corner);
-        res.rows.forEach((_, rIdx) => {
+        res.rows.forEach((row, rIdx) => {
             const th = createEl('th');
-            th.textContent = `Row ${rIdx + 1}`;
+            th.textContent = `Row ${(row._resultIndex ?? rIdx) + 1}`;
             th.dataset.vc = rIdx + 1;
             htr.appendChild(th);
         });
@@ -3848,11 +4556,14 @@ validflag Time      Level   Message                 Code
         res.headers.forEach((h, cIdx) => {
             const tr = createEl('tr');
             const hCell = createEl('td', 'row-header-cell filterable-th');
+            hCell.tabIndex = 0;
+            hCell.setAttribute('role', 'button');
             const hasFilter = colFilters[h] && colFilters[h].toString().trim();
             hCell.textContent = h;
             hCell.title = hasFilter ? `已过滤：${colFilters[h]}` : '点击过滤该字段';
             if(hasFilter) hCell.style.color = 'var(--primary)';
             hCell.onclick = ev => { ev.stopPropagation(); this.promptColumnFilter(t.name, h, hCell); };
+            hCell.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.promptColumnFilter(t.name, h, hCell); } };
             tr.appendChild(hCell);
             res.rows.forEach((r, rIdx) => {
                 const td = createEl('td');
@@ -3861,6 +4572,12 @@ validflag Time      Level   Message                 Code
                 if(String(v).length > 18) td.dataset.full = v;
                 td.dataset.r = rIdx; td.dataset.c = cIdx;
                 td.dataset.vr = cIdx; td.dataset.vc = rIdx;
+                td.dataset.resultRow = r._resultIndex ?? rIdx;
+                if(!r._readOnly) {
+                    td.dataset.sourceRow = r._sourceRow;
+                    td.dataset.sourceCol = r._sourceCols[cIdx];
+                    td.title = '双击编辑；修改会作为当前页签的修订保存';
+                }
                 tr.appendChild(td);
             });
             tbody.appendChild(tr);
@@ -3875,14 +4592,10 @@ validflag Time      Level   Message                 Code
         this.rendered = []; Select.clear();
         if(!this.raw.length) { 
             div.innerHTML = `<div class="empty">
-                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <rect x="15" y="25" width="90" height="70" rx="12" stroke="currentColor" stroke-opacity="0.25" stroke-width="4" stroke-dasharray="6 8"/>
-                    <rect x="30" y="40" width="60" height="16" rx="6" fill="currentColor" fill-opacity="0.12"/>
-                    <rect x="30" y="62" width="40" height="10" rx="5" fill="currentColor" fill-opacity="0.12"/>
-                    <rect x="30" y="78" width="50" height="10" rx="5" fill="currentColor" fill-opacity="0.12"/>
-                </svg>
-                <div style="font-weight:700;">等待解析数据</div>
-                <div class="muted">粘贴数据后点击“解析”。需要示例？点击左侧提示</div>
+                <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
+                <div style="font-weight:800; color:var(--text-strong);">把杂乱数据变成可分析表格</div>
+                <div class="muted">在左侧粘贴、拖放或选择文件，然后点击“解析数据”</div>
+                <button class="tonal" type="button" onclick="document.getElementById('sampleLink').click()">加载示例数据</button>
             </div>`; 
             return; 
         }
@@ -3901,11 +4614,7 @@ validflag Time      Level   Message                 Code
         const combined = [...list, ...joins];
         if(!combined.length) {
             div.innerHTML = `<div class="empty">
-                <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M25 35h70v50H25z" stroke="currentColor" stroke-opacity="0.3" stroke-width="4" stroke-dasharray="6 8"/>
-                    <path d="M36 52h48" stroke="currentColor" stroke-opacity="0.35" stroke-width="6" stroke-linecap="round"/>
-                    <path d="M36 68h32" stroke="currentColor" stroke-opacity="0.3" stroke-width="6" stroke-linecap="round"/>
-                </svg>
+                <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
                 <div style="font-weight:700;">当前筛选下无可见表</div>
                 <div class="muted">检查“显示原始表 / JOIN 视图”的选择</div>
             </div>`;
@@ -3914,6 +4623,7 @@ validflag Time      Level   Message                 Code
 
         combined.forEach((t, tIdx) => {
             const res = this.proc(t, ui);
+            res.rows.forEach((row, index) => { row._resultIndex = index; });
             this.rendered.push({name: t.name, ...res}); 
             const colFilters = (ui.columnFilters && ui.columnFilters[t.name]) || {};
             const filterCount = Object.values(colFilters).filter(v => (v ?? '').toString().trim()).length;
@@ -3941,13 +4651,36 @@ validflag Time      Level   Message                 Code
                 fTag.onclick = () => this.clearTableFilters(t.name);
                 meta.appendChild(fTag); 
             }
+            const collapseBtn = createEl('button', 'sm text-button');
+            collapseBtn.type = 'button';
+            collapseBtn.textContent = isCollapsed ? '展开' : '折叠';
+            collapseBtn.title = isCollapsed ? '展开表格' : '折叠表格';
+            collapseBtn.onclick = event => { event.stopPropagation(); this.toggleTableCollapse(t.name); };
+            meta.appendChild(collapseBtn);
             card.appendChild(meta);
             if(isCollapsed) { div.appendChild(card); return; }
 
             const mode = this.getTablePreviewMode(t.name);
             this.appendPreviewModeToggle(meta, t.name, mode);
-            const tbl = mode === 'row-header' ? this.buildRowHeaderTable(t, res, tIdx, colFilters) : this.buildColumnHeaderTable(t, res, tIdx, colFilters);
+            const pageSize = Number(ui.pageSize) || 100;
+            const totalPages = Math.max(1, Math.ceil(res.rows.length / pageSize));
+            const requestedPage = Number(ui.tablePages && ui.tablePages[t.name]) || 1;
+            const page = Math.min(totalPages, Math.max(1, requestedPage));
+            if(!ui.tablePages) ui.tablePages = {};
+            ui.tablePages[t.name] = page;
+            const pageRes = { headers:res.headers, rows:res.rows.slice((page - 1) * pageSize, page * pageSize) };
+            const tbl = mode === 'row-header' ? this.buildRowHeaderTable(t, pageRes, tIdx, colFilters) : this.buildColumnHeaderTable(t, pageRes, tIdx, colFilters);
             card.appendChild(tbl);
+            if(totalPages > 1) {
+                const pager = createEl('div', 'table-pagination');
+                const info = createEl('span');
+                const from = (page - 1) * pageSize + 1;
+                const to = Math.min(res.rows.length, page * pageSize);
+                info.textContent = `${from.toLocaleString()}–${to.toLocaleString()} / ${res.rows.length.toLocaleString()} 行 · 第 ${page}/${totalPages} 页`;
+                const prev = createEl('button'); prev.type = 'button'; prev.textContent = '上一页'; prev.disabled = page <= 1; prev.onclick = () => this.setTablePage(t.name, page - 1);
+                const next = createEl('button'); next.type = 'button'; next.textContent = '下一页'; next.disabled = page >= totalPages; next.onclick = () => this.setTablePage(t.name, page + 1);
+                pager.appendChild(info); pager.appendChild(prev); pager.appendChild(next); card.appendChild(pager);
+            }
             div.appendChild(card);
         });
     },
@@ -4062,9 +4795,10 @@ validflag Time      Level   Message                 Code
     startCellEdit(td) {
         if(this.activeEditor) this.finishCellEdit(true);
         const tbl = td.closest('table');
-        const tIdx = parseInt(tbl.dataset.idx, 10);
-        const rIdx = parseInt(td.dataset.r, 10);
-        const cIdx = parseInt(td.dataset.c, 10);
+        const tableName = tbl.dataset.tableName;
+        const sourceRow = Number(td.dataset.sourceRow);
+        const sourceCol = Number(td.dataset.sourceCol);
+        if(!tableName || !Number.isInteger(sourceRow) || !Number.isInteger(sourceCol)) return Toast.show('JOIN 视图为只读，请编辑来源表', true);
         const orig = td.textContent;
         const origHeight = td.getBoundingClientRect().height;
         td.style.height = `${origHeight}px`;
@@ -4079,9 +4813,12 @@ validflag Time      Level   Message                 Code
         td.appendChild(input);
         input.focus();
         input.select();
+        let done = false;
 
         const cancel = () => {
-            td.removeChild(input);
+            if(done) return;
+            done = true;
+            if(input.parentNode === td) td.removeChild(input);
             td.textContent = orig;
             td.style.height = '';
             td.style.minHeight = '';
@@ -4089,13 +4826,13 @@ validflag Time      Level   Message                 Code
             this.activeEditor = null;
         };
         const commit = () => {
+            if(done) return;
+            done = true;
             const val = input.value;
-            td.removeChild(input);
+            if(input.parentNode === td) td.removeChild(input);
             td.textContent = val;
             if(String(val).length > 18) td.dataset.full = val; else td.removeAttribute('data-full');
-            if(this.rendered[tIdx] && this.rendered[tIdx].rows[rIdx]) {
-                this.rendered[tIdx].rows[rIdx].d[cIdx] = val;
-            }
+            this.setCellEdit(tableName, sourceRow, sourceCol, val, true);
             td.style.height = '';
             td.style.minHeight = '';
             td.classList.remove('editing');
@@ -4137,7 +4874,9 @@ validflag Time      Level   Message                 Code
             if (opMatch) {
                 const key = opMatch[1].toLowerCase();
                 const op = opMatch[2];
-                const val = opMatch[3].toLowerCase();
+                const rawVal = opMatch[3].trim();
+                const unquoted = ((rawVal.startsWith('"') && rawVal.endsWith('"')) || (rawVal.startsWith("'") && rawVal.endsWith("'"))) ? rawVal.slice(1, -1) : rawVal;
+                const val = unquoted.toLowerCase();
                 const idx = hMap.get(key);
                 if (idx === undefined) return false;
                 
@@ -4157,14 +4896,28 @@ validflag Time      Level   Message                 Code
                 }
             }
             if (token.startsWith('/') && token.endsWith('/')) {
-                try { return new RegExp(token.slice(1, -1), 'i').test(row.join(' ')); } catch (e) { return false; }
+                const pattern = token.slice(1, -1);
+                if(pattern.length > 200) return false;
+                try { return new RegExp(pattern, 'i').test(row.join(' ')); } catch (e) { return false; }
             }
             return row.join(' ').toLowerCase().includes(token.toLowerCase());
         };
 
         const checkRule = (ruleStr, row) => {
             if (!ruleStr) return true;
-            const tokens = ruleStr.trim().split(/\s+/);
+            const tokens = [];
+            let token = '', quote = '';
+            for(const ch of ruleStr.trim()) {
+                if(quote) {
+                    token += ch;
+                    if(ch === quote) quote = '';
+                } else if(ch === '"' || ch === "'") {
+                    quote = ch; token += ch;
+                } else if(/\s/.test(ch)) {
+                    if(token) { tokens.push(token); token = ''; }
+                } else token += ch;
+            }
+            if(token) tokens.push(token);
             return tokens.every(t => {
                 if (t.includes('|')) return t.split('|').some(st => checkToken(st, row));
                 return checkToken(t, row);
@@ -4176,7 +4929,7 @@ validflag Time      Level   Message                 Code
         const hlF = (r.hl||'');
 
         const rows = [];
-        t.rows.forEach(row => {
+        t.rows.forEach((row, sourceRow) => {
             if(gF && !checkRule(gF, row)) return;
             if(tF && !checkRule(tF, row)) return;
             if(activeColFilters.length) {
@@ -4191,21 +4944,29 @@ validflag Time      Level   Message                 Code
             let hl = false;
             if(ui.enableHighlight!==false && hlF && checkRule(hlF, row)) hl = true;
             if(ui.onlyHighlighted && !hl) return;
-            rows.push({ d: idxs.map(i=>row[i]), _hl: hl });
+            rows.push({ d: idxs.map(i=>row[i]), _hl: hl, _sourceRow:sourceRow, _sourceCols:idxs.slice(), _readOnly:!!t.isView });
         });
         return { headers: head, rows };
     },
 
+    closeModal() {
+        $('modalOverlay').classList.add('hidden');
+        if(this.modalReturnFocus && typeof this.modalReturnFocus.focus === 'function') this.modalReturnFocus.focus();
+        this.modalReturnFocus = null;
+    },
     modal(title, html) {
-        $('modalContent').innerHTML = `<div class="panel-header" style="border-radius:8px 8px 0 0;">${title} <button class="icon-btn" onclick="document.getElementById('modalOverlay').classList.add('hidden')">×</button></div><div style="padding:16px; overflow-y:auto; flex:1;">${html}</div>`;
+        this.modalReturnFocus = document.activeElement;
+        $('modalContent').innerHTML = `<div class="panel-header" style="border-radius:8px 8px 0 0;"><span id="modalTitle">${this.escapeHtml(title)}</span><button class="icon-btn" id="modalCloseBtn" type="button" aria-label="关闭">×</button></div><div class="modal-body">${html}</div>`;
         $('modalOverlay').classList.remove('hidden');
+        $('modalCloseBtn').onclick = () => this.closeModal();
+        setTimeout(() => $('modalCloseBtn').focus(), 0);
     },
 
     modTables() {
         const ts = this.raw.map(t=>t.name);
         const selSaved = Store.curr().ui.displayTables;
         const sel = (selSaved===null || selSaved===undefined) ? ts : selSaved;
-        const h = ts.map(t => `<label class="checkbox-row"><input type="checkbox" value="${t}" ${sel.includes(t)?'checked':''}><span>${t}</span></label>`).join('');
+        const h = ts.map(t => `<label class="checkbox-row"><input type="checkbox" value="${this.escapeHtml(t)}" ${sel.includes(t)?'checked':''}><span>${this.escapeHtml(t)}</span></label>`).join('');
         this.modal('选择显示表', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         $('saveMod').onclick = () => {
             const v = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c=>c.value);
@@ -4219,8 +4980,8 @@ validflag Time      Level   Message                 Code
         if(!vs.length) return alert('请先管理视图');
         const h = vs.map(v => {
             const name = v.view || '(未命名视图)';
-            const meta = (v.left && v.right) ? `<span style="font-size:11px; color:var(--text-tertiary); margin-left:6px;">${v.left} ⇔ ${v.right}</span>` : '';
-            return `<label class="checkbox-row"><input type="checkbox" value="${name}" ${sel.includes(name)?'checked':''}><span style="font-weight:600; color:var(--text-main);">${name}</span>${meta}</label>`;
+            const meta = (v.left && v.right) ? `<span style="font-size:11px; color:var(--text-tertiary); margin-left:6px;">${this.escapeHtml(v.left)} ⇔ ${this.escapeHtml(v.right)}</span>` : '';
+            return `<label class="checkbox-row"><input type="checkbox" value="${this.escapeHtml(name)}" ${sel.includes(name)?'checked':''}><span style="font-weight:600; color:var(--text-main);">${this.escapeHtml(name)}</span>${meta}</label>`;
         }).join('');
         this.modal('启用视图', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         $('saveMod').onclick = () => {
@@ -4255,7 +5016,7 @@ validflag Time      Level   Message                 Code
                 <button class="sm" id="colNone">全不选</button>
             </div>
             <div id="colList" style="max-height:400px; overflow-y:auto; border:1px solid var(--border-light); padding:8px; border-radius:4px;">
-                ${all.map(c => `<label class="checkbox-row" data-val="${c.toLowerCase()}"><input type="checkbox" value="${c}" ${!isFocusActive || cur.includes(c)?'checked':''}><span>${c}</span></label>`).join('')}
+                ${all.map(c => `<label class="checkbox-row" data-val="${this.escapeHtml(c.toLowerCase())}"><input type="checkbox" value="${this.escapeHtml(c)}" ${!isFocusActive || cur.includes(c)?'checked':''}><span>${this.escapeHtml(c)}</span></label>`).join('')}
             </div>
             <div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">应用</button></div>
         `;

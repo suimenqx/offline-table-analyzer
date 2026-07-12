@@ -1,0 +1,15 @@
+{
+  "name": "offline-table-analyzer",
+  "version": "20.0.0",
+  "private": true,
+  "description": "A dependency-free, privacy-first offline table analysis workbench in one HTML file.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node tools/run-parser-tests.js --all",
+    "validate:release": "node tools/validate-release.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
+

@@ -1,0 +1,20 @@
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Node development artifacts
+node_modules/
+npm-debug.log*
+
+# Generated release/download artifacts
+dist/
+*.xlsx
+*.zip
+*_workspace_*.json
+
+# Local screenshots and temporary files
+tmp/
+*.tmp
+

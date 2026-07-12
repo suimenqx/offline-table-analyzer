@@ -1,0 +1,30 @@
+name: Feature request
+description: Propose an offline table-analysis improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Describe the workflow problem rather than only the desired control.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: dropdown
+    id: offline
+    attributes:
+      label: Can this remain fully offline and dependency-free at runtime?
+      options: [Yes, Unsure, No]
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
