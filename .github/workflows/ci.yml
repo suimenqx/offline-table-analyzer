@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   test:
-    name: Node ${{ matrix.os }}
+    name: Test on ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
