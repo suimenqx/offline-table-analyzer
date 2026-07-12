@@ -3220,7 +3220,8 @@ const Select = {
         const p = $('previewArea');
         p.addEventListener('mousedown', e => {
             const td = e.target.closest('td');
-            if(!td || td.classList.contains('row-header-cell')) { this.clear(); return; }
+            if(!td || td.classList.contains('row-header-cell') || td.classList.contains('editing')) { this.clear(); return; }
+            if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
             this.active = true;
             this.tableEl = td.closest('table');
             this.lastPointer = { x:e.clientX, y:e.clientY };
