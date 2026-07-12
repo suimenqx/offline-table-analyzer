@@ -2526,11 +2526,19 @@ const JoinEditor = {
             availableTables.forEach(name => select.add(new Option(name, name)));
         });
 
-        if (v.left) $('jeLeftTable').value = v.left;
-        else if ($('jeLeftTable').options.length > 0) $('jeLeftTable').selectedIndex = 0;
-
-        if (v.right) $('jeRightTable').value = v.right;
-        else if ($('jeRightTable').options.length > 0) $('jeRightTable').selectedIndex = 0;
+        const setTableValue = (selectId, val) => {
+            const sel = $(selectId);
+            if (val && Array.from(sel.options).some(o => o.value === val)) {
+                sel.value = val;
+                return true;
+            }
+            if (sel.options.length > 0) sel.selectedIndex = 0;
+            return !val;
+        };
+        const leftOk = setTableValue('jeLeftTable', v.left);
+        const rightOk = setTableValue('jeRightTable', v.right);
+        if (!leftOk && v.left) Toast.show(`左表"${v.left}"在当前数据中已不存在，关联条件和输出列可能失效`, true);
+        if (!rightOk && v.right) Toast.show(`右表"${v.right}"在当前数据中已不存在，关联条件和输出列可能失效`, true);
 
         this.state.rels = v.on ? v.on.split(',').map(s => { const p=s.split('='); return {l:p[0].trim(), r:p[1].trim()}; }) : [];
         if(this.state.rels.length === 0) this.state.rels.push({l:'', r:''});
@@ -4365,7 +4373,7 @@ validflag Time      Level   Message                 Code
             if(!$('modalOverlay').classList.contains('hidden')) return;
             if(e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); }
             if(e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('jeLSearch').focus(); }
-            if(e.key === 'Enter' && !e.shiftKey) { JoinEditor.save(); }
+            if(e.key === 'Enter' && !e.shiftKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); JoinEditor.save(); }
         });
 
         // Filter popover bindings
