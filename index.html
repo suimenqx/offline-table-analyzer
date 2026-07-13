@@ -1791,9 +1791,12 @@ const AlignedTableParser = {
         }
         if(cur.length) blocks.push(cur);
         // 3) 逐 block：首行 → 列头定位（复用 CLI FIXED 模式），后续行 → 位置截取
-        const tables = []; const used = new Set();
+        const tables = []; const used = new Set(); let pendingName = null;
         for(const block of blocks) {
-            if(block.length < 2) continue;
+            if(block.length < 2) {
+                if(block.length === 1) pendingName = block[0].trim();
+                continue;
+            }
             const headerLine = block[0];
             const regex = /\S+/g; let m; const ranges = [];
             while((m = regex.exec(headerLine)) !== null) ranges.push({s:m.index});
@@ -1821,8 +1824,10 @@ const AlignedTableParser = {
                 rows.push(vals);
             }
             if(!rows.length) continue;
-            const name = TableUtils.makeTableName('Aligned Table', tables.length, used);
+            const name = TableUtils.makeTableName(pendingName || 'Aligned Table', tables.length, used);
+            pendingName = null;
             const resolved = HeaderResolver.infer([headers, ...rows], { ...options, hasHeader:true, tableName:name });
+            resolved.name = name;
             resolved.sourceType = this.id;
             resolved.meta = { delimiter:'position', hasHeader:true, generatedHeaders:false };
             tables.push(resolved);

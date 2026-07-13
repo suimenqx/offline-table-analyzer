@@ -119,6 +119,13 @@ test('aligned table - multi-table with separators', () => {
   assert(r.tables.length === 2 && r.tables[0].rows.length === 1 && r.tables[1].rows.length === 1, 'multi-table count');
   assert(r.tables[0].headers[0] === 'A' && r.tables[1].headers[0] === 'X', 'multi headers');
 });
+test('aligned table - title between dashes', () => {
+  const input = '---\nMy Table\n---\ncol1    col2\nval1    val2';
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'format');
+  assert(r.tables[0].name.startsWith('My Table'), 'title not used as name: ' + r.tables[0].name);
+  assert(r.tables[0].headers[0] === 'col1', 'col1');
+});
 test('aligned table - value wider than header truncated', () => {
   const input = 'ID    Name\n1     VeryLongNameHere\n2     Short';
   const r = ImportEngine.parse(input);
