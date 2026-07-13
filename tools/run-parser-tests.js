@@ -126,6 +126,15 @@ test('aligned table - title between dashes', () => {
   assert(r.tables[0].name.startsWith('My Table'), 'title not used as name: ' + r.tables[0].name);
   assert(r.tables[0].headers[0] === 'col1', 'col1');
 });
+test('aligned table - header between dashes separated from data', () => {
+  const input = '---\ncol1    col2              col3\n---\nval1    val2              val3\nval4    val5              val6';
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'format');
+  assert(r.tables[0].headers.length === 3, 'header count');
+  assert(r.tables[0].rows.length === 2, 'row count');
+  assert(r.tables[0].rows[0][0] === 'val1', 'val1');
+  assert(r.tables[0].rows[1][2] === 'val6', 'val6');
+});
 test('aligned table - value wider than header truncated', () => {
   const input = 'ID    Name\n1     VeryLongNameHere\n2     Short';
   const r = ImportEngine.parse(input);

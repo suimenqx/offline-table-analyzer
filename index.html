@@ -1783,16 +1783,36 @@ const AlignedTableParser = {
         // 1) 去掉纯 - 分隔线（替换为空行，保留表间边界）
         const isSep = (l) => /^[\s-]+$/.test(l) && /-/.test(l) && !/[+|]/.test(l);
         const clean = TableUtils.lines(source.text).map(l => isSep(l) ? '' : l);
-        // 2) 按空行切 block，每一 block = 一张表
+        // 2) 按空行切 block
         const blocks = []; let cur = [];
         for(const l of clean) {
             if(!l.trim()) { if(cur.length) { blocks.push(cur); cur = []; } }
             else cur.push(l);
         }
         if(cur.length) blocks.push(cur);
-        // 3) 逐 block：首行 → 列头定位（复用 CLI FIXED 模式），后续行 → 位置截取
+        // 3) 合并被 --- 隔开的列头 block 与数据 block（列头有 ≥2 个 ≥2 空格间隔的单词）
+        const isHeaderLike = (line) => {
+            const re = /\S+/g; let w; const words = [];
+            while((w = re.exec(line)) !== null) words.push({s:w.index, e:w.index + w[0].length});
+            if(words.length < 2) return false;
+            for(let k = 1; k < words.length; k++) {
+                if(words[k].s - words[k-1].e < 2) return false;
+            }
+            return true;
+        };
+        const merged = [];
+        for(let i = 0; i < blocks.length; i++) {
+            const b = blocks[i];
+            if(b.length === 1 && isHeaderLike(b[0]) && i + 1 < blocks.length) {
+                merged.push([b[0], ...blocks[i + 1]]);
+                i++;
+            } else {
+                merged.push(b);
+            }
+        }
+        // 4) 逐 block：首行 → 列头定位（复用 CLI FIXED 模式），后续行 → 位置截取
         const tables = []; const used = new Set(); let pendingName = null;
-        for(const block of blocks) {
+        for(const block of merged) {
             if(block.length < 2) {
                 if(block.length === 1) pendingName = block[0].trim();
                 continue;
@@ -1801,7 +1821,7 @@ const AlignedTableParser = {
             const regex = /\S+/g; let m; const ranges = [];
             while((m = regex.exec(headerLine)) !== null) ranges.push({s:m.index});
             if(ranges.length < 2) continue;
-            // 校验列间间隙 ≥ 2 空格
+            // 校验列间间隙 ≥ 2 空格（isHeaderLike 已保证，但安全起见再校验）
             const words = []; const re2 = /\S+/g; let gapOk = true;
             while((m = re2.exec(headerLine)) !== null) words.push({s:m.index, e:m.index + m[0].length});
             if(words.length < 2) continue;
