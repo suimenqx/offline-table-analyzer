@@ -1773,99 +1773,62 @@ const FixedWidthParser = {
     }
 };
 
-function findAlignedSegments(line) {
-    if(!line || !line.trim()) return null;
-    const regex = /\S+/g;
-    const words = [];
-    let m;
-    while((m = regex.exec(line)) !== null) words.push({ start:m.index, end:m.index + m[0].length });
-    if(words.length < 2) return null;
-    for(let k = 1; k < words.length; k++) {
-        if(words[k].start - words[k - 1].end < 2) return null;
-    }
-    const zones = [];
-    for(let k = 0; k < words.length; k++) {
-        zones.push({ start:words[k].start, end:(k < words.length - 1) ? words[k + 1].start : 99999 });
-    }
-    return zones;
-}
-
 const AlignedTableParser = {
     id:'aligned-table', label:'定宽对齐表格',
     confidence(source) {
-        const text = source.text || '';
-        const lines = TableUtils.lines(text);
-        const isSep = (line) => {
-            const t = (line || '').trim();
-            if(!t) return false;
-            return /^[\s-]+$/.test(line) && !/[+|=\u2500-\u257F]/.test(line) && /-/.test(line);
-        };
-        const hasSep = lines.some(l => isSep(l));
-        const hasNull = /(?:^|\n)\s*\S.*?--/.test(text);
-        if(!hasSep && !hasNull) return 0;
-        for(let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            if(!line || !line.trim()) continue;
-            if(isSep(line)) continue;
-            const zones = findAlignedSegments(line);
-            if(!zones) continue;
-            for(let j = i + 1; j < Math.min(lines.length, i + 6); j++) {
-                const next = lines[j];
-                if(!next || !next.trim()) continue;
-                if(isSep(next)) continue;
-                const vals = zones.map(z => next.substring(z.start, Math.min(z.end, next.length)).trim());
-                const filled = vals.filter(v => v !== '').length;
-                if(filled >= Math.max(1, zones.length * 0.3)) {
-                    let score = 0.55;
-                    if(hasSep) score += 0.18;
-                    if(hasNull) score += 0.10;
-                    return Math.min(score + Math.min(filled / zones.length * 0.12, 0.12), 0.92);
-                }
-                break;
-            }
-        }
-        return hasSep ? 0.35 : 0;
+        const hasDashLine = TableUtils.lines(source.text || '').some(l => /^[\s-]+$/.test(l) && /-/.test(l) && !/[+|]/.test(l));
+        return hasDashLine ? 0.80 : 0;
     },
     parse(source, options={}) {
-        const lines = TableUtils.lines(source.text);
-        const isSep = (line) => {
-            const t = (line || '').trim();
-            if(!t) return false;
-            return /^[\s-]+$/.test(line) && !/[+|=\u2500-\u257F]/.test(line) && /-/.test(line);
-        };
-        const tables = [];
-        const used = new Set();
-        let i = 0;
-        while(i < lines.length) {
-            while(i < lines.length && (isSep(lines[i]) || !lines[i].trim())) i++;
-            if(i >= lines.length) break;
-            const zones = findAlignedSegments(lines[i]);
-            if(!zones) { i++; continue; }
-            const headerLine = lines[i];
-            const headers = zones.map(z => headerLine.substring(z.start, Math.min(z.end, headerLine.length)).trim());
-            i++;
-            const rows = [];
-            while(i < lines.length) {
-                const line = lines[i];
-                if(isSep(line)) { i++; break; }
-                if(!line.trim()) { i++; continue; }
-                const vals = zones.map(z => {
-                    let val = line.substring(z.start, Math.min(z.end, line.length)).trim();
-                    return val === '--' ? '' : val;
-                });
-                rows.push(vals);
-                i++;
-            }
-            if(rows.length > 0) {
-                const name = TableUtils.makeTableName('Aligned Table', tables.length, used);
-                const resolved = HeaderResolver.infer([headers, ...rows], { ...options, hasHeader:true, tableName:name });
-                resolved.sourceType = this.id;
-                resolved.meta = { delimiter:'position', hasHeader:true, generatedHeaders:false };
-                tables.push(resolved);
-            }
+        // 1) 去掉纯 - 分隔线（替换为空行，保留表间边界）
+        const isSep = (l) => /^[\s-]+$/.test(l) && /-/.test(l) && !/[+|]/.test(l);
+        const clean = TableUtils.lines(source.text).map(l => isSep(l) ? '' : l);
+        // 2) 按空行切 block，每一 block = 一张表
+        const blocks = []; let cur = [];
+        for(const l of clean) {
+            if(!l.trim()) { if(cur.length) { blocks.push(cur); cur = []; } }
+            else cur.push(l);
         }
-        if(tables.length === 0 && options.format === this.id) {
-            return { tables:[], diagnostics:[{ level:'warning', code:'NO_ALIGNED_TABLE', message:'未检测到定宽对齐表格，请确认输入包含列头行且列间至少有两个空格' }] };
+        if(cur.length) blocks.push(cur);
+        // 3) 逐 block：首行 → 列头定位（复用 CLI FIXED 模式），后续行 → 位置截取
+        const tables = []; const used = new Set();
+        for(const block of blocks) {
+            if(block.length < 2) continue;
+            const headerLine = block[0];
+            const regex = /\S+/g; let m; const ranges = [];
+            while((m = regex.exec(headerLine)) !== null) ranges.push({s:m.index});
+            if(ranges.length < 2) continue;
+            // 校验列间间隙 ≥ 2 空格
+            const words = []; const re2 = /\S+/g; let gapOk = true;
+            while((m = re2.exec(headerLine)) !== null) words.push({s:m.index, e:m.index + m[0].length});
+            if(words.length < 2) continue;
+            for(let k = 1; k < words.length; k++) {
+                if(words[k].s - words[k-1].e < 2) { gapOk = false; break; }
+            }
+            if(!gapOk) continue;
+            // 构建列区间（复刻 CliTableDataParser FIXED 模式）
+            for(let k = 0; k < ranges.length; k++) {
+                ranges[k].e = (k < ranges.length - 1) ? ranges[k + 1].s : 99999;
+            }
+            const headers = ranges.map(r => headerLine.substring(r.s, Math.min(r.e, headerLine.length)).trim());
+            const rows = [];
+            for(let i = 1; i < block.length; i++) {
+                const vals = ranges.map(r => {
+                    const v = block[i].substring(r.s, Math.min(r.e, block[i].length)).trim();
+                    return v === '--' ? '' : v;
+                });
+                if(vals.every(v => !v)) continue;
+                rows.push(vals);
+            }
+            if(!rows.length) continue;
+            const name = TableUtils.makeTableName('Aligned Table', tables.length, used);
+            const resolved = HeaderResolver.infer([headers, ...rows], { ...options, hasHeader:true, tableName:name });
+            resolved.sourceType = this.id;
+            resolved.meta = { delimiter:'position', hasHeader:true, generatedHeaders:false };
+            tables.push(resolved);
+        }
+        if(!tables.length && options.format === this.id) {
+            return { tables:[], diagnostics:[{ level:'warning', code:'NO_ALIGNED_TABLE', message:'未检测到定宽对齐表格' }] };
         }
         return { tables, diagnostics:[] };
     }
