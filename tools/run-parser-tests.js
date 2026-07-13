@@ -82,6 +82,59 @@ test('fixed width', () => {
   const r = ImportEngine.parse('id   name       age\n1    Alice      20\n2    Bob        30');
   assert(r.format === 'fixed-width', 'fixed width failed');
 });
+test('aligned table - scenario A with separators', () => {
+  const input = '---\ncol1    col2              col3             col4       col5\nval1    val2              val3             val4       val5\nval6    --                val7             --         val8\n---';
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'format not aligned');
+  assert(r.tables[0].headers.length === 5, 'header count');
+  assert(r.tables[0].rows[0][0] === 'val1', 'val1');
+  assert(r.tables[0].rows[1][1] === '', 'empty for --');
+  assert(r.tables[0].rows[1][3] === '', 'empty for -- 2');
+  assert(r.tables[0].rows[0][4] === 'val5', 'val5');
+});
+test('aligned table - scenario B top separator only', () => {
+  const input = '---\ncol1    col2              col3\nval1    val2              val3';
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'format not aligned');
+  assert(r.tables[0].headers[1] === 'col2', 'col2');
+  assert(r.tables[0].rows[0][2] === 'val3', 'val3');
+});
+test('aligned table - scenario C bottom separator only', () => {
+  const input = 'col1    col2              col3\nval1    val2              val3\n---';
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'format not aligned');
+  assert(r.tables[0].headers[0] === 'col1', 'col1');
+  assert(r.tables[0].rows[0][1] === 'val2', 'val2');
+});
+test('aligned table - scenario D no separators', () => {
+  const input = 'col1    col2              col3             col4       col5\nval1    val2              val3             val4       val5';
+  const r = ImportEngine.parse(input, { format:'aligned-table' });
+  assert(r.format === 'aligned-table', 'format not aligned');
+  assert(r.tables[0].headers[3] === 'col4', 'col4');
+  assert(r.tables[0].rows[0][0] === 'val1', 'val1');
+});
+test('aligned table - multi-table with separators', () => {
+  const input = '---\nA    B              C\n1    x              y\n---\nX    Y              Z\n10   foo            bar\n---';
+  const r = ImportEngine.parse(input);
+  assert(r.tables.length === 2 && r.tables[0].rows.length === 1 && r.tables[1].rows.length === 1, 'multi-table count');
+  assert(r.tables[0].headers[0] === 'A' && r.tables[1].headers[0] === 'X', 'multi headers');
+});
+test('aligned table - value wider than header truncated', () => {
+  const input = 'ID    Name\n1     VeryLongNameHere\n2     Short';
+  const r = ImportEngine.parse(input);
+  assert(r.tables[0].rows[0][1] === 'VeryLongNameHere' || r.tables[0].rows[0][1].startsWith('Very'), 'wide value');
+});
+test('aligned table - hex values preserved', () => {
+  const input = 'Addr    Val\n0x1000  0xFF\n0x2000  0x1A';
+  const r = ImportEngine.parse(input);
+  assert(r.tables[0].rows[0][0] === '0x1000', 'hex addr');
+  assert(r.tables[0].rows[1][1] === '0x1A', 'hex val');
+});
+test('aligned table - manual format', () => {
+  const input = 'col1    col2\nval1    val2';
+  const r = ImportEngine.parse(input, { format:'aligned-table' });
+  assert(r.format === 'aligned-table', 'manual aligned');
+});
 test('duplicate and blank headers', () => {
   const r = ImportEngine.parse('id,,id\n1,Alice,100');
   assert(r.tables[0].headers.join('|') === 'id|Column2|id_2', 'header normalization failed');

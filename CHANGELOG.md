@@ -2,6 +2,18 @@
 
 All notable changes are documented here. The project follows semantic versioning from v20 onward.
 
+## 20.1.0 — 2026-07-13
+
+### New parser: 定宽对齐表格 (aligned-table)
+
+- Added support for fixed-width aligned delimiter-free tables where column boundaries are inferred from header row character positions.
+- Handles four scenarios: separators above/below, top-only, bottom-only, and no separators.
+- Separator lines are pure `-` rows (no `+` or `|`).
+- `--` in a cell is converted to empty value.
+- Supports multiple tables in one input separated by separator lines.
+- Column values are extracted by character position ranges from the header row, supporting values wider or narrower than headers (with truncation).
+- Minimum 2 spaces between columns to distinguish intra-column spaces from inter-column gaps.
+
 ## 20.0.0 — 2026-07-12
 
 ### Documentation

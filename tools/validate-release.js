@@ -24,8 +24,8 @@ function validateRelease() {
   const script = scripts[0].replace(/^<script(?:\s[^>]*)?>/i, '').replace(/<\/script>$/i, '');
   new vm.Script(script, { filename:'offline-table-analyzer-v20.js' });
   const checks = [
-    [html.includes("const APP_VERSION = '20.0.0'"), 'missing APP_VERSION 20.0.0'],
-    [html.includes('Offline Table Analyzer v20.0.0'), 'document title version mismatch'],
+    [html.includes("const APP_VERSION = '20.1.0'"), 'missing APP_VERSION 20.1.0'],
+    [html.includes('Offline Table Analyzer v20.1.0'), 'document title version mismatch'],
     [!html.includes('__OTA_TESTS__'), 'production test hook is present'],
     [!html.includes('offline_table_analyzer_v18'), 'legacy v18 filename reference is present'],
     [!/<script[^>]+src=/i.test(html), 'external script reference is present'],

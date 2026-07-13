@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offline Table Analyzer v20.0.0</title>
+    <title>Offline Table Analyzer v20.1.0</title>
     <style>
         /* --- Design Tokens --- */
         :root {
@@ -483,7 +483,7 @@
             <button class="logo sidebar-toggle" id="sidebarToggle" type="button" title="折叠或展开控制面板" aria-label="折叠或展开控制面板" aria-expanded="true">
                 <span class="logo-icon" aria-hidden="true">OTA</span>
                 <span class="logo-copy"><span>Offline Table Analyzer</span><small>Local data workbench</small></span>
-                <span class="version-pill">v20</span>
+                <span class="version-pill">v20.1</span>
             </button>
         </div>
 
@@ -527,6 +527,7 @@
                                 <option value="pipe-table">竖线/Markdown</option>
                                 <option value="ascii-table">ASCII 表格</option>
                                 <option value="fixed-width">固定宽度</option>
+                                <option value="aligned-table">定宽对齐</option>
                                 <option value="plain-text">空白文本</option>
                             </select>
                             <select id="headerModeSelect" class="format-select narrow" title="表头处理，CLI table-data 固定使用 validflag 行作为表头">
@@ -740,6 +741,7 @@
                     <option value="pipe-table">竖线/Markdown</option>
                     <option value="ascii-table">ASCII 表格</option>
                     <option value="fixed-width">固定宽度</option>
+                    <option value="aligned-table">定宽对齐</option>
                     <option value="plain-text">空白文本</option>
                 </select>
                 <select id="headerModeSelectLarge" class="format-select narrow" title="表头处理，CLI table-data 固定使用 validflag 行作为表头">
@@ -1114,7 +1116,7 @@ const Exporter = {
     toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
 };
 /* Core */
-const APP_VERSION = '20.0.0';
+const APP_VERSION = '20.1.0';
 const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
@@ -1771,6 +1773,104 @@ const FixedWidthParser = {
     }
 };
 
+function findAlignedSegments(line) {
+    if(!line || !line.trim()) return null;
+    const regex = /\S+/g;
+    const words = [];
+    let m;
+    while((m = regex.exec(line)) !== null) words.push({ start:m.index, end:m.index + m[0].length });
+    if(words.length < 2) return null;
+    for(let k = 1; k < words.length; k++) {
+        if(words[k].start - words[k - 1].end < 2) return null;
+    }
+    const zones = [];
+    for(let k = 0; k < words.length; k++) {
+        zones.push({ start:words[k].start, end:(k < words.length - 1) ? words[k + 1].start : 99999 });
+    }
+    return zones;
+}
+
+const AlignedTableParser = {
+    id:'aligned-table', label:'定宽对齐表格',
+    confidence(source) {
+        const text = source.text || '';
+        const lines = TableUtils.lines(text);
+        const isSep = (line) => {
+            const t = (line || '').trim();
+            if(!t) return false;
+            return /^[\s-]+$/.test(line) && !/[+|=\u2500-\u257F]/.test(line) && /-/.test(line);
+        };
+        const hasSep = lines.some(l => isSep(l));
+        const hasNull = /(?:^|\n)\s*\S.*?--/.test(text);
+        if(!hasSep && !hasNull) return 0;
+        for(let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if(!line || !line.trim()) continue;
+            if(isSep(line)) continue;
+            const zones = findAlignedSegments(line);
+            if(!zones) continue;
+            for(let j = i + 1; j < Math.min(lines.length, i + 6); j++) {
+                const next = lines[j];
+                if(!next || !next.trim()) continue;
+                if(isSep(next)) continue;
+                const vals = zones.map(z => next.substring(z.start, Math.min(z.end, next.length)).trim());
+                const filled = vals.filter(v => v !== '').length;
+                if(filled >= Math.max(1, zones.length * 0.3)) {
+                    let score = 0.55;
+                    if(hasSep) score += 0.18;
+                    if(hasNull) score += 0.10;
+                    return Math.min(score + Math.min(filled / zones.length * 0.12, 0.12), 0.92);
+                }
+                break;
+            }
+        }
+        return hasSep ? 0.35 : 0;
+    },
+    parse(source, options={}) {
+        const lines = TableUtils.lines(source.text);
+        const isSep = (line) => {
+            const t = (line || '').trim();
+            if(!t) return false;
+            return /^[\s-]+$/.test(line) && !/[+|=\u2500-\u257F]/.test(line) && /-/.test(line);
+        };
+        const tables = [];
+        const used = new Set();
+        let i = 0;
+        while(i < lines.length) {
+            while(i < lines.length && (isSep(lines[i]) || !lines[i].trim())) i++;
+            if(i >= lines.length) break;
+            const zones = findAlignedSegments(lines[i]);
+            if(!zones) { i++; continue; }
+            const headerLine = lines[i];
+            const headers = zones.map(z => headerLine.substring(z.start, Math.min(z.end, headerLine.length)).trim());
+            i++;
+            const rows = [];
+            while(i < lines.length) {
+                const line = lines[i];
+                if(isSep(line)) { i++; break; }
+                if(!line.trim()) { i++; continue; }
+                const vals = zones.map(z => {
+                    let val = line.substring(z.start, Math.min(z.end, line.length)).trim();
+                    return val === '--' ? '' : val;
+                });
+                rows.push(vals);
+                i++;
+            }
+            if(rows.length > 0) {
+                const name = TableUtils.makeTableName('Aligned Table', tables.length, used);
+                const resolved = HeaderResolver.infer([headers, ...rows], { ...options, hasHeader:true, tableName:name });
+                resolved.sourceType = this.id;
+                resolved.meta = { delimiter:'position', hasHeader:true, generatedHeaders:false };
+                tables.push(resolved);
+            }
+        }
+        if(tables.length === 0 && options.format === this.id) {
+            return { tables:[], diagnostics:[{ level:'warning', code:'NO_ALIGNED_TABLE', message:'未检测到定宽对齐表格，请确认输入包含列头行且列间至少有两个空格' }] };
+        }
+        return { tables, diagnostics:[] };
+    }
+};
+
 const PlainTextTableParser = {
     id:'plain-text', label:'空白分隔文本',
     confidence(source) { return (source.text || '').trim() ? 0.08 : 0; },
@@ -1874,7 +1974,7 @@ const CliTableDataParser = {
 };
 
 const ImportEngine = {
-    parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, PlainTextTableParser],
+    parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
     parse(input, options={}) {
         const source = typeof input === 'string' ? { text: input, html: options.html || '' } : { text: input.text || '', html: input.html || '' };
