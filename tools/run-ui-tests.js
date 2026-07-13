@@ -82,6 +82,9 @@ assert(script.includes('Store.moveDoc(this.tabDrag.sourceId, tab.dataset.id, pla
 assert(script.includes("escapeHtml(str='')") && script.includes('renderTabs()'), 'App should escape tab titles when rendering');
 assert(script.includes("exportFullBtn.onclick = () => Exporter.toExcel(this.getFullExportTables(), this.getExportPrefix('full'))"), 'full export should use current tab title prefix');
 assert(script.includes('rawLarge.oninput = () => {') && script.includes('this.scheduleSourceEditorPersist();'), 'large editor input should be debounced');
+assert(script.includes("$('rawInput').oninput = e => {\n            this.invalidateCellEdits();"), 'source edits must invalidate stale cell corrections');
+assert(script.includes('rawLarge.oninput = () => {\n                this.invalidateCellEdits();'), 'full-screen source edits must invalidate stale cell corrections');
+assert(script.includes('if(current !== mode) this.invalidateCellEdits();') && script.includes('if(current !== next) this.invalidateCellEdits();'), 'parser option changes must invalidate stale cell corrections');
 assert(script.includes('data-vr') && script.includes('startAutoScroll()'), 'preview selection should support visual coordinates and auto-scroll');
 assert(script.includes("td.classList.contains('row-header-cell')"), 'row-header labels should not behave like editable data cells');
 assert(script.includes('nextAnalysisSeq') && script.includes('getMaxAnalysisNumber()'), 'analysis titles should use a monotonic sequence');
@@ -92,4 +95,13 @@ assert(script.includes("if(e.key === 'Escape') { e.preventDefault(); this.closeS
 assert(script.includes("new vm.Script") === false, 'production script should not contain the Node test harness');
 assert(html.includes('prefers-reduced-motion'), 'reduced motion support should be present');
 assert(html.includes('role="tablist"') && html.includes('aria-live="polite"'), 'core accessibility semantics should be present');
-console.log('UI interaction tests passed: 57');
+const procStart = script.lastIndexOf('    proc(t, ui) {');
+const procEnd = script.indexOf('\n    closeModal()', procStart);
+assert(procStart >= 0 && procEnd > procStart, 'filter processor markers should exist');
+const procSandbox = { window:{} };
+vm.createContext(procSandbox);
+vm.runInContext(`const FilterHarness = {${script.slice(procStart, procEnd).trim().replace(/,$/, '')}}; window.FilterHarness = FilterHarness;`, procSandbox);
+const filterTable = { name:'Logs', headers:['level','message'], rows:[['WARN','memory'],['ERROR','timeout'],['INFO','ok']] };
+const regexRows = procSandbox.window.FilterHarness.proc(filterTable, { rules:{}, columnFilters:{}, globalFilter:'/ERROR|WARN/' }).rows;
+assert(regexRows.length === 2 && regexRows[0].d[0] === 'WARN' && regexRows[1].d[0] === 'ERROR', 'regex alternation must not be split as plain OR tokens');
+console.log('UI interaction tests passed: 62');

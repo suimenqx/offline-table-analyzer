@@ -68,7 +68,12 @@ test('HTML clipboard table', () => {
 test('HTML rowspan expansion', () => {
   const htmlTable = '<table><tr><th>group</th><th>name</th></tr><tr><td rowspan="2">A</td><td>Alice</td></tr><tr><td>Bob</td></tr></table>';
   const r = ImportEngine.parse({ text:'', html:htmlTable });
-  assert(r.tables[0].rows.length === 2 && r.tables[0].rows[1][1] === 'Bob', 'rowspan failed');
+  assert(r.tables[0].rows.length === 2 && r.tables[0].rows[1][0] === 'A' && r.tables[0].rows[1][1] === 'Bob', 'rowspan failed');
+});
+test('HTML rowspan and colspan expansion', () => {
+  const htmlTable = '<table><tr><th>group</th><th>detail</th><th>name</th></tr><tr><td rowspan="2" colspan="2">A</td><td>Alice</td></tr><tr><td>Bob</td></tr></table>';
+  const r = ImportEngine.parse({ text:'', html:htmlTable });
+  assert(r.tables[0].rows[1].join('|') === 'A||Bob', 'combined rowspan/colspan failed');
 });
 test('literal and escaped BR', () => {
   const r = ImportEngine.parse('id\tdesc\n1\tline1<br>line2\n2\tlineA&lt;br /&gt;lineB', { format:'excel-paste' });

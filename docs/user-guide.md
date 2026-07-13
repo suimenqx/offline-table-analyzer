@@ -310,7 +310,7 @@ Choose **50, 100, 250, or 500** rows per page from the sub-bar selector. Paginat
 
 ## 10. Cell corrections
 
-Double-click any cell in a **raw table** (source tables, not JOIN views) to edit its value inline. Corrections are stored as a **non-destructive overlay** — the original parsed data remains unchanged underneath. Corrections persist across re-parses as long as column structure matches.
+Double-click any cell in a **raw table** (source tables, not JOIN views) to edit its value inline. Corrections are stored as a **non-destructive overlay** — the original parsed data remains unchanged underneath. Corrections persist when the same source is re-parsed. Changing the source text, imported file, parser format, or header mode clears existing corrections with a visible notice so row-indexed edits cannot be applied to different records.
 
 **JOIN views are read-only** — cells in derived tables cannot be edited.
 
@@ -391,7 +391,7 @@ This prevents pasted data from being interpreted as formulas in Excel, Google Sh
 
 ### 13.2 Excel format
 
-Excel files are `.xlsx` (Office Open XML) generated entirely in the browser. The ZIP archive is built with CRC-32 checksums using the Deflate store method. Each table becomes a separate worksheet. Sheet names are sanitized to ≤ 31 characters with unique suffixes when conflicts arise. Numeric cells are typed as numbers; text cells use inline strings with XML-escaped values.
+Excel files are `.xlsx` (Office Open XML) generated entirely in the browser. The ZIP archive is built with CRC-32 checksums using the Deflate store method. Each table becomes a separate worksheet. Sheet names are sanitized to ≤ 31 characters with unique suffixes when conflicts arise. Safe numeric values are typed as numbers; numeric-looking strings with more than 15 significant digits, unsafe leading zeros, or non-finite values are emitted as inline text to preserve identifiers and precision. Other text cells use inline strings with XML-escaped values.
 
 ### 13.3 Export file naming
 

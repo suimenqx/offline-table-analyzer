@@ -4,6 +4,13 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## 20.1.0 — 2026-07-13
 
+### Data correctness fixes
+
+- Clear stale cell-correction overlays when the source text or parser/header mode changes, preventing row-indexed edits from being applied to different records.
+- Preserve HTML `rowspan` values across expanded rows, including combined `rowspan`/`colspan` cells.
+- Export numeric-looking strings with more than 15 significant digits, unsafe leading zeros, or non-finite values as Excel text to preserve identifiers and precision.
+- Treat complete `/.../` filter tokens as regular expressions before applying pipe-based OR splitting, so regex alternation works as documented.
+
 ### New parser: 定宽对齐表格 (aligned-table)
 
 - Added support for fixed-width aligned delimiter-free tables where column boundaries are inferred from header row character positions.
@@ -87,4 +94,3 @@ All notable changes are documented here. The project follows semantic versioning
 - Added CSV, TSV, semicolon, Markdown, ASCII, HTML, fixed-width, and plain-text imports.
 - Added automatic/generated headers, manual header modes, duplicate/blank header normalization, and legacy CLI compatibility.
 - Improved CJK/table typography and import metadata presentation.
-

@@ -966,8 +966,14 @@ const Exporter = {
             if(v === null || v === undefined) v = '';
             const trimmed = String(v).trim();
             const numericLike = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed);
-            const hasLeadingZeros = /^0\d+/.test(trimmed) && !trimmed.startsWith('0.');
-            const isNum = (typeof v === 'number' && Number.isFinite(v)) || (numericLike && !hasLeadingZeros);
+            const hasLeadingZeros = /^-?0\d+/.test(trimmed) && !/^-?0\./.test(trimmed);
+            const significantDigits = trimmed
+                .replace(/^[+-]/, '')
+                .split(/[eE]/)[0]
+                .replace('.', '')
+                .replace(/^0+/, '').length;
+            const safeNumericText = numericLike && !hasLeadingZeros && significantDigits <= 15 && Number.isFinite(Number(trimmed));
+            const isNum = (typeof v === 'number' && Number.isFinite(v)) || safeNumericText;
             if(isNum) return `<c t="n"><v>${trimmed}</v></c>`;
             const text = this.escapeXml(String(v));
             return `<c t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
@@ -1392,6 +1398,14 @@ const Store = {
     updateRule(table, field, value) {
         const ui = this.curr().ui; if(!ui.rules[table]) ui.rules[table] = {}; ui.rules[table][field] = value; this.scheduleSave();
     },
+    clearCellEdits() {
+        const ui = this.curr().ui;
+        const edits = ui.cellEdits && typeof ui.cellEdits === 'object' ? ui.cellEdits : {};
+        const hadEdits = Object.keys(edits).length > 0;
+        ui.cellEdits = {};
+        if(hadEdits) this.scheduleSave();
+        return hadEdits;
+    },
     setCopyFormat(format='default') {
         this.state.copyFormat = ['default','csv','markdown','ascii'].includes(format) ? format : 'default';
         this.save();
@@ -1601,8 +1615,11 @@ const HtmlTableParser = {
             const trMatches = tableHtml.match(/<tr[\s\S]*?<\/tr>/gi) || [];
             trMatches.forEach(trHtml => {
                 const cells = [];
-                rowSpans.forEach((remaining, col) => {
-                    if(remaining > 0) { cells[col] = ''; rowSpans[col] = remaining - 1; }
+                rowSpans.forEach((entry, col) => {
+                    if(entry && entry.remaining > 0) {
+                        cells[col] = entry.value;
+                        entry.remaining--;
+                    }
                 });
                 const cellRe = /<(td|th)([^>]*)>([\s\S]*?)<\/\1>/gi;
                 let m;
@@ -1620,7 +1637,7 @@ const HtmlTableParser = {
                     while(cells[col] !== undefined) col++;
                     for(let i=0; i<span; i++) {
                         cells[col + i] = i === 0 ? value : '';
-                        if(rowSpan > 1) rowSpans[col + i] = rowSpan - 1;
+                        if(rowSpan > 1) rowSpans[col + i] = { remaining:rowSpan - 1, value:i === 0 ? value : '' };
                     }
                 }
                 if(cells.length) matrix.push(cells);
@@ -3772,12 +3789,17 @@ const App = {
     },
 
     setHeaderMode(mode) {
+        const current = Store.curr().ui.importHeaderMode || 'auto';
+        if(current !== mode) this.invalidateCellEdits();
         Store.updateUI('importHeaderMode', mode);
         this.run();
     },
 
     setImportFormat(format) {
-        Store.updateUI('importFormat', format || 'auto');
+        const next = format || 'auto';
+        const current = Store.curr().ui.importFormat || 'auto';
+        if(current !== next) this.invalidateCellEdits();
+        Store.updateUI('importFormat', next);
         this.run();
     },
 
@@ -3903,6 +3925,15 @@ const App = {
         this.updateSourceEditorStats();
     },
 
+    invalidateCellEdits() {
+        if(!Store.clearCellEdits()) return false;
+        this.editHistory = [];
+        this.editRedo = [];
+        this.updateUndoButtons();
+        Toast.show('源数据或解析方式已变化，旧单元格修订已清除');
+        return true;
+    },
+
     openSourceEditor() {
         const modal = $('sourceEditorModal');
         const large = $('rawInputLarge');
@@ -4026,6 +4057,7 @@ const App = {
         if(headerModeSelect) headerModeSelect.onchange = e => this.setHeaderMode(e.target.value);
         
         const loadSample = () => {
+            this.invalidateCellEdits();
             $('rawInput').value = `table-data Inventory
 validflag ID      Product       Category    Stock   Price
  1        1001    Widget_A      Hardware    50      10.50
@@ -4052,6 +4084,7 @@ validflag Time      Level   Message                 Code
         const sampleLink = $('sampleLink'); if(sampleLink) sampleLink.onclick = loadSample;
 
         $('rawInput').oninput = e => {
+            this.invalidateCellEdits();
             Store.curr().raw = e.target.value;
             if(this.lastPaste && String(e.target.value).trim() !== String(this.lastPaste.plain || '').trim()) this.lastPaste = null;
             this.scheduleSourceInputPersist();
@@ -4095,6 +4128,7 @@ validflag Time      Level   Message                 Code
         const rawLarge = $('rawInputLarge');
         if(rawLarge) {
             rawLarge.oninput = () => {
+                this.invalidateCellEdits();
                 if(this.lastPaste && String(rawLarge.value).trim() !== String(this.lastPaste.plain || '').trim()) this.lastPaste = null;
                 this.scheduleSourceEditorStats();
                 this.scheduleSourceEditorPersist();
@@ -4534,6 +4568,7 @@ validflag Time      Level   Message                 Code
         reader.onerror = () => Toast.show('无法读取该文件', true);
         reader.onload = event => {
             const text = String(event.target.result || '').replace(/^\uFEFF/, '');
+            this.invalidateCellEdits();
             $('rawInput').value = text;
             const detected = this.sourceFileFormat(file);
             if(detected === 'html-table') this.lastPaste = { html:text, plain:text, docId:Store.state.activeId };
@@ -5185,6 +5220,7 @@ validflag Time      Level   Message                 Code
             }
             if(token) tokens.push(token);
             return tokens.every(t => {
+                if(t.startsWith('/') && t.endsWith('/')) return checkToken(t, row);
                 if (t.includes('|')) return t.split('|').some(st => checkToken(st, row));
                 return checkToken(t, row);
             });

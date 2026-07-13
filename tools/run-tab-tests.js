@@ -93,6 +93,11 @@ assert(Store.save(), 'temporary mode save should succeed');
 const serialized = JSON.parse(storage.get('ota_v20_workspace'));
 assert(serialized.docs[0].raw === '', 'temporary mode must not persist raw data');
 assert(Store.state.docs[0].raw === 'sensitive', 'temporary mode must retain in-memory raw data');
+const activeDoc = Store.curr();
+activeDoc.ui.cellEdits = { '$Table 1': { 1: { 2:'corrected' } } };
+assert(Store.clearCellEdits() === true, 'existing cell corrections should be invalidated');
+assert(Object.keys(activeDoc.ui.cellEdits).length === 0, 'invalidated cell corrections should be removed');
+assert(Store.clearCellEdits() === false, 'invalidating an empty correction set should be a no-op');
 quotaFail = true;
 assert(Store.save() === false, 'quota failure must be reported');
 assert(Store.lastSaveError.includes('空间不足'), 'quota failure should have an actionable message');
@@ -109,4 +114,4 @@ assert(new Set(Store.state.docs.map(d => d.title)).size === Store.state.docs.len
 let rejected = false;
 try { Store.importWorkspace({ kind:'ota-workspace', schemaVersion:999, docs:[{}] }); } catch(error) { rejected = true; }
 assert(rejected, 'future workspace schema must be rejected');
-console.log('Tab and storage tests passed: 28');
+console.log('Tab and storage tests passed: 31');
