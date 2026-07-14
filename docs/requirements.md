@@ -1,6 +1,6 @@
 # v20 Requirements and Scope
 
-The workspace schema remains version `20`; the current application release is **20.1.0**.
+The workspace schema remains version `20`; the current application release is **20.2.0**.
 
 ## 1. Product definition
 
@@ -75,7 +75,7 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Schema version `20`, application version `20.1.0`.
+- Schema version `20`, application version `20.2.0`.
 - Single key `ota_v20_workspace`; migrate legacy `v16_4_store` once and remove it only after a successful v20 write.
 - Catch `QuotaExceededError` in `save()` and report the specific failure in the status bar; in-memory data remains usable.
 - Show saved/failed state, estimated storage use (`json.length * 2` for UTF-16 approximation), and a usage meter in the status bar.

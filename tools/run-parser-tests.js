@@ -1,24 +1,14 @@
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
+const { loadBuiltModules } = require('./load-built-modules');
 
 if(process.argv.includes('--clean-production')) require('./validate-release').cleanProductionHooks();
 
-const htmlPath = path.join(__dirname, '..', 'index.html');
-const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
-const script = html.split('<script>')[1].split('</script>')[0];
-const start = script.indexOf('/* Import Engine */');
-const end = script.indexOf('/* Joiner */');
-if (start < 0 || end < 0) throw new Error('Import Engine markers not found');
-const code = script.slice(start, end) + '\nwindow.__IMPORTS__ = { ImportEngine, TableUtils, HeaderResolver, Delimited };';
 const sandbox = {
   console,
   window: {},
   document: { createElement() { return { innerHTML: '', textContent: '', innerText: '' }; } }
 };
-vm.createContext(sandbox);
-vm.runInContext(code, sandbox, { filename: 'import-engine.js' });
-const { ImportEngine } = sandbox.window.__IMPORTS__;
+const { OTA } = loadBuiltModules(sandbox);
+const { ImportEngine } = OTA.require('import-engine');
 
 const cases = [];
 const test = (name, fn) => cases.push({ name, fn });
@@ -188,6 +178,8 @@ if (failures.length) throw new Error(failures.join('\n'));
 console.log(`Parser regression tests passed: ${cases.length}`);
 
 if(process.argv.includes('--all')) {
+  require('./run-build-tests');
+  require('./run-startup-tests');
   require('./run-copy-tests');
   require('./run-tab-tests');
   require('./run-join-tests');

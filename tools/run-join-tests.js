@@ -1,21 +1,12 @@
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
+const { loadBuiltModules } = require('./load-built-modules');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8').replace(/^\uFEFF/, '');
-const script = html.split('<script>')[1].split('</script>')[0];
-const start = script.indexOf('/* Import Engine */');
-const end = script.indexOf('/* Join Editor */');
-if(start < 0 || end < 0) throw new Error('Joiner markers not found');
-const code = script.slice(start, end) + '\nwindow.__JOIN__ = { Joiner };';
 const sandbox = {
   console,
   window:{},
   document:{ createElement(){ return { innerHTML:'', textContent:'', innerText:'' }; } }
 };
-vm.createContext(sandbox);
-vm.runInContext(code, sandbox, { filename:'joiner.js' });
-const { Joiner } = sandbox.window.__JOIN__;
+const { OTA } = loadBuiltModules(sandbox);
+const { Joiner } = OTA.require('joiner');
 const assert = (cond, msg) => { if(!cond) throw new Error(msg); };
 
 const basic = [

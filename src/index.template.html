@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline Table Analyzer v20.2.0</title>
+    <link rel="icon" type="image/svg+xml" media="(prefers-color-scheme: light)" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230f172a'/><text x='50' y='68' font-family='system-ui,sans-serif' font-size='48' font-weight='800' fill='%23ffffff' text-anchor='middle'>OTA</text></svg>">
+    <link rel="icon" type="image/svg+xml" media="(prefers-color-scheme: dark)" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23f8fafc'/><text x='50' y='68' font-family='system-ui,sans-serif' font-size='48' font-weight='800' fill='%230f1f38' text-anchor='middle'>OTA</text></svg>">
+    <style>
+{{STYLES}}
+    </style>
+</head>
+<body>
+
+<div id="tooltip" role="tooltip"></div>
+<div id="toast" role="status" aria-live="polite" aria-atomic="true">Ready</div>
+
+<div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar" aria-label="分析控制面板">
+        <div class="sidebar-header">
+            <button class="logo sidebar-toggle" id="sidebarToggle" type="button" title="折叠或展开控制面板" aria-label="折叠或展开控制面板" aria-expanded="true">
+                <span class="logo-icon" aria-hidden="true">OTA</span>
+                <span class="logo-copy"><span>Offline Table Analyzer</span><small>Local data workbench</small></span>
+                <span class="version-pill">v20.2</span>
+            </button>
+        </div>
+
+        <div class="sidebar-tabs">
+            <div class="seg-control" role="tablist" aria-label="控制面板">
+                <button class="seg-btn active" id="sidebarDataTabBtn" data-tab-btn="data" type="button" role="tab" aria-selected="true">数据源</button>
+                <button class="seg-btn" id="sidebarConfigTabBtn" data-tab-btn="config" type="button" role="tab" aria-selected="false">分析规则</button>
+            </div>
+        </div>
+        <div class="sidebar-scroll">
+            <div class="sidebar-pane active" data-tab="data">
+                <div class="card">
+                    <div class="card-header" style="border-bottom:1px solid var(--border);">
+                        <div class="source-card-title">
+                            <span class="card-title">导入数据</span>
+                            <span class="muted" style="font-size:11px;">粘贴、拖放或选择本地文件</span>
+                        </div>
+                        <div class="source-card-actions">
+                            <button class="sm text-button" id="expandSourceBtn" type="button" title="打开全屏编辑器">全屏编辑</button>
+                        </div>
+                    </div>
+                    <div class="card-body source-drop-zone" id="sourceDropZone">
+                        <div class="textarea-shell">
+                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" placeholder="粘贴 CSV、TSV、网页表格、Markdown、ASCII 或 CLI table-data…" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
+                            <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
+                        </div>
+                        <div class="source-actions">
+                            <button class="primary" id="parseBtn" type="button">解析数据</button>
+                            <button id="importSourceBtn" type="button" title="导入 CSV、TSV、TXT、HTML 或 Markdown 文件">选择文件</button>
+                            <button id="clearBtn" type="button" title="清空当前数据源">清空</button>
+                            <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,text/html">
+                        </div>
+                        <div class="source-options">
+                            <select id="formatSelect" class="format-select" title="输入格式">
+                                <option value="auto">自动识别</option>
+                                <option value="cli-table-data">CLI table-data</option>
+                                <option value="csv">CSV</option>
+                                <option value="excel-paste">Excel/TSV</option>
+                                <option value="html-table">HTML 表格</option>
+                                <option value="semicolon-csv">分号分隔</option>
+                                <option value="pipe-table">竖线/Markdown</option>
+                                <option value="ascii-table">ASCII 表格</option>
+                                <option value="fixed-width">固定宽度</option>
+                                <option value="aligned-table">定宽对齐</option>
+                                <option value="plain-text">空白文本</option>
+                            </select>
+                            <select id="headerModeSelect" class="format-select narrow" title="表头处理，CLI table-data 固定使用 validflag 行作为表头">
+                                <option value="auto">自动表头</option>
+                                <option value="first-row">首行表头</option>
+                                <option value="none">无表头</option>
+                            </select>
+                        </div>
+                        <div class="parse-status" id="parseStatus" role="status" aria-live="polite">
+                            <span class="parse-status-dot" aria-hidden="true"></span>
+                            <span class="parse-status-text" id="parseStatusText">等待输入数据</span>
+                            <button class="sm text-button hidden" id="diagnosticsBtn" type="button">详情</button>
+                        </div>
+                        <div class="privacy-toggle">
+                            <input type="checkbox" id="persistRawToggle" checked>
+                            <label for="persistRawToggle">在此设备保存原始数据</label>
+                            <span class="help-icon" data-tip="关闭后，原始数据只保留在当前页面内；刷新页面后不会恢复。分析规则和界面偏好仍会保存。">?</span>
+                        </div>
+                        <div class="source-utilities" aria-label="数据源工具">
+                            <button class="sm" id="sampleLink" type="button">加载示例</button>
+                            <button class="sm" id="exportRawBtn" type="button" title="导出解析后的原始表">原始 Excel</button>
+                            <button class="sm" id="exportTabBtn" type="button" title="备份整个工作区">备份工作区</button>
+                            <button class="sm" id="importTabBtn" type="button" title="恢复工作区备份">恢复备份</button>
+                            <input type="file" id="fileInputTab" class="hidden" accept=".json,application/json">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sidebar-pane" data-tab="config">
+                <div class="accordion">
+                    <div class="acc-item open" data-acc="view">
+                        <div class="acc-head">
+                            <span>视图设置</span>
+                            <span class="muted">控制展示范围</span>
+                        </div>
+                        <div class="acc-body">
+                            <div class="control-block" style="margin-bottom:10px;">
+                                <label>显示原始表</label>
+                                <div class="multi-select" id="tablesTrigger"><span class="placeholder">加载中...</span></div>
+                            </div>
+                            <div class="control-block" style="margin-bottom:10px;">
+                                <label class="flex justify-between">
+                                    <span>启用 JOIN 视图</span>
+                                    <span style="color:var(--primary); cursor:pointer;" id="manageViewsBtn">管理</span>
+                                </label>
+                                <div class="multi-select" id="viewsTrigger"><span class="placeholder">未启用</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="acc-item" data-acc="rules">
+                        <div class="acc-head">
+                            <span>规则引擎</span>
+                            <span class="muted">过滤与高亮</span>
+                        </div>
+                        <div class="acc-body">
+                            <div class="control-block" style="margin-bottom:10px;">
+                                <label>配置目标表</label>
+                                <select id="targetTableSelect"></select>
+                            </div>
+                            <div class="control-block" style="margin-bottom:10px;">
+                                <label>关注列 / 显示列</label>
+                                <div class="input-group">
+                                    <input type="text" id="focusColsInput" placeholder="Col1, Col2...">
+                                    <button id="selectColsBtn">选择</button>
+                                </div>
+                            </div>
+                            <div class="control-block" style="margin-bottom:10px;">
+                                <label>高亮规则 <span class="help-icon" data-tip="语法增强：&#10;• ID=1001 (精确)&#10;• CPU>90 (数值)&#10;• Msg:Error (包含)&#10;• A=1 B!=OK (组合)">?</span></label>
+                                <input type="text" id="hlInput" placeholder="error | ID=1 | CPU>90">
+                            </div>
+                            <div class="control-block" style="margin-bottom:10px;">
+                                <label>行过滤</label>
+                                <input type="text" id="filterInput" placeholder="Status!=OK, Qty>0 ...">
+                            </div>
+                            <div class="control-block" style="margin-bottom:10px;">
+                                <label>全局过滤</label>
+                                <input type="text" id="globalFilter" placeholder="全局搜索 (支持 key=val)...">
+                            </div>
+                            <div class="control-block">
+                                <label class="checkbox-row" id="toggleHlRow">
+                                    <input type="checkbox" id="checkHl" checked>
+                                    <span>启用高亮渲染</span>
+                                </label>
+                                <label class="checkbox-row" id="toggleOnlyHlRow">
+                                    <input type="checkbox" id="checkOnlyHl">
+                                    <span style="color:var(--primary);">仅显示高亮行 (Focus)</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="acc-item" data-acc="export">
+                        <div class="acc-head">
+                            <span>导出选项</span>
+                            <span class="muted">Excel & 配置</span>
+                        </div>
+                        <div class="acc-body">
+                            <div class="control-block" style="margin-bottom:10px;">
+                                <label class="checkbox-row">
+                                    <input type="checkbox" id="checkExpSelected">
+                                    <span>仅导出勾选表</span>
+                                </label>
+                                <select id="expColSelect" style="margin-top:4px;">
+                                    <option value="all">导出全量列</option>
+                                    <option value="shown">仅导出展示列</option>
+                                </select>
+                                <label class="checkbox-row" style="margin-top:6px;">
+                                    <input type="checkbox" id="checkFormulaSafe" checked>
+                                    <span>安全复制公式前缀</span>
+                                    <span class="help-icon" data-tip="复制 TSV/CSV 时，为 =、+、-、@ 开头的潜在电子表格公式添加文本前缀，避免粘贴后意外执行。">?</span>
+                                </label>
+                            </div>
+                            <div class="flex gap-2">
+                                <button class="sm" id="exportConfigBtn" title="导出配置">导出配置</button>
+                                <button class="sm" id="importConfigBtn" title="导入配置">导入配置</button>
+                                <input type="file" id="fileInputConfig" class="hidden" accept=".json">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content" aria-label="表格分析工作区">
+        <nav class="top-nav" aria-label="分析页签和导出操作">
+            <div class="doc-tabs" id="tabsContainer" role="tablist" aria-label="分析页签"></div>
+            <div class="workspace-actions">
+                <button class="sm tonal" id="addTabBtn" type="button" title="新建分析页签（Ctrl/⌘ + N）">新建页签</button>
+                <span class="action-divider" aria-hidden="true"></span>
+                <button class="icon-btn sm optional-action" id="undoEditBtn" type="button" title="撤销单元格编辑" disabled aria-label="撤销单元格编辑">↶</button>
+                <button class="icon-btn sm optional-action" id="redoEditBtn" type="button" title="重做单元格编辑" disabled aria-label="重做单元格编辑">↷</button>
+                <button class="icon-btn sm" id="themeBtn" type="button" title="切换明暗主题" aria-label="切换明暗主题">◐</button>
+                <select id="copyFormatSelect" class="copy-format-select" title="复制表格时的纯文本格式，全局生效">
+                    <option value="default">复制: TSV</option>
+                    <option value="csv">复制: CSV</option>
+                    <option value="markdown">复制: Markdown</option>
+                    <option value="ascii">复制: ASCII</option>
+                </select>
+                <button class="sm export-secondary" id="exportFullBtn" type="button" title="导出当前页签的全量数据">全量 Excel</button>
+                <button class="primary sm" id="exportPrevBtn" type="button" title="导出当前筛选后的预览结果">导出预览</button>
+                <button class="icon-btn sm" id="helpBtn" type="button" title="帮助与快捷键" aria-label="帮助与快捷键">?</button>
+            </div>
+        </nav>
+        <div class="workspace-subbar">
+            <div class="workspace-summary">
+                <strong id="workspaceTitle">未解析</strong>
+                <span id="datasetSummary">所有处理均在本地浏览器完成</span>
+            </div>
+            <div class="subbar-actions">
+                <label for="pageSizeSelect" class="muted" style="margin:0;font-size:11px;">每页</label>
+                <select id="pageSizeSelect" class="compact-select" title="每张表最多渲染的行数">
+                    <option value="50">50 行</option>
+                    <option value="100" selected>100 行</option>
+                    <option value="250">250 行</option>
+                    <option value="500">500 行</option>
+                </select>
+                <button class="sm text-button" id="toggleSidebarMobileBtn" type="button">数据与规则</button>
+            </div>
+        </div>
+        <div class="preview-area" id="previewArea" aria-live="polite"></div>
+        <footer class="statusbar">
+            <div class="statusbar-group">
+                <span class="status-item local-badge"><span class="status-dot"></span>100% 本地离线</span>
+                <span class="status-item" id="storageStatus">尚未保存</span>
+                <span class="storage-meter status-secondary" title="浏览器本地存储占用估算"><span id="storageMeterFill"></span></span>
+            </div>
+            <div class="statusbar-group">
+                <span class="status-item status-secondary" id="keyboardHint">Ctrl/⌘ + Enter 解析 · 双击单元格编辑</span>
+                <button class="text-button" id="clearLocalDataBtn" type="button">清除本地数据</button>
+            </div>
+        </footer>
+    </main>
+</div>
+
+<!-- Modal Container (Blocking) -->
+<div id="modalOverlay" class="modal-bg hidden" role="presentation">
+    <div id="modalContent" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
+</div>
+<div id="filterPopover" class="filter-popover hidden">
+    <div class="fp-header">
+        <span id="fpTitle"></span>
+        <button id="fpClose" aria-label="关闭">×</button>
+    </div>
+    <input id="fpInput" placeholder="列过滤，包含关键字，忽略大小写">
+    <div class="fp-actions">
+        <button class="sm" id="fpClear">清除</button>
+        <button class="primary sm" id="fpApply">应用</button>
+    </div>
+</div>
+
+<!-- Fullscreen Data Source Editor -->
+<div id="sourceEditorModal" class="fullscreen-modal hidden" role="dialog" aria-modal="true" aria-labelledby="sourceEditorHeading">
+    <div class="source-editor-shell">
+        <div class="source-editor-head">
+            <div class="source-editor-title">
+                <div class="eyebrow">Data Source</div>
+                <div style="font-weight:800; font-size:16px;" id="sourceEditorHeading">全屏数据源编辑器</div>
+            </div>
+            <div class="source-editor-tools">
+                <select id="formatSelectLarge" class="format-select" title="输入格式">
+                    <option value="auto">自动识别</option>
+                    <option value="cli-table-data">CLI table-data</option>
+                    <option value="csv">CSV</option>
+                    <option value="excel-paste">Excel/TSV</option>
+                    <option value="html-table">HTML 表格</option>
+                    <option value="semicolon-csv">分号分隔</option>
+                    <option value="pipe-table">竖线/Markdown</option>
+                    <option value="ascii-table">ASCII 表格</option>
+                    <option value="fixed-width">固定宽度</option>
+                    <option value="aligned-table">定宽对齐</option>
+                    <option value="plain-text">空白文本</option>
+                </select>
+                <select id="headerModeSelectLarge" class="format-select narrow" title="表头处理，CLI table-data 固定使用 validflag 行作为表头">
+                    <option value="auto">自动表头</option>
+                    <option value="first-row">首行表头</option>
+                    <option value="none">无表头</option>
+                </select>
+                <button class="sm" id="sourceEditorParseBtn">解析</button>
+                <button class="primary sm" id="sourceEditorDoneBtn">完成</button>
+                <button class="icon-btn sm" id="sourceEditorCloseBtn" title="关闭">×</button>
+            </div>
+        </div>
+        <div class="source-editor-body">
+            <textarea id="rawInputLarge" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..."></textarea>
+        </div>
+        <div class="source-editor-foot">
+            <span class="muted">Ctrl/⌘ + Enter 解析；Esc、完成或关闭按钮都会同步内容并返回。</span>
+            <span class="muted" id="sourceEditorStats">0 字符</span>
+        </div>
+    </div>
+</div>
+
+<!-- Fullscreen Join Designer -->
+<div id="joinModal" class="fullscreen-modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeTitle">
+    <div class="join-shell">
+        <div class="join-head">
+            <div class="join-head-left">
+                <div class="eyebrow">Join Designer</div>
+                <div class="join-title-row">
+                    <div style="font-weight:800; font-size:16px;" id="jeTitle">配置 JOIN 视图</div>
+                    <div class="join-warn" id="jeWarn"></div>
+                </div>
+            </div>
+            <div class="toolbar">
+                <button class="sm" id="jeCancel">取消</button>
+                <button class="primary sm" id="jeSave">保存视图</button>
+            </div>
+        </div>
+        <div class="join-body">
+            <div class="join-meta">
+                <div>
+                    <label>视图名称</label>
+                    <input type="text" id="jeName" placeholder="e.g. StockReport">
+                </div>
+                <div>
+                    <label>左表 (Source A)</label>
+                    <select id="jeLeftTable"></select>
+                </div>
+                <div>
+                    <label>右表 (Source B)</label>
+                    <select id="jeRightTable"></select>
+                </div>
+            </div>
+            <div class="join-grid">
+                <div class="join-col">
+                    <div class="join-col-head">
+                        <div class="join-col-title">
+                            <span>左表字段</span>
+                            <label class="join-toggle"><input type="checkbox" id="jeLOnlySel">仅看已选</label>
+                        </div>
+                        <div class="join-col-tools">
+                            <input id="jeLSearch" class="join-search" placeholder="搜索...">
+                            <button class="sm" id="jeLAllFiltered" title="全选搜索结果">全选结果</button>
+                            <button class="icon-btn sm" id="jeLAll" title="全选/反选">✓</button>
+                        </div>
+                    </div>
+                    <div class="join-list" id="jeLList"></div>
+                </div>
+
+                <div class="join-map">
+                    <div class="join-map-head">
+                        <span>关联条件 (ON)</span>
+                        <div class="flex gap-2">
+                            <select id="jeType" class="sm" style="height:32px;">
+                                <option value="inner">Inner Join · 仅匹配</option>
+                                <option value="left">Left Join · 保留左表</option>
+                                <option value="right">Right Join · 保留右表</option>
+                                <option value="full">Full Join · 保留两侧</option>
+                                <option value="semi">Semi Join · 左表有匹配</option>
+                                <option value="anti">Anti Join · 左表无匹配</option>
+                            </select>
+                            <button class="sm" id="jeAutoRel">自动匹配</button>
+                            <button class="sm" id="jeAddRel">添加条件</button>
+                        </div>
+                    </div>
+                    <div class="join-map-body">
+                        <div id="jeRelContainer"></div>
+                        <div>
+                            <div class="join-order-head">
+                                <div class="eyebrow">输出顺序</div>
+                                <div class="join-order-tools">
+                                    <button class="sm" id="jeOrderRebuild">重建</button>
+                                    <button class="sm" id="jeOrderClear">清空</button>
+                                    <button class="sm" id="jeOrderLeftOnly">只保留左</button>
+                                    <button class="sm" id="jeOrderRightOnly">只保留右</button>
+                                    <label class="join-toggle"><input type="checkbox" id="jeOrderShowL" checked>左</label>
+                                    <label class="join-toggle"><input type="checkbox" id="jeOrderShowR" checked>右</label>
+                                </div>
+                            </div>
+                            <div id="jeOrderList" class="join-order"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="join-col">
+                    <div class="join-col-head">
+                        <div class="join-col-title">
+                            <span>右表字段</span>
+                            <label class="join-toggle"><input type="checkbox" id="jeROnlySel">仅看已选</label>
+                        </div>
+                        <div class="join-col-tools">
+                            <input id="jeRSearch" class="join-search" placeholder="搜索...">
+                            <button class="sm" id="jeRAllFiltered" title="全选搜索结果">全选结果</button>
+                            <button class="icon-btn sm" id="jeRAll" title="全选/反选">✓</button>
+                        </div>
+                    </div>
+                    <div class="join-list" id="jeRList"></div>
+                </div>
+            </div>
+        </div>
+        <div class="join-foot">
+            <div class="join-foot-left">
+                <div class="muted" id="jeStatus">已选输出列: 0</div>
+                <div class="join-preview" id="jePreview">预览: -</div>
+                <div class="join-hints">快捷键: Enter 保存 · Esc 关闭 · / 搜索</div>
+            </div>
+            <div class="toolbar">
+                <button class="sm" id="jeCancelFooter">取消</button>
+                <button class="primary sm" id="jeSaveFooter">保存视图</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+{{MODULES}}
+</script>
+</body>
+</html>

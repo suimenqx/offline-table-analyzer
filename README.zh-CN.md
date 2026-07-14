@@ -2,7 +2,7 @@
 
 Offline Table Analyzer 是一个隐私优先、完全离线的表格整理与分析工作台。它以单个 `index.html` 交付，可直接处理从终端、网页、Excel、Markdown 和日志中复制出来的杂乱表格，不上传数据、不需要账号，也没有运行时依赖。
 
-当前版本：**20.1.0**
+当前版本：**20.2.0**
 
 ## 项目初衷
 
@@ -128,7 +128,8 @@ Offline Table Analyzer 是一个隐私优先、完全离线的表格整理与分
 运行时零依赖，Node.js 仅用于测试与验证。
 
 ```bash
-npm test              # 运行全部 5 个测试套件
+npm test              # 运行全部 7 个测试套件
+npm run build:release # 从 src/ 重建单文件发布产物
 npm run validate:release  # 发布就绪检查
 ```
 
@@ -139,6 +140,8 @@ npm run validate:release  # 发布就绪检查
 - [用户指南](docs/user-guide.md)
 - [需求与范围](docs/requirements.md)
 - [架构说明](docs/architecture.md)
+- [重构需求清单](docs/refactor-requirements.md)
+- [重构架构设计](docs/refactor-architecture.md)
 - [路线图](docs/roadmap.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)

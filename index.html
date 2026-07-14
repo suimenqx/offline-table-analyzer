@@ -1,13 +1,13 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offline Table Analyzer v20.1.0</title>
+    <title>Offline Table Analyzer v20.2.0</title>
     <link rel="icon" type="image/svg+xml" media="(prefers-color-scheme: light)" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230f172a'/><text x='50' y='68' font-family='system-ui,sans-serif' font-size='48' font-weight='800' fill='%23ffffff' text-anchor='middle'>OTA</text></svg>">
     <link rel="icon" type="image/svg+xml" media="(prefers-color-scheme: dark)" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23f8fafc'/><text x='50' y='68' font-family='system-ui,sans-serif' font-size='48' font-weight='800' fill='%230f1f38' text-anchor='middle'>OTA</text></svg>">
     <style>
-        /* --- Design Tokens --- */
+/* --- Design Tokens --- */
         :root {
             --primary: #2563eb;
             --primary-hover: #1d4ed8;
@@ -485,7 +485,7 @@
             <button class="logo sidebar-toggle" id="sidebarToggle" type="button" title="折叠或展开控制面板" aria-label="折叠或展开控制面板" aria-expanded="true">
                 <span class="logo-icon" aria-hidden="true">OTA</span>
                 <span class="logo-copy"><span>Offline Table Analyzer</span><small>Local data workbench</small></span>
-                <span class="version-pill">v20.1</span>
+                <span class="version-pill">v20.2</span>
             </button>
         </div>
 
@@ -879,6 +879,33 @@
 </div>
 
 <script>
+/* @module 00-module-loader.js: runtime module registry */
+/* Runtime module loader */
+const OTA = (() => {
+    const registry = new Map();
+    const cache = new Map();
+    const define = (name, dependencies, factory) => {
+        if(registry.has(name)) throw new Error(`Duplicate module: ${name}`);
+        registry.set(name, { dependencies, factory });
+    };
+    const requireModule = name => {
+        if(cache.has(name)) return cache.get(name);
+        const entry = registry.get(name);
+        if(!entry) throw new Error(`Unknown module: ${name}`);
+        const exports = entry.factory(...entry.dependencies.map(requireModule));
+        cache.set(name, exports || {});
+        return cache.get(name);
+    };
+    return {
+        define,
+        require: requireModule,
+        start(name) { return requireModule(name); }
+    };
+})();
+if(typeof window !== 'undefined') window.OTA = OTA;
+
+/* @module 00-runtime.js: runtime and feedback */
+OTA.define('runtime', [], () => {
 /* --- Utils --- */
 const $ = (id) => document.getElementById(id);
 const createEl = (tag, cls) => { const e = document.createElement(tag); if(cls) e.className=cls; return e; };
@@ -910,6 +937,11 @@ const Toast = {
     }
 };
 
+    return { $, createEl, Tooltip, Toast };
+});
+
+/* @module 01-exporter.js: file and XLSX exporter */
+OTA.define('exporter', ["runtime"], ({Toast}) => {
 /* Exporter */
 const Exporter = {
     escapeXml(str="") {
@@ -1123,8 +1155,14 @@ const Exporter = {
     },
     toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
 };
+
+    return { Exporter };
+});
+
+/* @module 02-store.js: workspace state and persistence */
+OTA.define('store', [], () => {
 /* Core */
-const APP_VERSION = '20.1.0';
+const APP_VERSION = '20.2.0';
 const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
@@ -1422,6 +1460,11 @@ const Store = {
     applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); }
 };
 
+    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, Store };
+});
+
+/* @module 03-table-utils.js: table normalization */
+OTA.define('table-utils', [], () => {
 /* Import Engine */
 const TableUtils = {
     normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
@@ -1493,6 +1536,11 @@ const TableUtils = {
     }
 };
 
+    return { TableUtils };
+});
+
+/* @module 04-header-resolver.js: header inference */
+OTA.define('header-resolver', ["table-utils"], ({TableUtils}) => {
 const HeaderResolver = {
     infer(rows, options={}) {
         const clean = (rows || []).map(r => TableUtils.trimRow(r)).filter(r => !TableUtils.isEmptyRow(r));
@@ -1548,6 +1596,11 @@ const HeaderResolver = {
     }
 };
 
+    return { HeaderResolver };
+});
+
+/* @module 05-delimited.js: quote-aware delimited parsing */
+OTA.define('delimited', ["table-utils"], ({TableUtils}) => {
 const Delimited = {
     lastDiagnostics: [],
     parse(text='', delimiter=',') {
@@ -1585,6 +1638,11 @@ const Delimited = {
     }
 };
 
+    return { Delimited };
+});
+
+/* @module 06-html-parser.js: HTML clipboard parser */
+OTA.define('html-parser', ["table-utils","header-resolver"], ({TableUtils}, {HeaderResolver}) => {
 const HtmlTableParser = {
     id:'html-table', label:'HTML 网页表格',
     confidence(source) {
@@ -1660,6 +1718,11 @@ const HtmlTableParser = {
     }
 };
 
+    return { HtmlTableParser };
+});
+
+/* @module 07-delimited-parsers.js: CSV, TSV, and parser factories */
+OTA.define('delimited-parsers', ["table-utils","header-resolver","delimited"], ({TableUtils}, {HeaderResolver}, {Delimited}) => {
 function buildSingleTableResult(rows, name, sourceType, options={}, meta={}, forcedHeader) {
     const resolved = HeaderResolver.infer(rows, { ...options, hasHeader: forcedHeader === undefined ? options.hasHeader : forcedHeader, tableName:name });
     return {
@@ -1711,6 +1774,11 @@ const ExcelPasteParser = createDelimitedParser({
     }
 });
 
+    return { buildSingleTableResult, CsvParser, SemicolonCsvParser, ExcelPasteParser };
+});
+
+/* @module 08-text-parsers.js: pipe, ASCII, fixed-width, aligned, plain, and CLI parsers */
+OTA.define('text-parsers', ["table-utils","header-resolver","delimited","delimited-parsers"], ({TableUtils}, {HeaderResolver}, {Delimited}, {buildSingleTableResult}) => {
 const PipeTableParser = {
     id:'pipe-table', label:'竖线/网页表格文本', delimiter:'|',
     confidence(source) {
@@ -1980,6 +2048,11 @@ const CliTableDataParser = {
     }
 };
 
+    return { PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser };
+});
+
+/* @module 09-import-engine.js: parser selection and diagnostics */
+OTA.define('import-engine', ["table-utils","html-parser","delimited-parsers","text-parsers"], ({TableUtils}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, {PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser}) => {
 const ImportEngine = {
     parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
@@ -2006,6 +2079,11 @@ const ImportEngine = {
     }
 };
 
+    return { ImportEngine };
+});
+
+/* @module 10-parser-facade.js: legacy parser facade */
+OTA.define('parser-facade', ["import-engine","runtime"], ({ImportEngine}, {Toast}) => {
 /* Parser */
 const Parser = {
     lastResult: { tables:[], format:'empty', label:'空输入' },
@@ -2023,7 +2101,11 @@ const Parser = {
     }
 };
 
+    return { Parser };
+});
 
+/* @module 11-joiner.js: JOIN execution and dependency safety */
+OTA.define('joiner', ["table-utils"], ({TableUtils}) => {
 /* Joiner */
 const Joiner = {
     resolve(name, rawTables, views, stack=[]) {
@@ -2167,6 +2249,22 @@ const Joiner = {
     }
 };
 
+    return { Joiner };
+});
+
+/* @module 12-join-editor.js: JOIN editor UI */
+OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$}, {Store}, {Joiner}, {Exporter, Toast}) => {
+const App = new Proxy({}, {
+    get(_target, key) {
+        const app = OTA.require('app').App;
+        const value = app[key];
+        return typeof value === 'function' ? value.bind(app) : value;
+    },
+    set(_target, key, value) {
+        OTA.require('app').App[key] = value;
+        return true;
+    }
+});
 /* Join Editor */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '' },
@@ -2262,7 +2360,7 @@ const JoinEditor = {
     applyStoredCellEdits() {
         const edits = Store.curr().ui.cellEdits || {};
         this.raw.forEach(table => {
-            const tableEdits = edits[`$${table.name}`];
+            const tableEdits = edits[`${table.name}`];
             if(!tableEdits) return;
             Object.entries(tableEdits).forEach(([rowKey, cols]) => {
                 const rowIdx = Number(rowKey);
@@ -2282,7 +2380,7 @@ const JoinEditor = {
         if(previous === next) return false;
         const ui = Store.curr().ui;
         if(!ui.cellEdits) ui.cellEdits = {};
-        const tableKey = `$${tableName}`;
+        const tableKey = `${tableName}`;
         if(!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
         if(!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
         ui.cellEdits[tableKey][rowIdx][colIdx] = next;
@@ -3248,7 +3346,11 @@ const JoinEditor = {
     }
 };
 
+    return { JoinEditor };
+});
 
+/* @module 13-clipboard.js: clipboard serialization */
+OTA.define('clipboard', ["store"], ({Store}) => {
 /* Clipboard Formatting */
 const ClipboardFormatter = {
     escapeHtml(str='') {
@@ -3328,6 +3430,11 @@ const ClipboardFormatter = {
     }
 };
 
+    return { ClipboardFormatter };
+});
+
+/* @module 14-selection.js: preview range selection */
+OTA.define('selection', ["runtime","store","clipboard"], ({$ , Toast}, {Store}, {ClipboardFormatter}) => {
 /* Selection Logic */
 const Select = {
     start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
@@ -3497,6 +3604,11 @@ const Select = {
     }
 };
 
+    return { Select };
+});
+
+/* @module 15-app.js: application orchestration and UI */
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -4540,7 +4652,7 @@ validflag Time      Level   Message                 Code
     applyStoredCellEdits() {
         const edits = Store.curr().ui.cellEdits || {};
         this.raw.forEach(table => {
-            const tableEdits = edits[`$${table.name}`];
+            const tableEdits = edits[`${table.name}`];
             if(!tableEdits) return;
             Object.entries(tableEdits).forEach(([rowKey, cols]) => {
                 const rowIdx = Number(rowKey);
@@ -5047,7 +5159,7 @@ validflag Time      Level   Message                 Code
         if(previous === next) return false;
         const ui = Store.curr().ui;
         if(!ui.cellEdits) ui.cellEdits = {};
-        const tableKey = `$${tableName}`;
+        const tableKey = `${tableName}`;
         if(!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
         if(!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
         ui.cellEdits[tableKey][rowIdx][colIdx] = next;
@@ -5335,7 +5447,14 @@ validflag Time      Level   Message                 Code
     }
 };
 
-App.init();
+    Tooltip.init();
+    App.init();
+    return { App };
+});
+
+/* @module 16-bootstrap.js: application bootstrap */
+/* Application bootstrap */
+window.OTA.start('app');
 </script>
 </body>
 </html>

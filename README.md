@@ -2,7 +2,7 @@
 
 Offline Table Analyzer is a privacy-first table workbench that runs entirely in one HTML file. Paste or drop messy tabular data, inspect and filter it, build JOIN views, copy a selected range, and export clean Excel files—without uploading data or installing an application.
 
-Version: **20.1.0**
+Version: **20.2.0**
 
 ## Why this project exists
 
@@ -128,7 +128,8 @@ Read [PRIVACY.md](PRIVACY.md) before using the tool with sensitive data.
 Runtime dependencies are intentionally zero. Node.js is used only for validation.
 
 ```bash
-npm test              # runs all 5 test suites
+npm test              # runs all 7 test suites
+npm run build:release # rebuilds the single-file release from src/
 npm run validate:release  # release readiness check
 ```
 
@@ -139,6 +140,8 @@ The test suite covers parser formats, copy serialization, state/storage behavior
 - [User guide](docs/user-guide.md)
 - [Requirements and scope](docs/requirements.md)
 - [Architecture](docs/architecture.md)
+- [Refactor requirements](docs/refactor-requirements.md)
+- [Refactor architecture](docs/refactor-architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
