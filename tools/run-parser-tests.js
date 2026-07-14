@@ -188,6 +188,7 @@ if (failures.length) throw new Error(failures.join('\n'));
 console.log(`Parser regression tests passed: ${cases.length}`);
 
 if(process.argv.includes('--all')) {
+  require('./run-build-tests');
   require('./run-copy-tests');
   require('./run-tab-tests');
   require('./run-join-tests');

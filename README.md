@@ -128,7 +128,8 @@ Read [PRIVACY.md](PRIVACY.md) before using the tool with sensitive data.
 Runtime dependencies are intentionally zero. Node.js is used only for validation.
 
 ```bash
-npm test              # runs all 5 test suites
+npm test              # runs all 6 test suites
+npm run build:release # rebuilds the single-file release from src/
 npm run validate:release  # release readiness check
 ```
 
@@ -139,6 +140,8 @@ The test suite covers parser formats, copy serialization, state/storage behavior
 - [User guide](docs/user-guide.md)
 - [Requirements and scope](docs/requirements.md)
 - [Architecture](docs/architecture.md)
+- [Refactor requirements](docs/refactor-requirements.md)
+- [Refactor architecture](docs/refactor-architecture.md)
 - [Roadmap](docs/roadmap.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)

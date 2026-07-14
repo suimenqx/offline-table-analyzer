@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -7,7 +7,7 @@
     <link rel="icon" type="image/svg+xml" media="(prefers-color-scheme: light)" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230f172a'/><text x='50' y='68' font-family='system-ui,sans-serif' font-size='48' font-weight='800' fill='%23ffffff' text-anchor='middle'>OTA</text></svg>">
     <link rel="icon" type="image/svg+xml" media="(prefers-color-scheme: dark)" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23f8fafc'/><text x='50' y='68' font-family='system-ui,sans-serif' font-size='48' font-weight='800' fill='%230f1f38' text-anchor='middle'>OTA</text></svg>">
     <style>
-        /* --- Design Tokens --- */
+/* --- Design Tokens --- */
         :root {
             --primary: #2563eb;
             --primary-hover: #1d4ed8;
@@ -879,6 +879,7 @@
 </div>
 
 <script>
+/* @module 00-runtime.js: runtime and feedback */
 /* --- Utils --- */
 const $ = (id) => document.getElementById(id);
 const createEl = (tag, cls) => { const e = document.createElement(tag); if(cls) e.className=cls; return e; };
@@ -910,6 +911,7 @@ const Toast = {
     }
 };
 
+/* @module 01-exporter.js: file and XLSX exporter */
 /* Exporter */
 const Exporter = {
     escapeXml(str="") {
@@ -1123,6 +1125,8 @@ const Exporter = {
     },
     toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
 };
+
+/* @module 02-store.js: workspace state and persistence */
 /* Core */
 const APP_VERSION = '20.1.0';
 const WORKSPACE_SCHEMA_VERSION = 20;
@@ -1422,6 +1426,7 @@ const Store = {
     applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); }
 };
 
+/* @module 03-table-utils.js: table normalization */
 /* Import Engine */
 const TableUtils = {
     normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
@@ -1493,6 +1498,7 @@ const TableUtils = {
     }
 };
 
+/* @module 04-header-resolver.js: header inference */
 const HeaderResolver = {
     infer(rows, options={}) {
         const clean = (rows || []).map(r => TableUtils.trimRow(r)).filter(r => !TableUtils.isEmptyRow(r));
@@ -1548,6 +1554,7 @@ const HeaderResolver = {
     }
 };
 
+/* @module 05-delimited.js: quote-aware delimited parsing */
 const Delimited = {
     lastDiagnostics: [],
     parse(text='', delimiter=',') {
@@ -1585,6 +1592,7 @@ const Delimited = {
     }
 };
 
+/* @module 06-html-parser.js: HTML clipboard parser */
 const HtmlTableParser = {
     id:'html-table', label:'HTML 网页表格',
     confidence(source) {
@@ -1660,6 +1668,7 @@ const HtmlTableParser = {
     }
 };
 
+/* @module 07-delimited-parsers.js: CSV, TSV, and parser factories */
 function buildSingleTableResult(rows, name, sourceType, options={}, meta={}, forcedHeader) {
     const resolved = HeaderResolver.infer(rows, { ...options, hasHeader: forcedHeader === undefined ? options.hasHeader : forcedHeader, tableName:name });
     return {
@@ -1711,6 +1720,7 @@ const ExcelPasteParser = createDelimitedParser({
     }
 });
 
+/* @module 08-text-parsers.js: pipe, ASCII, fixed-width, aligned, plain, and CLI parsers */
 const PipeTableParser = {
     id:'pipe-table', label:'竖线/网页表格文本', delimiter:'|',
     confidence(source) {
@@ -1980,6 +1990,7 @@ const CliTableDataParser = {
     }
 };
 
+/* @module 09-import-engine.js: parser selection and diagnostics */
 const ImportEngine = {
     parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
@@ -2006,6 +2017,7 @@ const ImportEngine = {
     }
 };
 
+/* @module 10-parser-facade.js: legacy parser facade */
 /* Parser */
 const Parser = {
     lastResult: { tables:[], format:'empty', label:'空输入' },
@@ -2023,7 +2035,7 @@ const Parser = {
     }
 };
 
-
+/* @module 11-joiner.js: JOIN execution and dependency safety */
 /* Joiner */
 const Joiner = {
     resolve(name, rawTables, views, stack=[]) {
@@ -2167,6 +2179,7 @@ const Joiner = {
     }
 };
 
+/* @module 12-join-editor.js: JOIN editor UI */
 /* Join Editor */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '' },
@@ -2262,7 +2275,7 @@ const JoinEditor = {
     applyStoredCellEdits() {
         const edits = Store.curr().ui.cellEdits || {};
         this.raw.forEach(table => {
-            const tableEdits = edits[`$${table.name}`];
+            const tableEdits = edits[`${table.name}`];
             if(!tableEdits) return;
             Object.entries(tableEdits).forEach(([rowKey, cols]) => {
                 const rowIdx = Number(rowKey);
@@ -2282,7 +2295,7 @@ const JoinEditor = {
         if(previous === next) return false;
         const ui = Store.curr().ui;
         if(!ui.cellEdits) ui.cellEdits = {};
-        const tableKey = `$${tableName}`;
+        const tableKey = `${tableName}`;
         if(!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
         if(!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
         ui.cellEdits[tableKey][rowIdx][colIdx] = next;
@@ -3248,7 +3261,7 @@ const JoinEditor = {
     }
 };
 
-
+/* @module 13-clipboard.js: clipboard serialization */
 /* Clipboard Formatting */
 const ClipboardFormatter = {
     escapeHtml(str='') {
@@ -3328,6 +3341,7 @@ const ClipboardFormatter = {
     }
 };
 
+/* @module 14-selection.js: preview range selection */
 /* Selection Logic */
 const Select = {
     start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
@@ -3497,6 +3511,7 @@ const Select = {
     }
 };
 
+/* @module 15-app.js: application orchestration and UI */
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -4540,7 +4555,7 @@ validflag Time      Level   Message                 Code
     applyStoredCellEdits() {
         const edits = Store.curr().ui.cellEdits || {};
         this.raw.forEach(table => {
-            const tableEdits = edits[`$${table.name}`];
+            const tableEdits = edits[`${table.name}`];
             if(!tableEdits) return;
             Object.entries(tableEdits).forEach(([rowKey, cols]) => {
                 const rowIdx = Number(rowKey);
@@ -5047,7 +5062,7 @@ validflag Time      Level   Message                 Code
         if(previous === next) return false;
         const ui = Store.curr().ui;
         if(!ui.cellEdits) ui.cellEdits = {};
-        const tableKey = `$${tableName}`;
+        const tableKey = `${tableName}`;
         if(!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
         if(!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
         ui.cellEdits[tableKey][rowIdx][colIdx] = next;

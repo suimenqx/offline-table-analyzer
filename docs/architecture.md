@@ -2,9 +2,9 @@
 
 ## 1. Delivery architecture
 
-The release application is `index.html`. CSS, markup, parser adapters, state management, transformations, clipboard serialization, XLSX generation, and UI behavior are self-contained. Runtime dependencies and network resources are intentionally absent.
+The release application is `index.html`, generated from `src/index.template.html`, `src/styles.css`, and the ordered source modules under `src/modules/` by `tools/build-release.js`. CSS, markup, parser adapters, state management, transformations, clipboard serialization, XLSX generation, and UI behavior remain self-contained in the generated file. Runtime dependencies and network resources are intentionally absent.
 
-Node scripts under `tools/` extract logical sections from the HTML for regression tests. They are development-only and are not needed by end users.
+The generated file is intentionally kept as the only end-user artifact, while source modules are the only hand-edited application source. Node scripts under `tools/` build and validate the artifact and are development-only.
 
 ## 2. Logical modules
 
@@ -23,6 +23,8 @@ Node scripts under `tools/` extract logical sections from the HTML for regressio
 | `ClipboardFormatter` | TSV/CSV/Markdown/ASCII/HTML serialization and formula-prefix protection |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `App` | UI orchestration, parsing, pagination, filtering, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading |
+
+The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor-architecture.md); the complete acceptance checklist is in [Refactor requirements](refactor-requirements.md).
 
 ## 3. Core data model
 
@@ -137,6 +139,7 @@ Web Workers, IndexedDB document storage, streaming export, and virtual scrolling
 All test scripts reside under `tools/`:
 
 - `run-parser-tests.js`: parser formats (all 10 adapters), malformed input, diagnostics, normalization, and aligned-table separator variants.
+- `run-build-tests.js`: source manifest completeness, deterministic release output, single-script packaging, and generated syntax.
 - `run-copy-tests.js`: copy formats (CSV/TSV/Markdown/ASCII/HTML/text), multiline cells, HTML escaping, formula protection.
 - `run-tab-tests.js`: tab rules, Store migration shape, temporary mode, quota failures, workspace imports, config import/export.
 - `run-join-tests.js`: all JOIN types, compound-key collisions, missing fields, duplicate headers, dependency cycle detection.
