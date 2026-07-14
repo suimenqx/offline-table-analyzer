@@ -879,7 +879,33 @@
 </div>
 
 <script>
+/* @module 00-module-loader.js: runtime module registry */
+/* Runtime module loader */
+const OTA = (() => {
+    const registry = new Map();
+    const cache = new Map();
+    const define = (name, dependencies, factory) => {
+        if(registry.has(name)) throw new Error(`Duplicate module: ${name}`);
+        registry.set(name, { dependencies, factory });
+    };
+    const requireModule = name => {
+        if(cache.has(name)) return cache.get(name);
+        const entry = registry.get(name);
+        if(!entry) throw new Error(`Unknown module: ${name}`);
+        const exports = entry.factory(...entry.dependencies.map(requireModule));
+        cache.set(name, exports || {});
+        return cache.get(name);
+    };
+    return {
+        define,
+        require: requireModule,
+        start(name) { return requireModule(name); }
+    };
+})();
+if(typeof window !== 'undefined') window.OTA = OTA;
+
 /* @module 00-runtime.js: runtime and feedback */
+OTA.define('runtime', [], () => {
 /* --- Utils --- */
 const $ = (id) => document.getElementById(id);
 const createEl = (tag, cls) => { const e = document.createElement(tag); if(cls) e.className=cls; return e; };
@@ -911,7 +937,11 @@ const Toast = {
     }
 };
 
+    return { $, createEl, Tooltip, Toast };
+});
+
 /* @module 01-exporter.js: file and XLSX exporter */
+OTA.define('exporter', ["runtime"], ({Toast}) => {
 /* Exporter */
 const Exporter = {
     escapeXml(str="") {
@@ -1126,7 +1156,11 @@ const Exporter = {
     toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
 };
 
+    return { Exporter };
+});
+
 /* @module 02-store.js: workspace state and persistence */
+OTA.define('store', [], () => {
 /* Core */
 const APP_VERSION = '20.1.0';
 const WORKSPACE_SCHEMA_VERSION = 20;
@@ -1426,7 +1460,11 @@ const Store = {
     applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); }
 };
 
+    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, Store };
+});
+
 /* @module 03-table-utils.js: table normalization */
+OTA.define('table-utils', [], () => {
 /* Import Engine */
 const TableUtils = {
     normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
@@ -1498,7 +1536,11 @@ const TableUtils = {
     }
 };
 
+    return { TableUtils };
+});
+
 /* @module 04-header-resolver.js: header inference */
+OTA.define('header-resolver', ["table-utils"], ({TableUtils}) => {
 const HeaderResolver = {
     infer(rows, options={}) {
         const clean = (rows || []).map(r => TableUtils.trimRow(r)).filter(r => !TableUtils.isEmptyRow(r));
@@ -1554,7 +1596,11 @@ const HeaderResolver = {
     }
 };
 
+    return { HeaderResolver };
+});
+
 /* @module 05-delimited.js: quote-aware delimited parsing */
+OTA.define('delimited', ["table-utils"], ({TableUtils}) => {
 const Delimited = {
     lastDiagnostics: [],
     parse(text='', delimiter=',') {
@@ -1592,7 +1638,11 @@ const Delimited = {
     }
 };
 
+    return { Delimited };
+});
+
 /* @module 06-html-parser.js: HTML clipboard parser */
+OTA.define('html-parser', ["table-utils","header-resolver"], ({TableUtils}, {HeaderResolver}) => {
 const HtmlTableParser = {
     id:'html-table', label:'HTML 网页表格',
     confidence(source) {
@@ -1668,7 +1718,11 @@ const HtmlTableParser = {
     }
 };
 
+    return { HtmlTableParser };
+});
+
 /* @module 07-delimited-parsers.js: CSV, TSV, and parser factories */
+OTA.define('delimited-parsers', ["table-utils","header-resolver","delimited"], ({TableUtils}, {HeaderResolver}, {Delimited}) => {
 function buildSingleTableResult(rows, name, sourceType, options={}, meta={}, forcedHeader) {
     const resolved = HeaderResolver.infer(rows, { ...options, hasHeader: forcedHeader === undefined ? options.hasHeader : forcedHeader, tableName:name });
     return {
@@ -1720,7 +1774,11 @@ const ExcelPasteParser = createDelimitedParser({
     }
 });
 
+    return { buildSingleTableResult, CsvParser, SemicolonCsvParser, ExcelPasteParser };
+});
+
 /* @module 08-text-parsers.js: pipe, ASCII, fixed-width, aligned, plain, and CLI parsers */
+OTA.define('text-parsers', ["table-utils","header-resolver","delimited","delimited-parsers"], ({TableUtils}, {HeaderResolver}, {Delimited}, {buildSingleTableResult}) => {
 const PipeTableParser = {
     id:'pipe-table', label:'竖线/网页表格文本', delimiter:'|',
     confidence(source) {
@@ -1990,7 +2048,11 @@ const CliTableDataParser = {
     }
 };
 
+    return { PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser };
+});
+
 /* @module 09-import-engine.js: parser selection and diagnostics */
+OTA.define('import-engine', ["table-utils","html-parser","delimited-parsers","text-parsers"], ({TableUtils}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, {PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser}) => {
 const ImportEngine = {
     parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
@@ -2017,7 +2079,11 @@ const ImportEngine = {
     }
 };
 
+    return { ImportEngine };
+});
+
 /* @module 10-parser-facade.js: legacy parser facade */
+OTA.define('parser-facade', ["import-engine","runtime"], ({ImportEngine}, {Toast}) => {
 /* Parser */
 const Parser = {
     lastResult: { tables:[], format:'empty', label:'空输入' },
@@ -2035,7 +2101,11 @@ const Parser = {
     }
 };
 
+    return { Parser };
+});
+
 /* @module 11-joiner.js: JOIN execution and dependency safety */
+OTA.define('joiner', ["table-utils"], ({TableUtils}) => {
 /* Joiner */
 const Joiner = {
     resolve(name, rawTables, views, stack=[]) {
@@ -2179,7 +2249,22 @@ const Joiner = {
     }
 };
 
+    return { Joiner };
+});
+
 /* @module 12-join-editor.js: JOIN editor UI */
+OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$}, {Store}, {Joiner}, {Exporter, Toast}) => {
+const App = new Proxy({}, {
+    get(_target, key) {
+        const app = OTA.require('app').App;
+        const value = app[key];
+        return typeof value === 'function' ? value.bind(app) : value;
+    },
+    set(_target, key, value) {
+        OTA.require('app').App[key] = value;
+        return true;
+    }
+});
 /* Join Editor */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '' },
@@ -3261,7 +3346,11 @@ const JoinEditor = {
     }
 };
 
+    return { JoinEditor };
+});
+
 /* @module 13-clipboard.js: clipboard serialization */
+OTA.define('clipboard', ["store"], ({Store}) => {
 /* Clipboard Formatting */
 const ClipboardFormatter = {
     escapeHtml(str='') {
@@ -3341,7 +3430,11 @@ const ClipboardFormatter = {
     }
 };
 
+    return { ClipboardFormatter };
+});
+
 /* @module 14-selection.js: preview range selection */
+OTA.define('selection', ["runtime","store","clipboard"], ({$ , Toast}, {Store}, {ClipboardFormatter}) => {
 /* Selection Logic */
 const Select = {
     start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
@@ -3511,7 +3604,11 @@ const Select = {
     }
 };
 
+    return { Select };
+});
+
 /* @module 15-app.js: application orchestration and UI */
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -5350,7 +5447,14 @@ validflag Time      Level   Message                 Code
     }
 };
 
-App.init();
+    Tooltip.init();
+    App.init();
+    return { App };
+});
+
+/* @module 16-bootstrap.js: application bootstrap */
+/* Application bootstrap */
+window.OTA.start('app');
 </script>
 </body>
 </html>

@@ -1,3 +1,4 @@
+OTA.define('table-utils', [], () => {
 /* Import Engine */
 const TableUtils = {
     normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
@@ -68,3 +69,6 @@ const TableUtils = {
         return div.textContent || div.innerText || '';
     }
 };
+
+    return { TableUtils };
+});

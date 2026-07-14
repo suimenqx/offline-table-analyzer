@@ -1,3 +1,15 @@
+OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$}, {Store}, {Joiner}, {Exporter, Toast}) => {
+const App = new Proxy({}, {
+    get(_target, key) {
+        const app = OTA.require('app').App;
+        const value = app[key];
+        return typeof value === 'function' ? value.bind(app) : value;
+    },
+    set(_target, key, value) {
+        OTA.require('app').App[key] = value;
+        return true;
+    }
+});
 /* Join Editor */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '' },
@@ -1078,3 +1090,6 @@ const JoinEditor = {
         document.body.classList.remove('modal-open');
     }
 };
+
+    return { JoinEditor };
+});

@@ -1,13 +1,4 @@
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
-const htmlPath = path.join(__dirname, '..', 'index.html');
-const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
-const script = html.split('<script>')[1].split('</script>')[0];
-const start = script.indexOf('/* Core */');
-const end = script.indexOf('/* Import Engine */');
-if (start < 0 || end < 0) throw new Error('Core markers not found');
-const code = script.slice(start, end) + '\nwindow.Store = Store;';
+const { loadBuiltModules } = require('./load-built-modules');
 const storage = new Map();
 let quotaFail = false;
 const sandbox = {
@@ -24,9 +15,8 @@ const sandbox = {
     removeItem(key) { storage.delete(key); }
   }
 };
-vm.createContext(sandbox);
-vm.runInContext(code, sandbox, { filename: 'tab-store.js' });
-const Store = sandbox.window.Store;
+const { OTA } = loadBuiltModules(sandbox);
+const Store = OTA.require('store').Store;
 function reset() {
   Store.state = {
     docs: [

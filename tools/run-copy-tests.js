@@ -1,21 +1,7 @@
-const fs = require('fs');
-const vm = require('vm');
-const path = require('path');
-const htmlPath = path.join(__dirname, '..', 'index.html');
-const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
-const script = html.split('<script>')[1].split('</script>')[0];
-const exporterStart = script.indexOf('/* Exporter */');
-const exporterEnd = script.indexOf('/* Core */', exporterStart);
-const start = script.indexOf('/* Clipboard Formatting */');
-const end = script.indexOf('/* Selection Logic */');
-if (exporterStart < 0 || exporterEnd < 0 || start < 0 || end < 0) throw new Error('Copy/export markers not found');
-const code = script.slice(start, end) + '\nwindow.ClipboardFormatter = ClipboardFormatter;';
-const sandbox = { window: {}, console };
-vm.createContext(sandbox);
-vm.runInContext(script.slice(exporterStart, exporterEnd) + '\nwindow.Exporter = Exporter;', sandbox, { filename: 'exporter.js' });
-vm.runInContext(code, sandbox, { filename: 'copy-format.js' });
-const F = sandbox.window.ClipboardFormatter;
-const E = sandbox.window.Exporter;
+const { loadBuiltModules } = require('./load-built-modules');
+const { OTA } = loadBuiltModules({ window: {}, console });
+const F = OTA.require('clipboard').ClipboardFormatter;
+const E = OTA.require('exporter').Exporter;
 function assert(cond, msg) { if (!cond) throw new Error(msg); }
 const matrix = [['id', 'name'], ['1', 'Alice'], ['2', 'Bob, Jr.']];
 assert(F.toText(matrix, 'default') === 'id\tname\n1\tAlice\n2\tBob, Jr.', 'default copy should remain TSV');

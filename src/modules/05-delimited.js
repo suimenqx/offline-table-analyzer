@@ -1,3 +1,4 @@
+OTA.define('delimited', ["table-utils"], ({TableUtils}) => {
 const Delimited = {
     lastDiagnostics: [],
     parse(text='', delimiter=',') {
@@ -34,3 +35,6 @@ const Delimited = {
         return { score, rows, width, consistent: consistency >= 0.65 };
     }
 };
+
+    return { Delimited };
+});

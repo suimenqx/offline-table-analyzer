@@ -1,3 +1,4 @@
+OTA.define('header-resolver', ["table-utils"], ({TableUtils}) => {
 const HeaderResolver = {
     infer(rows, options={}) {
         const clean = (rows || []).map(r => TableUtils.trimRow(r)).filter(r => !TableUtils.isEmptyRow(r));
@@ -52,3 +53,6 @@ const HeaderResolver = {
         return score >= 0.55;
     }
 };
+
+    return { HeaderResolver };
+});

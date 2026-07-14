@@ -1,3 +1,4 @@
+OTA.define('clipboard', ["store"], ({Store}) => {
 /* Clipboard Formatting */
 const ClipboardFormatter = {
     escapeHtml(str='') {
@@ -76,3 +77,6 @@ const ClipboardFormatter = {
         return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII' })[format] || '默认';
     }
 };
+
+    return { ClipboardFormatter };
+});

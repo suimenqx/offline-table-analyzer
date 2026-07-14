@@ -1,3 +1,4 @@
+OTA.define('runtime', [], () => {
 /* --- Utils --- */
 const $ = (id) => document.getElementById(id);
 const createEl = (tag, cls) => { const e = document.createElement(tag); if(cls) e.className=cls; return e; };
@@ -28,3 +29,6 @@ const Toast = {
         setTimeout(()=>el.className='', 2000);
     }
 };
+
+    return { $, createEl, Tooltip, Toast };
+});

@@ -1,3 +1,4 @@
+OTA.define('text-parsers', ["table-utils","header-resolver","delimited","delimited-parsers"], ({TableUtils}, {HeaderResolver}, {Delimited}, {buildSingleTableResult}) => {
 const PipeTableParser = {
     id:'pipe-table', label:'竖线/网页表格文本', delimiter:'|',
     confidence(source) {
@@ -266,3 +267,6 @@ const CliTableDataParser = {
         return { tables, diagnostics:tables.flatMap(table => table.diagnostics || []) };
     }
 };
+
+    return { PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser };
+});

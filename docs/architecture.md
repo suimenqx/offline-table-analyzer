@@ -140,6 +140,7 @@ All test scripts reside under `tools/`:
 
 - `run-parser-tests.js`: parser formats (all 10 adapters), malformed input, diagnostics, normalization, and aligned-table separator variants.
 - `run-build-tests.js`: source manifest completeness, deterministic release output, single-script packaging, and generated syntax.
+- `run-startup-tests.js`: browser-like DOM/storage smoke test for the module graph and application bootstrap.
 - `run-copy-tests.js`: copy formats (CSV/TSV/Markdown/ASCII/HTML/text), multiline cells, HTML escaping, formula protection.
 - `run-tab-tests.js`: tab rules, Store migration shape, temporary mode, quota failures, workspace imports, config import/export.
 - `run-join-tests.js`: all JOIN types, compound-key collisions, missing fields, duplicate headers, dependency cycle detection.

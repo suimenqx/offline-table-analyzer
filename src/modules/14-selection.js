@@ -1,3 +1,4 @@
+OTA.define('selection', ["runtime","store","clipboard"], ({$ , Toast}, {Store}, {ClipboardFormatter}) => {
 /* Selection Logic */
 const Select = {
     start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
@@ -166,3 +167,6 @@ const Select = {
         Toast.show(`已复制 ${Math.max(0, matrix.length - 1)} 行 · ${ClipboardFormatter.label(format)}`);
     }
 };
+
+    return { Select };
+});

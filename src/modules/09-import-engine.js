@@ -1,3 +1,4 @@
+OTA.define('import-engine', ["table-utils","html-parser","delimited-parsers","text-parsers"], ({TableUtils}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, {PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser}) => {
 const ImportEngine = {
     parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
@@ -23,3 +24,6 @@ const ImportEngine = {
         return { tables, format:chosen.id, label:chosen.label, diagnostics, candidates, sourceLength:source.text.length };
     }
 };
+
+    return { ImportEngine };
+});

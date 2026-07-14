@@ -1,3 +1,4 @@
+OTA.define('exporter', ["runtime"], ({Toast}) => {
 /* Exporter */
 const Exporter = {
     escapeXml(str="") {
@@ -211,3 +212,6 @@ const Exporter = {
     },
     toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
 };
+
+    return { Exporter };
+});

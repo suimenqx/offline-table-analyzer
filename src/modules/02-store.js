@@ -1,3 +1,4 @@
+OTA.define('store', [], () => {
 /* Core */
 const APP_VERSION = '20.1.0';
 const WORKSPACE_SCHEMA_VERSION = 20;
@@ -296,3 +297,6 @@ const Store = {
     toggleTheme() { this.state.theme = this.state.theme==='light'?'dark':'light'; this.applyTheme(); this.save(); },
     applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); }
 };
+
+    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, Store };
+});

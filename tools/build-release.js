@@ -8,6 +8,7 @@ const templatePath = path.join(sourceDir, 'index.template.html');
 const outputPath = path.join(root, 'index.html');
 
 const MODULES = [
+  ['00-module-loader.js', 'runtime module registry'],
   ['00-runtime.js', 'runtime and feedback'],
   ['01-exporter.js', 'file and XLSX exporter'],
   ['02-store.js', 'workspace state and persistence'],
@@ -23,7 +24,8 @@ const MODULES = [
   ['12-join-editor.js', 'JOIN editor UI'],
   ['13-clipboard.js', 'clipboard serialization'],
   ['14-selection.js', 'preview range selection'],
-  ['15-app.js', 'application orchestration and UI']
+  ['15-app.js', 'application orchestration and UI'],
+  ['16-bootstrap.js', 'application bootstrap']
 ];
 
 function readUtf8(file) {

@@ -1,3 +1,4 @@
+OTA.define('parser-facade', ["import-engine","runtime"], ({ImportEngine}, {Toast}) => {
 /* Parser */
 const Parser = {
     lastResult: { tables:[], format:'empty', label:'空输入' },
@@ -14,3 +15,6 @@ const Parser = {
         }
     }
 };
+
+    return { Parser };
+});

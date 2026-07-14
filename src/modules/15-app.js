@@ -1,3 +1,4 @@
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -1836,4 +1837,8 @@ validflag Time      Level   Message                 Code
     }
 };
 
-App.init();
+
+    Tooltip.init();
+    App.init();
+    return { App };
+});

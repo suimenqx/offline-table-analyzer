@@ -1,3 +1,4 @@
+OTA.define('joiner', ["table-utils"], ({TableUtils}) => {
 /* Joiner */
 const Joiner = {
     resolve(name, rawTables, views, stack=[]) {
@@ -140,3 +141,6 @@ const Joiner = {
         return { name: `JOIN:${cfg.view}`, headers, rows: resRows, isView: true };
     }
 };
+
+    return { Joiner };
+});

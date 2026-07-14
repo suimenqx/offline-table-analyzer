@@ -18,7 +18,7 @@
 | 继续维护单体 HTML | 无迁移成本，发布简单 | 耦合继续扩大，测试边界脆弱，无法并行演进 | 不选 |
 | 浏览器原生 ES Module | 依赖方向清晰，调试体验好 | 直接打开 `file://` 时存在模块加载/CORS 兼容问题，无法满足单文件交付 | 暂不作为发布形态 |
 | 引入 Vite/Webpack/React | 工程能力强，适合大型 UI | 引入依赖、构建链和生态升级成本，偏离“单文件/零依赖”产品定位 | 暂不选 |
-| **源模块 + 确定性内联构建** | 保持单 HTML、无运行时依赖；源文件可拆分；构建和回退可验证 | 模块间仍需遵守声明顺序；暂时不是运行时真正的 ESM | **当前选型** |
+| **源模块 + 确定性内联构建** | 保持单 HTML、无运行时依赖；源文件可拆分；构建和回退可验证 | 需要维护轻量 registry；暂时不是标准 ESM | **当前选型** |
 | 纯函数核心 + 可选 ESM/Worker | 长期可扩展到大数据和后台线程 | 需要先稳定领域契约和消息协议 | 作为下一阶段演进目标 |
 
 ## 3. 当前决策：源模块 + 单文件发布
@@ -27,7 +27,7 @@
 
 - `src/index.template.html`：只保存稳定 HTML 壳和发布元数据。
 - `src/styles.css`：集中保存设计令牌、布局、响应式和无障碍样式。
-- `src/modules/*.js`：按职责和依赖顺序保存业务模块。
+- `src/modules/*.js`：按职责和依赖顺序保存业务模块；首个模块提供本地 registry，最后一个模块启动应用。
 - `tools/build-release.js`：读取固定 manifest，将样式和模块确定性内联到根目录 `index.html`。
 - `index.html`：生成产物，不再手工修改；用户仍然只接触这个文件。
 
@@ -60,8 +60,11 @@ Clipboard / Exporter / Selection → UI controllers → App bootstrap
 
 ## 5. 已落地模块地图
 
+当前发布构建包含 18 个源模块：
+
 | 源文件 | 职责 | 主要公开对象 |
 | --- | --- | --- |
+| `00-module-loader.js` | 无依赖的本地模块 registry | `OTA.define`, `OTA.require`, `OTA.start` |
 | `00-runtime.js` | DOM 查询、Tooltip、Toast | `$`, `createEl`, `Tooltip`, `Toast` |
 | `01-exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
 | `02-store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
@@ -78,8 +81,9 @@ Clipboard / Exporter / Selection → UI controllers → App bootstrap
 | `13-clipboard.js` | TSV/CSV/Markdown/ASCII/HTML | `ClipboardFormatter` |
 | `14-selection.js` | 预览矩形选区和复制 | `Select` |
 | `15-app.js` | 页面组合、事件、渲染 | `App` |
+| `16-bootstrap.js` | 生产启动入口 | `OTA.start('app')` |
 
-这一步是低风险的结构性拆分：业务代码保持原有声明顺序和行为，先建立文件边界，再逐步把纯领域逻辑改成显式输入/输出模块。它避免一次性重写导致解析和数据安全行为同时漂移。
+这一步先完成结构性拆分，再完成运行时模块隔离：业务代码通过 `OTA.define()` 声明依赖，`OTA.require()` 按需解析并缓存；App 与 JoinEditor 的天然循环依赖通过延迟代理打断。它避免一次性重写导致解析和数据安全行为同时漂移。
 
 ## 6. 状态与事件设计
 
@@ -108,7 +112,7 @@ DOM event
 ### 阶段 A：可复现边界（当前）
 
 - 建立新分支。
-- 提取 template、styles 和 16 个按依赖排序的源模块。
+- 提取 template、styles 和 18 个按依赖排序的源模块。
 - 增加 `build:release`，使根 `index.html` 可从源完全生成。
 - 保持现有测试全部通过。
 
@@ -149,7 +153,7 @@ DOM event
 
 ## 9. 架构风险与决策门槛
 
-- **模块仍是拼接而非 ESM**：这是为 `file://` 单文件发布保留的过渡形态；阶段 B 完成后再评估是否增加开发时 ESM/构建转换。
+- **模块是轻量 registry 而非 ESM**：这是为 `file://` 单文件发布保留的过渡形态；领域契约稳定后再评估开发时 ESM/构建转换。
 - **App 仍偏大**：先用测试保护行为，再按用户流程拆 controller；不进行没有回归保护的机械搬迁。
 - **主线程计算**：输入有 25 MB 保护和分页；性能 fixture 未证明前不提前引入复杂并发模型。
 - **浏览器兼容**：发布脚本保持标准语法；每次改动同时跑 Node 语法、静态 UI 合同和真实浏览器回归（若已配置）。

@@ -128,7 +128,7 @@ Read [PRIVACY.md](PRIVACY.md) before using the tool with sensitive data.
 Runtime dependencies are intentionally zero. Node.js is used only for validation.
 
 ```bash
-npm test              # runs all 6 test suites
+npm test              # runs all 7 test suites
 npm run build:release # rebuilds the single-file release from src/
 npm run validate:release  # release readiness check
 ```

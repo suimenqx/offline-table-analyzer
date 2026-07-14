@@ -1,3 +1,4 @@
+OTA.define('delimited-parsers', ["table-utils","header-resolver","delimited"], ({TableUtils}, {HeaderResolver}, {Delimited}) => {
 function buildSingleTableResult(rows, name, sourceType, options={}, meta={}, forcedHeader) {
     const resolved = HeaderResolver.infer(rows, { ...options, hasHeader: forcedHeader === undefined ? options.hasHeader : forcedHeader, tableName:name });
     return {
@@ -47,4 +48,7 @@ const ExcelPasteParser = createDelimitedParser({
         const st = Delimited.delimiterStats(text, '\t');
         return st.consistent ? Math.max(0.82, st.score) : 0.35;
     }
+});
+
+    return { buildSingleTableResult, CsvParser, SemicolonCsvParser, ExcelPasteParser };
 });
