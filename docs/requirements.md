@@ -1,5 +1,7 @@
 # v20 Requirements and Scope
 
+The workspace schema remains version `20`; the current application release is **20.1.0**.
+
 ## 1. Product definition
 
 Offline Table Analyzer is a local-first workbench for turning copied or text-file tabular data into inspectable, filterable, joinable, and exportable tables. It is not intended to replace a spreadsheet, a database, or a cloud BI product.
@@ -18,7 +20,7 @@ The defining constraints are:
 ### Import
 
 - Paste plain text and capture HTML table clipboard content.
-- Automatically detect or manually select CLI, CSV, TSV, semicolon, HTML, Markdown/pipe, ASCII, fixed-width, or whitespace text.
+- Automatically detect or manually select CLI, CSV, TSV, semicolon, HTML, Markdown/pipe, ASCII, fixed-width, aligned fixed-width, or whitespace text.
 - Support CSV quotes, escaped quotes, embedded delimiters, and embedded line breaks.
 - Normalize BOM, CRLF, NBSP, literal/escaped `<br>`, blank lines, blank headers, and duplicate headers.
 - Offer automatic header inference, forced first-row header, or generated headers.
@@ -73,7 +75,7 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Schema version `20`, application version `20.0.0`.
+- Schema version `20`, application version `20.1.0`.
 - Single key `ota_v20_workspace`; migrate legacy `v16_4_store` once and remove it only after a successful v20 write.
 - Catch `QuotaExceededError` in `save()` and report the specific failure in the status bar; in-memory data remains usable.
 - Show saved/failed state, estimated storage use (`json.length * 2` for UTF-16 approximation), and a usage meter in the status bar.
@@ -150,13 +152,20 @@ The defining constraints are:
 
 ### Import and parsing
 - File selection via button and drag/drop import with automatic format detection from file extension.
-- Nine parsers: CLI table-data, HTML, ASCII, Markdown/pipe, Excel-paste (TSV), CSV, semicolon-CSV, fixed-width, plain text.
+- Ten parsers: CLI table-data, HTML, ASCII, Markdown/pipe, Excel-paste (TSV), CSV, semicolon-CSV, fixed-width, aligned fixed-width, plain text.
 - Format candidates returned with confidence scores; one-click format switching via the "Details" diagnostic dialog.
 - Parse-time Toast notification when parsing exceeds 800 ms.
 - `ROW_WIDTH_MISMATCH` diagnostics for mismatched rows (overflow preserved, short rows padded).
 - CLI parser header expansion when rows have more columns than headers.
 - Legacy `[PREFIX] table-data` markers supported.
 - `rowspan` preservation in HTML tables and escaped Markdown pipe handling.
+
+### v20.1.0 data correctness additions
+- Added the aligned fixed-width parser for delimiter-free reports with pure `-` separator lines, multiple tables, separated header/data blocks, and `--` empty cells.
+- Clear persisted cell-correction overlays and session history when source text, imported file, parser format, or header mode changes.
+- Preserve HTML `rowspan` values across expanded rows, including combined `rowspan`/`colspan` cells.
+- Emit long or unsafe numeric-looking strings as Excel text to preserve identifiers and precision.
+- Treat a complete `/.../` filter token as one regular expression before processing pipe-based OR alternatives.
 
 ### Persistence and data safety
 - Schema version 20 with single key `ota_v20_workspace` and legacy `v16_4_store` migration.
@@ -222,4 +231,3 @@ The defining constraints are:
 - Native-app packaging.
 
 These are evaluated in the roadmap only after the v20 reliability baseline remains stable.
-

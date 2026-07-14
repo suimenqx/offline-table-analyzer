@@ -2,7 +2,7 @@
 
 Offline Table Analyzer is a privacy-first table workbench that runs entirely in one HTML file. Paste or drop messy tabular data, inspect and filter it, build JOIN views, copy a selected range, and export clean Excel files—without uploading data or installing an application.
 
-Version: **20.0.0**
+Version: **20.1.0**
 
 ## Why this project exists
 
@@ -18,7 +18,7 @@ Operational data rarely arrives as a perfect spreadsheet. It is often copied fro
 
 ### Import and normalization
 
-Source text is parsed through a 9-parser pipeline tried in this priority order:
+Source text is parsed through a 10-parser pipeline tried in this priority order:
 
 1. **CLI table-data** — legacy multi-table format with `table-data` and `validflag` markers
 2. **HTML clipboard tables** — including `colspan`, `rowspan`, and `<br>`
@@ -27,12 +27,14 @@ Source text is parsed through a 9-parser pipeline tried in this priority order:
 5. **TSV / Excel paste**
 6. **CSV** — quoted commas, escaped quotes, multiline cells
 7. **Semicolon-delimited CSV**
-8. **Fixed-width text**
-9. **Whitespace-delimited plain text** (fallback)
+8. **Fixed-width text** — columns separated by repeated spaces
+9. **Aligned fixed-width text** — delimiter-free aligned output with character-position columns
+10. **Whitespace-delimited plain text** (fallback)
 
 Additional import capabilities:
 
 - **Header modes**: automatic inference, forced first-row, or generated headers (`Column1`, `Column2`, …). CLI table-data uses `validflag` rows as headers. Duplicate and blank headers are normalized. Parse diagnostics are surfaced in the UI.
+- **Aligned-table input**: recognizes pure `-` separator lines, supports separator lines above/below a table or between header and data, preserves multiple tables, and treats `--` cells as empty values.
 - **Source input**: paste, drag-and-drop, or file picker. Format is auto-detected from file extension (`.csv` / `.tsv` / `.html` / `.htm` / `.md` / `.markdown`).
 - **Editors**: resizable source textarea (120–600 px) and a fullscreen source editor for large inputs.
 - 25 MB safety limit on source text and workspace files.
@@ -46,6 +48,7 @@ Additional import capabilities:
 - **Column-header and transposed row-header preview modes** for inspecting wide or tall tables.
 - **Pagination**: 50, 100, 250, or 500 rows per page per table.
 - **Persisted cell corrections** with undo/redo (`Ctrl`+`Z` / `Ctrl`+`Y`).
+- Corrections are cleared with a visible notice when the source text, imported file, parser format, or header mode changes, preventing row-indexed edits from being applied to different records.
 
 ### JOIN views
 
@@ -66,6 +69,7 @@ Additional import capabilities:
   - **Raw Excel** — the parsed tables as stored, before any filtering.
   - **Full Excel** — select which tables and views to include, with display-column projection.
   - **Preview Excel** — the currently filtered and paginated results.
+- Safe numeric serialization keeps long identifiers, unsafe leading-zero values, high-precision numeric-looking strings, and non-finite values as Excel text.
 - **Versioned workspace backup** (JSON): export the entire workspace and restore it later, choosing to **replace** the current workspace or **append** each tab as a new analysis.
 - **Configuration export / import**: rules and views only, no raw data. 5 MB file limit. Useful for sharing analysis setups without exposing underlying data.
 - **Temporary data mode**: disable raw-text persistence so source data stays only in the current page session. Rules and preferences are still saved.

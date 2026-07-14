@@ -16,7 +16,7 @@ Node scripts under `tools/` extract logical sections from the HTML for regressio
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
 | `HeaderResolver` | Header inference and forced header modes |
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
-| Parser adapters | 9 adapters: `CliTableDataParser`, `HtmlTableParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `PlainTextTableParser` |
+| Parser adapters | 10 adapters: `CliTableDataParser`, `HtmlTableParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
 | `ImportEngine` | Manual/automatic adapter selection, candidates, normalized result and diagnostics |
 | `Joiner` | Equality JOIN execution, statistics, dependency safety, projection |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
@@ -72,6 +72,8 @@ Cell corrections are stored as a nested overlay in `cellEdits`, keyed by `$${tab
 ```
 
 Parsing starts from the unchanged source text and reapplies the overlay. This preserves the original input while keeping corrections stable across filtering, pagination, orientation changes, and reloads. An edit history stack (max 100) and redo stack support undo/redo.
+
+When the source text, imported file, parser format, or header mode changes, the overlay and session edit history are invalidated. This prevents row-indexed corrections from being applied to a different parsed record.
 
 ### Normalized table
 
@@ -134,7 +136,7 @@ Web Workers, IndexedDB document storage, streaming export, and virtual scrolling
 
 All test scripts reside under `tools/`:
 
-- `run-parser-tests.js`: parser formats (all 9 adapters), malformed input, diagnostics, normalization.
+- `run-parser-tests.js`: parser formats (all 10 adapters), malformed input, diagnostics, normalization, and aligned-table separator variants.
 - `run-copy-tests.js`: copy formats (CSV/TSV/Markdown/ASCII/HTML/text), multiline cells, HTML escaping, formula protection.
 - `run-tab-tests.js`: tab rules, Store migration shape, temporary mode, quota failures, workspace imports, config import/export.
 - `run-join-tests.js`: all JOIN types, compound-key collisions, missing fields, duplicate headers, dependency cycle detection.
@@ -142,4 +144,3 @@ All test scripts reside under `tools/`:
 - `validate-release.js`: version consistency, single inline script, offline assets/APIs, required community files.
 
 The static UI contract suite is intentionally not described as full E2E coverage. Browser interaction remains part of release QA and is a roadmap target for automated CI.
-
