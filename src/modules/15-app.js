@@ -184,14 +184,6 @@ const App = {
         ];
     },
 
-    appendImportSummaryTags(meta) {
-        this.getImportSummaryItems().forEach(text => {
-            const tag = createEl('span', 'meta-tag');
-            tag.textContent = text;
-            meta.appendChild(tag);
-        });
-    },
-
     getTablePreviewMode(tableName) {
         const ui = Store.curr().ui;
         return (ui.previewModes && ui.previewModes[tableName]) === 'row-header' ? 'row-header' : 'column-header';
@@ -206,8 +198,6 @@ const App = {
     },
 
     appendPreviewModeToggle(meta, tableName, mode) {
-        const spacer = createEl('span', 'table-meta-spacer');
-        meta.appendChild(spacer);
         const wrap = createEl('span', 'table-view-toggle');
         wrap.title = '切换预览方向：列表头 / 行表头';
         wrap.onclick = e => e.stopPropagation();
@@ -235,8 +225,13 @@ const App = {
         const tableCount = this.raw.length;
         const rows = this.raw.reduce((sum, table) => sum + (table.rows || []).length, 0);
         const maxCols = this.raw.reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
-        const format = Parser.lastResult && Parser.lastResult.label;
-        summary.textContent = tableCount ? `${format || '已解析'} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列` : '所有处理均在本地浏览器完成';
+        const importItems = this.getImportSummaryItems();
+        const format = (Parser.lastResult && (Parser.lastResult.label || Parser.lastResult.format)) || (importItems[0] || '').replace(/^格式:\s*/, '');
+        const header = importItems.find(text => text.indexOf('表头:') === 0) || '';
+        summary.textContent = tableCount
+            ? `${format || '已解析'}${header ? ` · ${header}` : ''} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列`
+            : '所有处理均在本地浏览器完成';
+        summary.title = summary.textContent;
     },
 
     updateStorageStatus(detail={}) {
@@ -1381,9 +1376,7 @@ validflag Time      Level   Message                 Code
             const card = createEl('div', 'table-container');
             const meta = createEl('div', 'table-meta');
             meta.ondblclick = () => this.toggleTableCollapse(t.name);
-            const nameSpan = createEl('span');
-            nameSpan.style.fontWeight = '800';
-            nameSpan.style.color = 'var(--text-strong)';
+            const nameSpan = createEl('span', 'table-title');
             nameSpan.textContent = t.name;
             meta.appendChild(nameSpan);
             if(t.isView) {
@@ -1391,7 +1384,6 @@ validflag Time      Level   Message                 Code
             }
             const rowTag = createEl('span', 'meta-tag'); rowTag.textContent = `Row: ${t.rows.length}`; meta.appendChild(rowTag);
             const showTag = createEl('span', 'meta-tag'); showTag.textContent = `Show: ${res.rows.length}`; meta.appendChild(showTag);
-            if(tIdx === 0) this.appendImportSummaryTags(meta);
             if(filterCount>0) { 
                 const fTag = createEl('span','meta-tag'); 
                 fTag.textContent = `列过滤: ${filterCount}`; 
@@ -1400,17 +1392,24 @@ validflag Time      Level   Message                 Code
                 fTag.onclick = () => this.clearTableFilters(t.name);
                 meta.appendChild(fTag); 
             }
-            const collapseBtn = createEl('button', 'sm text-button');
+            const tableActions = createEl('span', 'table-meta-actions');
+            const collapseBtn = createEl('button', 'icon-btn sm table-collapse-toggle');
             collapseBtn.type = 'button';
-            collapseBtn.textContent = isCollapsed ? '展开' : '折叠';
+            collapseBtn.setAttribute('aria-expanded', String(!isCollapsed));
+            collapseBtn.setAttribute('aria-label', isCollapsed ? '展开表格' : '折叠表格');
             collapseBtn.title = isCollapsed ? '展开表格' : '折叠表格';
+            collapseBtn.appendChild(createEl('span', 'collapse-chevron'));
             collapseBtn.onclick = event => { event.stopPropagation(); this.toggleTableCollapse(t.name); };
-            meta.appendChild(collapseBtn);
-            card.appendChild(meta);
-            if(isCollapsed) { div.appendChild(card); return; }
-
+            meta.appendChild(tableActions);
             const mode = this.getTablePreviewMode(t.name);
-            this.appendPreviewModeToggle(meta, t.name, mode);
+            this.appendPreviewModeToggle(tableActions, t.name, mode);
+            tableActions.appendChild(collapseBtn);
+            card.appendChild(meta);
+            if(isCollapsed) {
+                div.appendChild(card);
+                return;
+            }
+
             const pageSize = Number(ui.pageSize) || 100;
             const totalPages = Math.max(1, Math.ceil(res.rows.length / pageSize));
             const requestedPage = Number(ui.tablePages && ui.tablePages[t.name]) || 1;
