@@ -1,4 +1,4 @@
-# Offline Table Analyzer — User Guide (v20.0.0)
+# Offline Table Analyzer — User Guide (v20.1.0)
 
 ## 1. Import data
 
@@ -6,7 +6,7 @@
 
 | Method | How |
 | --- | --- |
-| **Paste** | Paste text directly into the left-panel source editor. The editor accepts CSV, TSV, HTML tables, Markdown/pipe tables, ASCII tables, CLI `table-data` blocks, and plain whitespace-delimited text. |
+| **Paste** | Paste text directly into the left-panel source editor. The editor accepts CSV, TSV, HTML tables, Markdown/pipe tables, ASCII tables, fixed-width and aligned fixed-width tables, CLI `table-data` blocks, and plain whitespace-delimited text. |
 | **Drag file** | Drag a supported text file onto the editor area. A visible drop zone highlight confirms detection. |
 | **Select file** | Click **Select file** (or press `Ctrl/Cmd+O`) and choose a file. Accepted extensions: `.csv`, `.tsv`, `.txt`, `.log`, `.md`, `.markdown`, `.html`, `.htm`. |
 
@@ -28,7 +28,7 @@ If the auto-detected format was already set to "Auto detect", the selector is up
 
 ### 1.3 Format selection
 
-The **Format** dropdown includes ten options:
+The **Format** dropdown includes eleven options:
 
 1. **Auto detect** — runs all parsers and picks the highest-confidence match (recommended).
 2. **CLI table-data** — multi-table blocks with `table-data <name>` headers and `validflag` rows.
@@ -38,14 +38,26 @@ The **Format** dropdown includes ten options:
 6. **HTML table** — extracts `<table>` elements from HTML markup.
 7. **Markdown/Pipe table** — GitHub-flavored pipe tables with optional alignment separators.
 8. **ASCII table** — box-drawn tables using `+`, `-`, and `|` characters.
-9. **Fixed width** — column positions inferred from repeated spacing patterns.
-10. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
+9. **Fixed width** — columns inferred from repeated spacing patterns.
+10. **Aligned fixed width** — delimiter-free aligned output whose column positions are inferred from the header row.
+11. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
 
 **When auto-detection is wrong:** Open the **Details** panel (beside the parse status indicator). It lists format candidates with confidence scores (e.g., "Excel/TSV — 87%"). Click any candidate to switch format and re-parse immediately.
 
 CLI `table-data` mode additionally auto-detects each data block's internal format (TSV, CSV, pipe, or fixed-width) based on the content of the `validflag` header row.
 
-### 1.4 Header selection
+### 1.4 Aligned fixed-width tables
+
+The **Aligned fixed width** parser is intended for reports whose columns line up by character position but have no `|` or `+` borders. It recognizes pure `-` separator lines and supports:
+
+- separators above and/or below a table;
+- a separator between the header block and data block;
+- multiple tables in one input;
+- `--` as an empty cell.
+
+Columns must have at least two spaces between header words. A standalone line between tables can be used as the next table's name. Values are sliced by the header's character ranges, so a value wider than its header may be truncated at the next column boundary.
+
+### 1.5 Header selection
 
 Three header modes in the dropdown:
 
@@ -57,7 +69,7 @@ When format is **CLI table-data**, headers come from the `validflag` line and th
 
 Duplicate or empty header names receive numeric suffixes (e.g., `Name_2`).
 
-### 1.5 Diagnostics
+### 1.6 Diagnostics
 
 The parse status bar shows warnings for malformed quotes, rows with mismatched column counts, and other recoverable issues. These never block parsing; they are informational. Open **Details** to see the full list.
 
@@ -160,12 +172,14 @@ If no operator is present, the token is treated as a **contains** test across th
 
 ### 5.3 Regex
 
-Wrap a regular expression in `/` (forward slashes) to match across the entire row (all columns joined with a space):
+Wrap a complete regular expression in `/` (forward slashes) to match across the entire row (all columns joined with a space):
 
 ```
 /timeout|refused/
 ```
 Performs a case-insensitive regex search for "timeout" or "refused".
+
+The complete `/.../` token is evaluated as one regular expression, so the `|` inside `/timeout|refused/` remains regex alternation rather than being split into plain-text OR terms.
 
 **Safety limit:** regex patterns longer than **200 characters** are silently ignored (the token returns `false`).
 
