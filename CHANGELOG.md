@@ -2,6 +2,19 @@
 
 All notable changes are documented here. The project follows semantic versioning from v20 onward.
 
+## 20.2.0 — 2026-07-15
+
+### Architecture refactor
+
+- Split the single-page source into 18 ordered runtime modules while preserving the portable single-file `index.html` release.
+- Added deterministic source-to-release construction through `npm run build:release`.
+- Added a local module registry, module graph checks, and browser-like startup smoke coverage.
+- Added full refactor requirements, architecture decisions, migration phases, and branch/worktree rollback policy.
+
+### Compatibility
+
+- Kept workspace schema 20, existing parser/JOIN/copy/export behavior, offline runtime constraints, and the v20 storage migration contract unchanged.
+
 ## 20.1.0 — 2026-07-13
 
 ### Data correctness fixes

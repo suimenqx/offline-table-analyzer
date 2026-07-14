@@ -1,6 +1,6 @@
 OTA.define('store', [], () => {
 /* Core */
-const APP_VERSION = '20.1.0';
+const APP_VERSION = '20.2.0';
 const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
