@@ -1622,10 +1622,12 @@ const HeaderResolver = {
         const reasons = [];
         if(unique === nonEmpty) { score += 0.2; reasons.push('字段名不重复'); }
         if(idLike / nonEmpty >= 0.7) { score += 0.35; reasons.push('字段名形态稳定'); }
-        if(typeDiff / Math.max(nonEmpty, 1) >= 0.45) { score += 0.35; reasons.push('首行与数据类型不同'); }
-        if(first.some(v => /^(id|name|key|type|date|time|status|amount|price|count|validflag|field|column|addr|val|code|product|category|level|message|host|user|字段|编号|名称|时间|状态|金额|数量)$/i.test(String(v).trim()))) {
+        if(typeDiff / Math.max(nonEmpty, 1) >= 0.35) { score += 0.35; reasons.push('首行与数据类型不同'); }
+        const headerTerms = /(?:^|[\s_./-])(id|name|key|type|date|time|status|amount|price|count|validflag|field|column|addr|val|code|product|category|level|message|host|user|physical|feature|needed|used|active|字段|编号|名称|时间|状态|金额|数量)(?:$|[\s_./-])/i;
+        const labelCount = first.filter(value => headerTerms.test(String(value).trim())).length;
+        if(labelCount >= Math.max(1, Math.ceil(nonEmpty * 0.4)) || first.some(v => /^(id|name|key|type|date|time|status|amount|price|count|validflag|field|column|addr|val|code|product|category|level|message|host|user|字段|编号|名称|时间|状态|金额|数量)$/i.test(String(v).trim()))) {
             score += 0.2;
-            reasons.push('包含常见字段名');
+            reasons.push('包含字段标签词');
         }
         if(allFirstNumeric && typeDiff === 0) { score -= 0.45; reasons.push('首行全部为数字'); }
         else if(allFirstNumeric && typeDiff > 0) { score += 0.1; reasons.push('数字型字段名与数据类型不同'); }
@@ -1634,6 +1636,216 @@ const HeaderResolver = {
 };
 
     return { HeaderResolver };
+});
+
+/* @module 04-text-layout.js: position-aware text layout inference */
+OTA.define('text-layout', [], () => {
+/*
+ * Position-aware layout inference for delimiter-free text.
+ *
+ * A header is not necessarily formatted like a data row: a label such as
+ * "Physical dascacsa" may contain a single space while the corresponding
+ * data column starts much farther to the right.  Data rows usually provide
+ * the stronger evidence because their fields repeat at stable display
+ * positions.  This module keeps that evidence separate from header semantics
+ * so other text parsers can reuse it without duplicating slicing logic.
+ */
+
+function terminalCodePointWidth(codePoint) {
+    if(codePoint === 0 || codePoint < 32 || (codePoint >= 0x7f && codePoint < 0xa0)) return 0;
+    if((codePoint >= 0x0300 && codePoint <= 0x036f) ||
+        (codePoint >= 0x1ab0 && codePoint <= 0x1aff) ||
+        (codePoint >= 0x1dc0 && codePoint <= 0x1dff) ||
+        (codePoint >= 0x20d0 && codePoint <= 0x20ff) ||
+        (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
+        (codePoint >= 0xfe20 && codePoint <= 0xfe2f) ||
+        (codePoint >= 0xe0100 && codePoint <= 0xe01ef)) return 0;
+    const wide = codePoint >= 0x1100 && (
+        codePoint <= 0x115f || codePoint === 0x2329 || codePoint === 0x232a ||
+        (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint !== 0x303f) ||
+        (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+        (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+        (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+        (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+        (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+        (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+        (codePoint >= 0x1f300 && codePoint <= 0x1faff) ||
+        (codePoint >= 0x20000 && codePoint <= 0x3fffd)
+    );
+    return wide ? 2 : 1;
+}
+
+function displayWidth(value='') {
+    let width = 0;
+    for(const char of String(value)) width += terminalCodePointWidth(char.codePointAt(0));
+    return width;
+}
+
+function tokenize(line='') {
+    const tokens = [];
+    const source = String(line || '');
+    const regex = /\S+/g;
+    let match;
+    let previousEnd = 0;
+    while((match = regex.exec(source)) !== null) {
+        const start = displayWidth(source.substring(0, match.index));
+        const end = start + displayWidth(match[0]);
+        tokens.push({
+            text:match[0],
+            start,
+            end,
+            gap:displayWidth(source.substring(previousEnd, match.index))
+        });
+        previousEnd = match.index + match[0].length;
+    }
+    return tokens;
+}
+
+function starts(line='', options={}) {
+    const minGap = Number.isFinite(options.minGap) ? options.minGap : 2;
+    return tokenize(line)
+        .filter((token, index) => index === 0 || token.gap >= minGap)
+        .map(token => token.start);
+}
+
+function near(value, target, tolerance=1) {
+    return Math.abs(value - target) <= tolerance;
+}
+
+function lineHasStart(line, start, options={}) {
+    const tolerance = Number.isFinite(options.tolerance) ? options.tolerance : 1;
+    return starts(line, options).some(value => near(value, start, tolerance));
+}
+
+function clusterStarts(lines=[], options={}) {
+    const source = (lines || []).filter(line => String(line || '').trim());
+    if(!source.length) return [];
+    const tolerance = Number.isFinite(options.tolerance) ? options.tolerance : 1;
+    const minSupport = Number.isFinite(options.minSupport) ? options.minSupport : Math.max(1, Math.ceil(source.length * 0.6));
+    const observations = source.flatMap(line => starts(line, options));
+    const positions = [...new Set(observations)].sort((a, b) => a - b);
+    const clusters = [];
+    positions.forEach(position => {
+        const previous = clusters[clusters.length - 1];
+        if(previous && position - previous.max <= tolerance) {
+            previous.positions.push(position);
+            previous.max = position;
+        } else {
+            clusters.push({ positions:[position], max:position });
+        }
+    });
+    return clusters.map(cluster => {
+        const positionCounts = new Map();
+        cluster.positions.forEach(position => positionCounts.set(position, (positionCounts.get(position) || 0) + 1));
+        const representative = [...positionCounts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0][0];
+        const support = source.reduce((count, line) => lineHasStart(line, representative, { ...options, tolerance }) ? count + 1 : count, 0);
+        return { start:representative, support, ratio:support / source.length };
+    }).filter(cluster => cluster.start === 0 || cluster.support >= minSupport);
+}
+
+function slice(line='', start=0, end=Infinity) {
+    let column = 0;
+    let value = '';
+    for(const char of String(line || '')) {
+        const next = column + terminalCodePointWidth(char.codePointAt(0));
+        if(column >= end) break;
+        if(next > start && column < end) value += char;
+        column = next;
+    }
+    return value.trim();
+}
+
+function rangesFromStarts(columnStarts=[]) {
+    return (columnStarts || []).map((start, index) => ({
+        s:start,
+        e:index + 1 < columnStarts.length ? columnStarts[index + 1] : Infinity
+    }));
+}
+
+function rowByRanges(line='', ranges=[]) {
+    return ranges.map(range => slice(line, range.s, range.e));
+}
+
+function supportForStarts(columnStarts=[], dataLines=[], options={}) {
+    if(!columnStarts.length || !dataLines.length) return 0;
+    const supported = columnStarts.reduce((sum, start) => (
+        sum + dataLines.reduce((count, line) => lineHasStart(line, start, options) ? count + 1 : count, 0) / dataLines.length
+    ), 0);
+    return supported / columnStarts.length;
+}
+
+function nonEmptyRatio(values=[]) {
+    if(!values.length) return 0;
+    return values.filter(value => String(value || '').trim()).length / values.length;
+}
+
+function boundaryQuality(line='', columnStarts=[]) {
+    const boundaries = (columnStarts || []).slice(1);
+    if(!boundaries.length) return 0;
+    const tokens = tokenize(line);
+    const cuts = boundaries.filter(boundary => tokens.some(token => token.start < boundary && boundary < token.end)).length;
+    return 1 - cuts / boundaries.length;
+}
+
+function candidateScore(candidate, headerStarts, dataStarts, dataLines) {
+    const selectedStarts = candidate.source === 'data' ? dataStarts : headerStarts;
+    const support = supportForStarts(selectedStarts, dataLines);
+    const ranges = rangesFromStarts(selectedStarts);
+    const headers = ranges.map(range => slice(candidate.headerLine, range.s, range.e));
+    const coverage = nonEmptyRatio(headers);
+    const boundaries = boundaryQuality(candidate.headerLine, selectedStarts);
+    const isBody = candidate.source === 'data';
+    const countDiff = dataStarts.length && headerStarts.length !== dataStarts.length ? 0.10 : 0;
+    const canonical = isBody && dataStarts.length !== headerStarts.length ? 0.08 : 0;
+    const missingColumns = isBody && dataStarts.length < headerStarts.length ? -0.30 : 0;
+    const headerBias = !isBody && coverage >= 1 && support >= 0.5 ? 0.04 : 0;
+    return {
+        starts:selectedStarts,
+        source:candidate.source,
+        support,
+        headerCoverage:coverage,
+        headerBoundaryQuality:boundaries,
+        score:Math.max(0, Math.min(1, support * 0.40 + coverage * 0.25 + boundaries * 0.35 + countDiff + canonical + missingColumns + headerBias))
+    };
+}
+
+function inferAligned(headerLine='', dataLines=[], options={}) {
+    const header = String(headerLine || '');
+    const body = (dataLines || []).filter(line => String(line || '').trim());
+    const headerStarts = starts(header, options);
+    const dataClusters = clusterStarts(body, options);
+    const dataStarts = dataClusters.map(cluster => cluster.start);
+    if(headerStarts.length < 2 && dataStarts.length < 2) {
+        return { headerLine:header, dataLines:body, starts:[], ranges:[], headers:[], rows:[], score:0, source:null, headerCoverage:0, dataSupport:0 };
+    }
+    const candidates = [];
+    if(headerStarts.length >= 2) candidates.push(candidateScore({ headerLine:header, source:'header' }, headerStarts, dataStarts, body));
+    if(dataStarts.length >= 2) candidates.push(candidateScore({ headerLine:header, source:'data' }, headerStarts, dataStarts, body));
+    const completeCandidates = candidates.filter(candidate => candidate.headerCoverage >= 1);
+    const rankedCandidates = completeCandidates.length ? completeCandidates : candidates;
+    rankedCandidates.sort((a, b) => b.score - a.score || (a.source === 'data' ? -1 : 1));
+    const chosen = rankedCandidates[0] || { starts:headerStarts, source:'header', support:0, headerCoverage:0, score:0 };
+    const ranges = rangesFromStarts(chosen.starts);
+    const headers = ranges.map(range => slice(header, range.s, range.e));
+    const rows = body.map(line => rowByRanges(line, ranges));
+    return {
+        headerLine:header,
+        dataLines:body,
+        starts:chosen.starts,
+        ranges,
+        headers,
+        rows,
+        score:chosen.score,
+        source:chosen.source,
+        headerCoverage:chosen.headerCoverage,
+        dataSupport:chosen.support,
+        headerTokenCount:headerStarts.length,
+        dataColumnCount:dataStarts.length,
+        dataStartClusters:dataClusters
+    };
+}
+
+    return { TextLayout:{ displayWidth, tokenize, starts, clusterStarts, slice, rangesFromStarts, rowByRanges, inferAligned } };
 });
 
 /* @module 05-delimited.js: quote-aware delimited parsing */
@@ -1826,7 +2038,7 @@ const ExcelPasteParser = createDelimitedParser({
 });
 
 /* @module 08-text-parsers.js: pipe, ASCII, fixed-width, aligned, plain, and CLI parsers */
-OTA.define('text-parsers', ["table-utils","header-resolver","delimited","delimited-parsers"], ({TableUtils}, {HeaderResolver}, {Delimited}, {buildSingleTableResult}) => {
+OTA.define('text-parsers', ["table-utils","header-resolver","text-layout","delimited","delimited-parsers"], ({TableUtils}, {HeaderResolver}, {TextLayout}, {Delimited}, {buildSingleTableResult}) => {
 const PipeTableParser = {
     id:'pipe-table', label:'竖线/网页表格文本', delimiter:'|',
     confidence(source) {
@@ -2003,14 +2215,7 @@ function cliBlockParts(lines, markerIndex, nextMarkerIndex) {
 }
 
 function cliDisplayTokens(line='') {
-    const tokens = [];
-    const regex = /\S+/g;
-    let match;
-    while((match = regex.exec(String(line))) !== null) {
-        const start = terminalDisplayWidth(String(line).substring(0, match.index));
-        tokens.push({ start, end:start + terminalDisplayWidth(match[0]) });
-    }
-    return tokens;
+    return TextLayout.tokenize(line);
 }
 
 function cliDisplayTokenStarts(line='') {
@@ -2174,79 +2379,44 @@ function isAlignedSeparator(line='') {
 }
 
 function isAlignedColumnLine(line='') {
-    const words = [];
-    const re = /\S+/g;
-    let match;
-    while((match = re.exec(line)) !== null) words.push({ s:match.index, e:match.index + match[0].length });
-    if(words.length < 2) return false;
-    for(let i = 1; i < words.length; i++) {
-        if(words[i].s - words[i - 1].e < 2) return false;
-    }
-    return true;
-}
-
-function alignedWordStarts(line='') {
-    const starts = [];
-    const re = /\S+/g;
-    let match;
-    while((match = re.exec(String(line))) !== null) {
-        starts.push(terminalDisplayWidth(String(line).substring(0, match.index)));
-    }
-    return starts;
-}
-
-function hasMatchingColumnStarts(headerLine='', dataLine='') {
-    const headerStarts = alignedWordStarts(headerLine);
-    const dataStarts = alignedWordStarts(dataLine);
-    if(headerStarts.length < 2 || dataStarts.length < 2) return false;
-    const dataStartSet = new Set(dataStarts);
-    const matches = headerStarts.filter(start => dataStartSet.has(start)).length;
-    // Two-column tables need both starts. Wider tables may contain an empty
-    // value, so allow a minority of header positions to be absent in a row.
-    const required = headerStarts.length === 2 ? 2 : Math.max(3, Math.ceil(headerStarts.length * 0.6));
-    return matches >= required;
-}
-
-function terminalCodePointWidth(codePoint) {
-    if(codePoint === 0 || codePoint < 32 || (codePoint >= 0x7f && codePoint < 0xa0)) return 0;
-    if((codePoint >= 0x0300 && codePoint <= 0x036f) ||
-        (codePoint >= 0x1ab0 && codePoint <= 0x1aff) ||
-        (codePoint >= 0x1dc0 && codePoint <= 0x1dff) ||
-        (codePoint >= 0x20d0 && codePoint <= 0x20ff) ||
-        (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
-        (codePoint >= 0xfe20 && codePoint <= 0xfe2f) ||
-        (codePoint >= 0xe0100 && codePoint <= 0xe01ef)) return 0;
-    const wide = codePoint >= 0x1100 && (
-        codePoint <= 0x115f || codePoint === 0x2329 || codePoint === 0x232a ||
-        (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint !== 0x303f) ||
-        (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
-        (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
-        (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
-        (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
-        (codePoint >= 0xff00 && codePoint <= 0xff60) ||
-        (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
-        (codePoint >= 0x1f300 && codePoint <= 0x1faff) ||
-        (codePoint >= 0x20000 && codePoint <= 0x3fffd)
-    );
-    return wide ? 2 : 1;
-}
-
-function terminalDisplayWidth(value='') {
-    let width = 0;
-    for(const char of String(value)) width += terminalCodePointWidth(char.codePointAt(0));
-    return width;
+    const words = TextLayout.tokenize(line);
+    return words.length >= 2 && words.slice(1).every(word => word.gap >= 2);
 }
 
 function sliceByDisplayColumns(line='', start=0, end=Infinity) {
-    let column = 0;
-    let value = '';
-    for(const char of String(line)) {
-        const next = column + terminalCodePointWidth(char.codePointAt(0));
-        if(column >= end) break;
-        if(next > start && column < end) value += char;
-        column = next;
+    return TextLayout.slice(line, start, end);
+}
+
+function alignedBlocks(source) {
+    const clean = TableUtils.lines(source.text || '').map(line => isAlignedSeparator(line) ? '' : line);
+    const blocks = [];
+    let current = [];
+    for(const line of clean) {
+        if(!line.trim()) {
+            if(current.length) { blocks.push(current); current = []; }
+        } else current.push(line);
     }
-    return value.trim();
+    if(current.length) blocks.push(current);
+    return blocks;
+}
+
+function inspectAlignedHeader(headerLine='', dataLines=[]) {
+    const layout = TextLayout.inferAligned(headerLine, dataLines);
+    if(layout.starts.length < 2 || !layout.rows.length || layout.headerCoverage < 1) return null;
+    const analysis = HeaderResolver.analyze([layout.headers, ...layout.rows]);
+    const structural = layout.score >= 0.72 && layout.dataSupport >= 0.7;
+    const headerLike = isAlignedColumnLine(headerLine);
+    const semantic = analysis.score >= 0.65;
+    if(!headerLike && !semantic) return null;
+    return {
+        layout,
+        analysis,
+        score:semantic ? Math.min(0.92, 0.82 + layout.score * 0.08) : (structural ? 0.80 : 0.76)
+    };
+}
+
+function isStrongAlignedHeader(headerLine='', dataLines=[]) {
+    return Boolean(inspectAlignedHeader(headerLine, dataLines));
 }
 
 const AlignedTableParser = {
@@ -2258,50 +2428,35 @@ const AlignedTableParser = {
         // separators while preserving explicit aligned-table parsing.
         const hasCliBlock = lines.some(isCliBlockSeparator) && lines.some(isCliDataSeparator);
         if(hasCliBlock) return 0;
-        const separatorIndexes = lines
-            .map((line, index) => isAlignedSeparator(line) ? index : -1)
-            .filter(index => index >= 0);
-        const hasDashLine = separatorIndexes.length > 0;
-        if(!hasDashLine) return 0;
-        // A separator is a valid boundary, so do not require header and data
-        // lines to be adjacent (the common one-row case has no other pair).
-        for(const index of separatorIndexes) {
-            if(index > 0 && index + 1 < lines.length &&
-                ((isAlignedColumnLine(lines[index - 1]) && isAlignedColumnLine(lines[index + 1])) ||
-                    hasMatchingColumnStarts(lines[index - 1], lines[index + 1]))) {
-                return 0.86;
+        if(!lines.some(isAlignedSeparator)) return 0;
+        const blocks = alignedBlocks(source);
+        let best = 0;
+        blocks.forEach((block, index) => {
+            const own = block.length >= 2 ? inspectAlignedHeader(block[0], block.slice(1)) : null;
+            if(own) best = Math.max(best, own.score);
+            if(block.length === 1 && blocks[index + 1]) {
+                const separated = inspectAlignedHeader(block[0], blocks[index + 1]);
+                if(separated) best = Math.max(best, Math.min(0.94, separated.score + 0.04));
             }
-        }
-        for(let i = 0; i < lines.length - 1; i++) {
-            if(isAlignedColumnLine(lines[i]) && isAlignedColumnLine(lines[i + 1])) return 0.80;
-        }
-        return 0;
+        });
+        return best;
     },
     parse(source, options={}) {
         // 1) 去掉定宽表分隔线（替换为空行，保留表间边界）
-        const clean = TableUtils.lines(source.text).map(l => isAlignedSeparator(l) ? '' : l);
-        // 2) 按空行切 block
-        const blocks = []; let cur = [];
-        for(const l of clean) {
-            if(!l.trim()) { if(cur.length) { blocks.push(cur); cur = []; } }
-            else cur.push(l);
-        }
-        if(cur.length) blocks.push(cur);
-        // 3) 合并被 --- 隔开的列头 block 与数据 block（列头有 ≥2 个 ≥2 空格间隔的单词）
-        const isHeaderLike = (line) => {
-            const re = /\S+/g; let w; const words = [];
-            while((w = re.exec(line)) !== null) words.push({s:w.index, e:w.index + w[0].length});
-            if(words.length < 2) return false;
-            for(let k = 1; k < words.length; k++) {
-                if(words[k].s - words[k-1].e < 2) return false;
-            }
-            return true;
-        };
+        const blocks = alignedBlocks(source);
+        // 2) 合并被 --- 隔开的列头 block 与数据 block。
+        //    旧规则只看表头自身的多空格；现在优先验证数据行的稳定列起点，
+        //    因此 "Physical dascacsa" 这类多词表头仍然可以作为一列。
         const merged = [];
         for(let i = 0; i < blocks.length; i++) {
             const b = blocks[i];
-            if(b.length === 1 && i + 1 < blocks.length &&
-                (isHeaderLike(b[0]) || hasMatchingColumnStarts(b[0], blocks[i + 1][0]))) {
+            const nextBlock = blocks[i + 1];
+            const nextOwnHeader = nextBlock && nextBlock.length >= 2
+                ? inspectAlignedHeader(nextBlock[0], nextBlock.slice(1))
+                : null;
+            const nextContainsHeader = Boolean(nextOwnHeader && nextOwnHeader.analysis.score >= 0.65);
+            if(b.length === 1 && nextBlock &&
+                (isAlignedColumnLine(b[0]) || (isStrongAlignedHeader(b[0], nextBlock) && !nextContainsHeader))) {
                 merged.push([b[0], ...blocks[i + 1]]);
                 i++;
             } else {
@@ -2316,35 +2471,31 @@ const AlignedTableParser = {
                 continue;
             }
             const headerLine = block[0];
-            const regex = /\S+/g; let m; const ranges = [];
-            while((m = regex.exec(headerLine)) !== null) {
-                ranges.push({s:terminalDisplayWidth(headerLine.substring(0, m.index))});
-            }
-            if(ranges.length < 2) continue;
-            // 通常列间至少有两个空格；紧凑表头也可以通过与数据行的
-            // 列起始位置吻合来确认（例如 "Status Duplex Type"）。
-            const words = []; const re2 = /\S+/g; let gapOk = true;
-            while((m = re2.exec(headerLine)) !== null) words.push({s:m.index, e:m.index + m[0].length});
-            if(words.length < 2) continue;
-            for(let k = 1; k < words.length; k++) {
-                if(words[k].s - words[k-1].e < 2) { gapOk = false; break; }
-            }
-            if(!gapOk && !block.slice(1).some(line => hasMatchingColumnStarts(headerLine, line))) continue;
-            // 构建列区间（复刻 CliTableDataParser FIXED 模式）
-            for(let k = 0; k < ranges.length; k++) {
-                ranges[k].e = (k < ranges.length - 1) ? ranges[k + 1].s : 99999;
-            }
-            const headers = ranges.map(r => sliceByDisplayColumns(headerLine, r.s, r.e));
+            const layout = TextLayout.inferAligned(headerLine, block.slice(1));
+            const ranges = layout.ranges;
+            if(ranges.length < 2 || layout.headerCoverage < 1) continue;
+            const headers = layout.headers;
             const rows = [];
             const blockDiagnostics = [];
             for(let i = 1; i < block.length; i++) {
-                const sliced = ranges.map(r => sliceByDisplayColumns(block[i], r.s, r.e));
+                const sliced = TextLayout.rowByRanges(block[i], ranges);
                 const fallback = block[i].trim().split(/\s{2,}/).map(v => v.trim());
                 const positionMismatch = fallback.length >= ranges.length && (
                     fallback.length !== ranges.length || fallback.some((value, index) => value !== sliced[index])
                 );
                 const vals = positionMismatch ? fallback : sliced;
-                if(positionMismatch) {
+                const alignedStartMatch = layout.starts.length
+                    ? layout.starts.filter(start => TextLayout.starts(block[i]).some(actual => Math.abs(actual - start) <= 1)).length / layout.starts.length
+                    : 0;
+                // A wide/CJK header can legitimately be longer than the
+                // values below it. Only report a position mismatch when the
+                // row still follows most of the header's physical starts;
+                // that keeps overflow warnings while avoiding false alarms
+                // for a valid fallback split caused by long header labels.
+                const shouldDiagnoseMismatch = positionMismatch && (
+                    layout.source !== 'header' || alignedStartMatch >= 0.6
+                );
+                if(shouldDiagnoseMismatch) {
                     blockDiagnostics.push({
                         level:'warning',
                         code:'ALIGNED_POSITION_MISMATCH',
@@ -2363,7 +2514,15 @@ const AlignedTableParser = {
             resolved.diagnostics.push(...blockDiagnostics.map(item => ({ ...item, table:name })));
             resolved.name = name;
             resolved.sourceType = this.id;
-            resolved.meta = { delimiter:'position', hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders, headerConfidence:resolved.headerConfidence };
+            resolved.meta = {
+                delimiter:'position',
+                hasHeader:resolved.hasHeader,
+                generatedHeaders:resolved.generatedHeaders,
+                headerConfidence:resolved.headerConfidence,
+                layoutSource:layout.source,
+                layoutScore:layout.score,
+                dataColumnSupport:layout.dataSupport
+            };
             tables.push(resolved);
         }
         if(!tables.length && options.format === this.id) {

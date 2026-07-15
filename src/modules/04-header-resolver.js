@@ -60,10 +60,12 @@ const HeaderResolver = {
         const reasons = [];
         if(unique === nonEmpty) { score += 0.2; reasons.push('字段名不重复'); }
         if(idLike / nonEmpty >= 0.7) { score += 0.35; reasons.push('字段名形态稳定'); }
-        if(typeDiff / Math.max(nonEmpty, 1) >= 0.45) { score += 0.35; reasons.push('首行与数据类型不同'); }
-        if(first.some(v => /^(id|name|key|type|date|time|status|amount|price|count|validflag|field|column|addr|val|code|product|category|level|message|host|user|字段|编号|名称|时间|状态|金额|数量)$/i.test(String(v).trim()))) {
+        if(typeDiff / Math.max(nonEmpty, 1) >= 0.35) { score += 0.35; reasons.push('首行与数据类型不同'); }
+        const headerTerms = /(?:^|[\s_./-])(id|name|key|type|date|time|status|amount|price|count|validflag|field|column|addr|val|code|product|category|level|message|host|user|physical|feature|needed|used|active|字段|编号|名称|时间|状态|金额|数量)(?:$|[\s_./-])/i;
+        const labelCount = first.filter(value => headerTerms.test(String(value).trim())).length;
+        if(labelCount >= Math.max(1, Math.ceil(nonEmpty * 0.4)) || first.some(v => /^(id|name|key|type|date|time|status|amount|price|count|validflag|field|column|addr|val|code|product|category|level|message|host|user|字段|编号|名称|时间|状态|金额|数量)$/i.test(String(v).trim()))) {
             score += 0.2;
-            reasons.push('包含常见字段名');
+            reasons.push('包含字段标签词');
         }
         if(allFirstNumeric && typeDiff === 0) { score -= 0.45; reasons.push('首行全部为数字'); }
         else if(allFirstNumeric && typeDiff > 0) { score += 0.1; reasons.push('数字型字段名与数据类型不同'); }

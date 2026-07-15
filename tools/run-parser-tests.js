@@ -141,6 +141,19 @@ test('aligned table - title between dashes', () => {
   assert(r.tables[0].name.startsWith('My Table'), 'title not used as name: ' + r.tables[0].name);
   assert(r.tables[0].headers[0] === 'col1', 'col1');
 });
+test('aligned table - title is not promoted by a header-like word', () => {
+  const input = [
+    '---',
+    'Status Overview',
+    '---',
+    'ID    Name',
+    '1     Alice',
+    '2     Bob'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.tables.length === 1 && r.tables[0].name === 'Status Overview', 'header-like title was promoted to columns');
+  assert(r.tables[0].headers.join('|') === 'ID|Name' && r.tables[0].rows.length === 2, 'title-separated table was mapped incorrectly');
+});
 test('aligned table - header between dashes separated from data', () => {
   const input = '---\ncol1    col2              col3\n---\nval1    val2              val3\nval4    val5              val6';
   const r = ImportEngine.parse(input);
@@ -163,6 +176,28 @@ test('aligned table - report header remains columns with a separator', () => {
   assert(r.tables.length === 1 && r.tables[0].name === 'Aligned Table', 'header was used as table name');
   assert(r.tables[0].headers.join('|') === 'ColA|ColB|ColC|ColD|ColE|ColF|ColG|ColH|ColI', 'report headers lost');
   assert(r.tables[0].rows.length === 3 && r.tables[0].rows[2][8] === 'PN-003', 'report rows were not mapped');
+});
+test('aligned table - multi-word headers follow stable data starts', () => {
+  const input = [
+    '------------------------------------------------------------------------------------',
+    'Physical dascacsa    Feature Name    Needed Count    Used Count      Active Status',
+    '------------------------------------------------------------------------------------',
+    '0001da               AAAAAAAAAAA     0               0               No allocated',
+    '0001da               AAAAAAAAAAA     0               0               No allocated',
+    '0001da               AAAAAAAAAAA     1               0               No allocated',
+    '0001da               AAAAAAAAAAA     1               0               No allocated',
+    '0001da               AAAAAAAAAAA     0               0               No allocated',
+    '0001da               AAAAAAAAAAA     1               0               No allocated',
+    '0001da               AAAAAAAAAAA     1               1               Activated',
+    '0001da               AAAAAAAAAAA     1               1               Activated'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'multi-word header report was not detected as aligned table');
+  assert(r.tables.length === 1 && r.tables[0].name === 'Aligned Table', 'multi-word header became the table name');
+  assert(r.tables[0].headers.join('|') === 'Physical dascacsa|Feature Name|Needed Count|Used Count|Active Status', 'multi-word headers were split incorrectly');
+  assert(r.tables[0].rows.length === 8, 'multi-word header row count failed');
+  assert(r.tables[0].rows[0].join('|') === '0001da|AAAAAAAAAAA|0|0|No allocated', 'multi-word data row was split incorrectly');
+  assert(r.tables[0].rows[7].join('|') === '0001da|AAAAAAAAAAA|1|1|Activated', 'last multi-word data row was split incorrectly');
 });
 test('aligned table - compact headers with one data row', () => {
   const input = [
