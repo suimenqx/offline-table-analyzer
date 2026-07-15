@@ -34,6 +34,14 @@ test('generated headers', () => {
   const r = ImportEngine.parse('1,Alice,20\n2,Bob,30');
   assert(r.tables[0].headers[0] === 'Column1' && r.tables[0].rows.length === 2, 'generated headers failed');
 });
+test('whitespace text should not be promoted to CSV', () => {
+  const r = ImportEngine.parse('1 2\n3 4');
+  assert(r.format === 'plain-text' && r.tables[0].headers.length === 2 && r.tables[0].rows.length === 2, 'whitespace text was misdetected as CSV');
+});
+test('CSV tabs inside quoted fields should remain CSV', () => {
+  const r = ImportEngine.parse('id,note\n1,"hello\tworld"');
+  assert(r.format === 'csv' && r.tables[0].rows[0][1] === 'hello\tworld', 'quoted tab changed CSV detection');
+});
 test('TSV recognition', () => {
   const r = ImportEngine.parse('id\tname\tage\n1\tAlice\t20');
   assert(r.format === 'excel-paste' && r.tables[0].headers[1] === 'name', 'TSV failed');
@@ -49,6 +57,18 @@ test('Markdown escaped pipe', () => {
 test('ASCII table', () => {
   const r = ImportEngine.parse('+----+-------+\n| id | name  |\n+----+-------+\n| 1  | Alice |\n+----+-------+');
   assert(r.format === 'ascii-table' && r.tables[0].rows[0][1] === 'Alice', 'ASCII failed');
+});
+test('pipe text with horizontal rule should not become ASCII', () => {
+  const r = ImportEngine.parse('| a | b |\n| 1 | 2 |\n---\ntext');
+  assert(r.format === 'pipe-table' && r.tables[0].rows[0][0] === '1', 'pipe text was misdetected as ASCII');
+});
+test('horizontal rule prose should fall back to plain text', () => {
+  const r = ImportEngine.parse('Title\n---\nparagraph text');
+  assert(r.format === 'plain-text' && r.tables.length === 1, 'horizontal rule prose produced an empty aligned result');
+});
+test('raw HTML text should auto-detect as HTML', () => {
+  const r = ImportEngine.parse('<table><tr><th>id</th><th>name</th></tr><tr><td>1</td><td>Alice</td></tr></table>');
+  assert(r.format === 'html-table' && r.tables[0].headers[1] === 'name', 'raw HTML was not auto-detected');
 });
 test('HTML clipboard table', () => {
   const htmlTable = '<table><tr><th>id</th><th>name</th></tr><tr><td>1</td><td>Alice</td></tr></table>';
@@ -145,6 +165,16 @@ test('aligned table - manual format', () => {
   const input = 'col1    col2\nval1    val2';
   const r = ImportEngine.parse(input, { format:'aligned-table' });
   assert(r.format === 'aligned-table', 'manual aligned');
+});
+test('aligned table preserves values that overflow a header position', () => {
+  const input = 'ID    Name    Age\n1     VeryLongNameHere    20';
+  const r = ImportEngine.parse(input, { format:'aligned-table' });
+  assert(r.tables[0].rows[0].join('|') === '1|VeryLongNameHere|20', 'aligned overflow value was truncated');
+  assert(r.diagnostics.some(d => d.code === 'ALIGNED_POSITION_MISMATCH'), 'missing aligned position diagnostic');
+});
+test('ambiguous string rows keep the first row as data', () => {
+  const r = ImportEngine.parse('Alice,NY\nBob,LA');
+  assert(r.tables[0].headers[0] === 'Column1' && r.tables[0].rows.length === 2, 'ambiguous string rows were treated as a header');
 });
 test('duplicate and blank headers', () => {
   const r = ImportEngine.parse('id,,id\n1,Alice,100');

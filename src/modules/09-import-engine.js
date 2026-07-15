@@ -2,25 +2,73 @@ OTA.define('import-engine', ["table-utils","html-parser","delimited-parsers","te
 const ImportEngine = {
     parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
+    parseQuality(parsed) {
+        const tables = parsed && Array.isArray(parsed.tables) ? parsed.tables : [];
+        if(!tables.length) return 0;
+        const diagnostics = Array.isArray(parsed.diagnostics) ? parsed.diagnostics : [];
+        const totalCells = tables.reduce((sum, table) => {
+            const headers = Array.isArray(table.headers) ? table.headers.length : 0;
+            const rows = Array.isArray(table.rows) ? table.rows : [];
+            return sum + headers + rows.reduce((n, row) => n + (Array.isArray(row) ? row.length : 0), 0);
+        }, 0);
+        if(!totalCells) return 0.2;
+        let quality = 1;
+        diagnostics.forEach(item => {
+            if(item.code === 'UNCLOSED_QUOTE') quality -= 0.3;
+            else if(item.code === 'ROW_WIDTH_MISMATCH') quality -= 0.04;
+            else if(item.code === 'ALIGNED_POSITION_MISMATCH') quality -= 0.08;
+            else if(item.level === 'error') quality -= 0.35;
+        });
+        return Math.max(0.15, Math.min(1, quality));
+    },
     parse(input, options={}) {
         const source = typeof input === 'string' ? { text: input, html: options.html || '' } : { text: input.text || '', html: input.html || '' };
         source.text = TableUtils.normalizeText(source.text);
         const selectedType = options.format && options.format !== 'auto' ? options.format : null;
         let chosen = selectedType ? this.getParser(selectedType) : null;
         let scored = [];
+        let parsed;
+        let selectedEvaluation = null;
         if(!chosen) {
             scored = this.parsers.map(parser => ({ parser, score: Math.max(0, Math.min(1, parser.confidence(source, options) || 0)) }))
                 .filter(c => c.score > 0)
                 .sort((a,b) => b.score - a.score);
-            chosen = scored[0] && scored[0].parser;
+            const evaluated = [];
+            const probe = (candidate) => {
+                try {
+                    const result = candidate.parser.parse(source, options);
+                    const quality = this.parseQuality(result);
+                    if(quality > 0) evaluated.push({ ...candidate, parsed:result, quality, adjustedScore:candidate.score * (0.6 + quality * 0.4) });
+                } catch(error) {
+                    // A malformed candidate must not prevent trying the next parser.
+                }
+            };
+            scored.slice(0, 3).forEach(probe);
+            if(!evaluated.length) scored.slice(3).some(candidate => { probe(candidate); return evaluated.length > 0; });
+            selectedEvaluation = evaluated.sort((a,b) => b.adjustedScore - a.adjustedScore)[0] || null;
+            chosen = selectedEvaluation && selectedEvaluation.parser;
+            parsed = selectedEvaluation && selectedEvaluation.parsed;
         }
         if(!chosen) return { tables:[], format:'empty', label:'空输入', diagnostics:[], candidates:[] };
-        const parsed = chosen.parse(source, options);
+        if(!parsed) parsed = chosen.parse(source, options);
         const tables = parsed.tables || [];
-        const diagnostics = Array.isArray(parsed.diagnostics) ? parsed.diagnostics : tables.flatMap(table => table.diagnostics || []);
+        const diagnostics = [];
+        [...(Array.isArray(parsed.diagnostics) ? parsed.diagnostics : []), ...tables.flatMap(table => table.diagnostics || [])].forEach(item => {
+            const key = `${item.code || ''}|${item.table || ''}|${item.row || ''}|${item.message || ''}`;
+            if(!diagnostics.some(existing => `${existing.code || ''}|${existing.table || ''}|${existing.row || ''}|${existing.message || ''}` === key)) diagnostics.push(item);
+        });
+        if(!selectedType && selectedEvaluation) {
+            const next = scored.find(item => item.parser.id !== selectedEvaluation.parser.id);
+            if(next && Math.abs(selectedEvaluation.adjustedScore - next.score) < 0.08) {
+                diagnostics.push({ level:'info', code:'FORMAT_AMBIGUOUS', message:`自动识别存在接近候选：${selectedEvaluation.parser.label} 与 ${next.parser.label}，如结果不符合预期请在详情中切换格式` });
+            }
+        }
         const candidates = selectedType
             ? [{ id:chosen.id, label:chosen.label, score:1, manual:true }]
-            : scored.slice(0, 3).map(item => ({ id:item.parser.id, label:item.parser.label, score:item.score, manual:false }));
+            : scored.slice(0, 3).map(item => {
+                const evaluation = selectedEvaluation && selectedEvaluation.parser.id === item.parser.id ? selectedEvaluation : null;
+                return { id:item.parser.id, label:item.parser.label, score:Math.max(0, Math.min(1, evaluation ? evaluation.adjustedScore : item.score)), rawScore:item.score, manual:false };
+            });
         return { tables, format:chosen.id, label:chosen.label, diagnostics, candidates, sourceLength:source.text.length };
     }
 };

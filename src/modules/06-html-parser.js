@@ -2,7 +2,7 @@ OTA.define('html-parser', ["table-utils","header-resolver"], ({TableUtils}, {Hea
 const HtmlTableParser = {
     id:'html-table', label:'HTML 网页表格',
     confidence(source) {
-        const html = source.html || '';
+        const html = source.html || source.text || '';
         return /<table[\s>]/i.test(html) && /<tr[\s>]/i.test(html) ? 0.98 : 0;
     },
     parse(source, options={}) {
@@ -61,7 +61,7 @@ const HtmlTableParser = {
             const dataName = /data-name\s*=\s*["']([^"']+)/i.exec(tableHtml);
             const name = TableUtils.makeTableName((dataName && dataName[1]) || (summary && summary[1]) || `HTML Table ${idx + 1}`, idx, used);
             const resolved = HeaderResolver.infer(matrix, { ...options, hasHeader: explicitHeader || undefined, tableName:name });
-            tables.push({ name, headers:resolved.headers, rows:resolved.rows, sourceType:this.id, meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders }, diagnostics:resolved.diagnostics });
+            tables.push({ name, headers:resolved.headers, rows:resolved.rows, sourceType:this.id, meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders, headerConfidence:resolved.headerConfidence, headerReasons:resolved.headerReasons }, diagnostics:resolved.diagnostics });
             diagnostics.push(...resolved.diagnostics);
         };
         if(typeof DOMParser !== 'undefined') {

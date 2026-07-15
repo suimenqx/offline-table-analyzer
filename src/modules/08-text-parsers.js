@@ -6,6 +6,18 @@ const PipeTableParser = {
         const pipeLines = lines.filter(l => (l.match(/\|/g) || []).length >= 2);
         if(pipeLines.length < 2) return 0;
         const hasMdSep = lines.some(l => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(l));
+        const widths = pipeLines.map(line => {
+            let value = line.trim();
+            if(value.startsWith('|')) value = value.slice(1);
+            if(value.endsWith('|')) value = value.slice(0, -1);
+            return splitPipeCells(value).length;
+        });
+        const mode = new Map();
+        widths.forEach(width => mode.set(width, (mode.get(width) || 0) + 1));
+        const consistency = Math.max(...mode.values()) / widths.length;
+        if(consistency < 0.5) return hasMdSep ? 0.45 : 0.12;
+        const hasBareDoublePipe = !hasMdSep && pipeLines.every(line => /\|\|/.test(line) && !/^\s*\|/.test(line) && !/\|\s*$/.test(line));
+        if(hasBareDoublePipe) return 0.05;
         return hasMdSep ? 0.9 : 0.62;
     },
     parse(source, options={}) {
@@ -50,9 +62,12 @@ const AsciiTableParser = {
     id:'ascii-table', label:'ASCII/终端表格',
     confidence(source) {
         const text = source.text || '';
-        const hasBorders = /^[\s+|\-─┌┬┐├┼┤└┴┘│]+$/m.test(text) && /[|│]/.test(text);
-        const rows = TableUtils.lines(text).filter(l => /[|│]/.test(l));
-        return hasBorders && rows.length >= 2 ? 0.88 : 0;
+        const lines = TableUtils.lines(text).filter(l => l.trim());
+        const border = /^[\s+|\-─┌┬┐├┼┤└┴┘│]+$/;
+        const borderLines = lines.filter(l => border.test(l.trim()));
+        const strongBorderLines = borderLines.filter(l => /[+┌┬┐├┼┤└┴┘]/.test(l));
+        const dataLines = lines.filter(l => /[|│]/.test(l) && !border.test(l.trim()));
+        return strongBorderLines.length >= 2 && dataLines.length >= 2 ? 0.88 : 0;
     },
     parse(source, options={}) {
         const border = /^[\s+|\-─┌┬┐├┼┤└┴┘│]+$/;
@@ -83,8 +98,22 @@ const FixedWidthParser = {
 const AlignedTableParser = {
     id:'aligned-table', label:'定宽对齐表格',
     confidence(source) {
-        const hasDashLine = TableUtils.lines(source.text || '').some(l => /^[\s-]+$/.test(l) && /-/.test(l) && !/[+|]/.test(l));
-        return hasDashLine ? 0.80 : 0;
+        const lines = TableUtils.lines(source.text || '').filter(l => l.trim());
+        const hasDashLine = lines.some(l => /^[\s-]+$/.test(l) && /-/.test(l) && !/[+|]/.test(l));
+        if(!hasDashLine) return 0;
+        const isColumnLine = (line) => {
+            const words = [];
+            const re = /\S+/g;
+            let m;
+            while((m = re.exec(line)) !== null) words.push({ s:m.index, e:m.index + m[0].length });
+            if(words.length < 2) return false;
+            for(let i = 1; i < words.length; i++) if(words[i].s - words[i - 1].e < 2) return false;
+            return true;
+        };
+        for(let i = 0; i < lines.length - 1; i++) {
+            if(isColumnLine(lines[i]) && isColumnLine(lines[i + 1])) return 0.80;
+        }
+        return 0;
     },
     parse(source, options={}) {
         // 1) 去掉纯 - 分隔线（替换为空行，保留表间边界）
@@ -142,11 +171,26 @@ const AlignedTableParser = {
             }
             const headers = ranges.map(r => headerLine.substring(r.s, Math.min(r.e, headerLine.length)).trim());
             const rows = [];
+            const blockDiagnostics = [];
             for(let i = 1; i < block.length; i++) {
-                const vals = ranges.map(r => {
+                const sliced = ranges.map(r => {
                     const v = block[i].substring(r.s, Math.min(r.e, block[i].length)).trim();
                     return v === '--' ? '' : v;
                 });
+                const fallback = block[i].trim().split(/\s{2,}/).map(v => v.trim() === '--' ? '' : v.trim());
+                const positionMismatch = fallback.length >= ranges.length && (
+                    fallback.length !== ranges.length || fallback.some((value, index) => value !== sliced[index])
+                );
+                const vals = positionMismatch ? fallback : sliced;
+                if(positionMismatch) {
+                    blockDiagnostics.push({
+                        level:'warning',
+                        code:'ALIGNED_POSITION_MISMATCH',
+                        table:'',
+                        row:i,
+                        message:`定宽对齐行 ${i} 的实际分隔位置与表头不一致，已按空白分隔保留溢出值`
+                    });
+                }
                 if(vals.every(v => !v)) continue;
                 rows.push(vals);
             }
@@ -154,15 +198,16 @@ const AlignedTableParser = {
             const name = TableUtils.makeTableName(pendingName || 'Aligned Table', tables.length, used);
             pendingName = null;
             const resolved = HeaderResolver.infer([headers, ...rows], { ...options, hasHeader:true, tableName:name });
+            resolved.diagnostics.push(...blockDiagnostics.map(item => ({ ...item, table:name })));
             resolved.name = name;
             resolved.sourceType = this.id;
-            resolved.meta = { delimiter:'position', hasHeader:true, generatedHeaders:false };
+            resolved.meta = { delimiter:'position', hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders, headerConfidence:resolved.headerConfidence };
             tables.push(resolved);
         }
         if(!tables.length && options.format === this.id) {
             return { tables:[], diagnostics:[{ level:'warning', code:'NO_ALIGNED_TABLE', message:'未检测到定宽对齐表格' }] };
         }
-        return { tables, diagnostics:[] };
+        return { tables, diagnostics:tables.flatMap(table => table.diagnostics || []) };
     }
 };
 
