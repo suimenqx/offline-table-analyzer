@@ -164,6 +164,22 @@ test('aligned table - report header remains columns with a separator', () => {
   assert(r.tables[0].headers.join('|') === 'ColA|ColB|ColC|ColD|ColE|ColF|ColG|ColH|ColI', 'report headers lost');
   assert(r.tables[0].rows.length === 3 && r.tables[0].rows[2][8] === 'PN-003', 'report rows were not mapped');
 });
+test('aligned table - compact headers with one data row', () => {
+  const input = [
+    '---------------------------------------------------------------------------------------------------------------------------------------------',
+    'Port                   Status Duplex Type                 Wavelength            RxPower     TxPower     Mode             VendorPN',
+    '---------------------------------------------------------------------------------------------------------------------------------------------',
+    'ETH0/2/0               down   full   1G-40km-TEST         1310.00nm             -40.00dBm   -2.02dBm    SingleMode       TEST',
+    '---------------------------------------------------------------------------------------------------------------------------------------------'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'compact report was not detected as aligned table');
+  assert(r.tables.length === 1, 'compact report table count');
+  assert(r.tables[0].headers.join('|') === 'Port|Status|Duplex|Type|Wavelength|RxPower|TxPower|Mode|VendorPN', 'compact headers were not split by aligned positions');
+  assert(r.tables[0].rows.length === 1, 'compact report data row was lost');
+  assert(r.tables[0].rows[0].join('|') === 'ETH0/2/0|down|full|1G-40km-TEST|1310.00nm|-40.00dBm|-2.02dBm|SingleMode|TEST', 'compact report row mapping failed');
+  assert(!r.tables[0].rows.some(row => row.some(cell => /^---+$/.test(cell))), 'separator was treated as data');
+});
 test('aligned table - CJK terminal-width inventory report', () => {
   const input = [
     '---------------------------------------------------------------------------------------------------------------------------------------------',

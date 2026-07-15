@@ -113,6 +113,28 @@ function isAlignedColumnLine(line='') {
     return true;
 }
 
+function alignedWordStarts(line='') {
+    const starts = [];
+    const re = /\S+/g;
+    let match;
+    while((match = re.exec(String(line))) !== null) {
+        starts.push(terminalDisplayWidth(String(line).substring(0, match.index)));
+    }
+    return starts;
+}
+
+function hasMatchingColumnStarts(headerLine='', dataLine='') {
+    const headerStarts = alignedWordStarts(headerLine);
+    const dataStarts = alignedWordStarts(dataLine);
+    if(headerStarts.length < 2 || dataStarts.length < 2) return false;
+    const dataStartSet = new Set(dataStarts);
+    const matches = headerStarts.filter(start => dataStartSet.has(start)).length;
+    // Two-column tables need both starts. Wider tables may contain an empty
+    // value, so allow a minority of header positions to be absent in a row.
+    const required = headerStarts.length === 2 ? 2 : Math.max(3, Math.ceil(headerStarts.length * 0.6));
+    return matches >= required;
+}
+
 function terminalCodePointWidth(codePoint) {
     if(codePoint === 0 || codePoint < 32 || (codePoint >= 0x7f && codePoint < 0xa0)) return 0;
     if((codePoint >= 0x0300 && codePoint <= 0x036f) ||
@@ -168,7 +190,8 @@ const AlignedTableParser = {
         // lines to be adjacent (the common one-row case has no other pair).
         for(const index of separatorIndexes) {
             if(index > 0 && index + 1 < lines.length &&
-                isAlignedColumnLine(lines[index - 1]) && isAlignedColumnLine(lines[index + 1])) {
+                ((isAlignedColumnLine(lines[index - 1]) && isAlignedColumnLine(lines[index + 1])) ||
+                    hasMatchingColumnStarts(lines[index - 1], lines[index + 1]))) {
                 return 0.86;
             }
         }
@@ -200,7 +223,8 @@ const AlignedTableParser = {
         const merged = [];
         for(let i = 0; i < blocks.length; i++) {
             const b = blocks[i];
-            if(b.length === 1 && isHeaderLike(b[0]) && i + 1 < blocks.length) {
+            if(b.length === 1 && i + 1 < blocks.length &&
+                (isHeaderLike(b[0]) || hasMatchingColumnStarts(b[0], blocks[i + 1][0]))) {
                 merged.push([b[0], ...blocks[i + 1]]);
                 i++;
             } else {
@@ -220,14 +244,15 @@ const AlignedTableParser = {
                 ranges.push({s:terminalDisplayWidth(headerLine.substring(0, m.index))});
             }
             if(ranges.length < 2) continue;
-            // 校验列间间隙 ≥ 2 空格（isHeaderLike 已保证，但安全起见再校验）
+            // 通常列间至少有两个空格；紧凑表头也可以通过与数据行的
+            // 列起始位置吻合来确认（例如 "Status Duplex Type"）。
             const words = []; const re2 = /\S+/g; let gapOk = true;
             while((m = re2.exec(headerLine)) !== null) words.push({s:m.index, e:m.index + m[0].length});
             if(words.length < 2) continue;
             for(let k = 1; k < words.length; k++) {
                 if(words[k].s - words[k-1].e < 2) { gapOk = false; break; }
             }
-            if(!gapOk) continue;
+            if(!gapOk && !block.slice(1).some(line => hasMatchingColumnStarts(headerLine, line))) continue;
             // 构建列区间（复刻 CliTableDataParser FIXED 模式）
             for(let k = 0; k < ranges.length; k++) {
                 ranges[k].e = (k < ranges.length - 1) ? ranges[k + 1].s : 99999;
