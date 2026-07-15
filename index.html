@@ -3461,6 +3461,14 @@ const Select = {
             if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
             this.active = true;
             this.tableEl = td.closest('table');
+            // Keep the custom range-selection behavior while moving keyboard
+            // focus away from the source textarea. Without an explicit focus
+            // transfer, preventDefault() below leaves rawInput as activeElement
+            // and Ctrl/Cmd+A is handled by the browser as text selection.
+            if(this.tableEl) {
+                if(!this.tableEl.hasAttribute('tabindex')) this.tableEl.tabIndex = -1;
+                this.tableEl.focus({ preventScroll:true });
+            }
             this.lastPointer = { x:e.clientX, y:e.clientY };
             this.start = this.end = this.getCoord(td);
             this.draw();
@@ -4846,6 +4854,9 @@ validflag Time      Level   Message                 Code
 
     buildColumnHeaderTable(t, res, tIdx, colFilters={}) {
         const tbl = createEl('table');
+        // Selection focuses the table after a cell click so keyboard shortcuts
+        // apply to the preview rather than the source editor.
+        tbl.tabIndex = -1;
         tbl.dataset.idx = tIdx;
         tbl.dataset.tableName = t.name;
         tbl.dataset.viewMode = 'column-header';
@@ -4904,6 +4915,7 @@ validflag Time      Level   Message                 Code
 
     buildRowHeaderTable(t, res, tIdx, colFilters={}) {
         const tbl = createEl('table');
+        tbl.tabIndex = -1;
         tbl.dataset.idx = tIdx;
         tbl.dataset.tableName = t.name;
         tbl.dataset.viewMode = 'row-header';
