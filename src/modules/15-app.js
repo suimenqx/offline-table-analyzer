@@ -1221,6 +1221,9 @@ validflag Time      Level   Message                 Code
 
     buildColumnHeaderTable(t, res, tIdx, colFilters={}) {
         const tbl = createEl('table');
+        // Selection focuses the table after a cell click so keyboard shortcuts
+        // apply to the preview rather than the source editor.
+        tbl.tabIndex = -1;
         tbl.dataset.idx = tIdx;
         tbl.dataset.tableName = t.name;
         tbl.dataset.viewMode = 'column-header';
@@ -1279,6 +1282,7 @@ validflag Time      Level   Message                 Code
 
     buildRowHeaderTable(t, res, tIdx, colFilters={}) {
         const tbl = createEl('table');
+        tbl.tabIndex = -1;
         tbl.dataset.idx = tIdx;
         tbl.dataset.tableName = t.name;
         tbl.dataset.viewMode = 'row-header';

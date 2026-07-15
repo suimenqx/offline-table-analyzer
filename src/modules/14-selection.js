@@ -10,6 +10,14 @@ const Select = {
             if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
             this.active = true;
             this.tableEl = td.closest('table');
+            // Keep the custom range-selection behavior while moving keyboard
+            // focus away from the source textarea. Without an explicit focus
+            // transfer, preventDefault() below leaves rawInput as activeElement
+            // and Ctrl/Cmd+A is handled by the browser as text selection.
+            if(this.tableEl) {
+                if(!this.tableEl.hasAttribute('tabindex')) this.tableEl.tabIndex = -1;
+                this.tableEl.focus({ preventScroll:true });
+            }
             this.lastPointer = { x:e.clientX, y:e.clientY };
             this.start = this.end = this.getCoord(td);
             this.draw();
