@@ -174,10 +174,9 @@ const AlignedTableParser = {
             const blockDiagnostics = [];
             for(let i = 1; i < block.length; i++) {
                 const sliced = ranges.map(r => {
-                    const v = block[i].substring(r.s, Math.min(r.e, block[i].length)).trim();
-                    return v === '--' ? '' : v;
+                    return block[i].substring(r.s, Math.min(r.e, block[i].length)).trim();
                 });
-                const fallback = block[i].trim().split(/\s{2,}/).map(v => v.trim() === '--' ? '' : v.trim());
+                const fallback = block[i].trim().split(/\s{2,}/).map(v => v.trim());
                 const positionMismatch = fallback.length >= ranges.length && (
                     fallback.length !== ranges.length || fallback.some((value, index) => value !== sliced[index])
                 );

@@ -103,8 +103,8 @@ test('aligned table - scenario A with separators', () => {
   assert(r.format === 'aligned-table', 'format not aligned');
   assert(r.tables[0].headers.length === 5, 'header count');
   assert(r.tables[0].rows[0][0] === 'val1', 'val1');
-  assert(r.tables[0].rows[1][1] === '', 'empty for --');
-  assert(r.tables[0].rows[1][3] === '', 'empty for -- 2');
+  assert(r.tables[0].rows[1][1] === '--', '-- should be preserved');
+  assert(r.tables[0].rows[1][3] === '--', 'second -- should be preserved');
   assert(r.tables[0].rows[0][4] === 'val5', 'val5');
 });
 test('aligned table - scenario B top separator only', () => {

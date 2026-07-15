@@ -53,7 +53,7 @@ The **Aligned fixed width** parser is intended for reports whose columns line up
 - separators above and/or below a table;
 - a separator between the header block and data block;
 - multiple tables in one input;
-- `--` as an empty cell.
+- preserves cell text such as `--` instead of interpreting it as empty.
 
 Columns must have at least two spaces between header words. A standalone line between tables can be used as the next table's name. Values are sliced by the header's character ranges, so a value wider than its header may be truncated at the next column boundary.
 
