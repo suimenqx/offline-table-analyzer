@@ -18,18 +18,20 @@ Operational data rarely arrives as a perfect spreadsheet. It is often copied fro
 
 ### Import and normalization
 
-Source text is parsed through a 10-parser pipeline tried in this priority order:
+Source text is parsed through a 12-parser pipeline tried in this priority order:
 
 1. **CLI table-data** — legacy multi-table format with `table-data` and `validflag` markers
-2. **HTML clipboard tables** — including `colspan`, `rowspan`, and `<br>`
-3. **ASCII / terminal tables**
-4. **Markdown / pipe tables** — including escaped pipes
-5. **TSV / Excel paste**
-6. **CSV** — quoted commas, escaped quotes, multiline cells
-7. **Semicolon-delimited CSV**
-8. **Fixed-width text** — columns separated by repeated spaces
-9. **Aligned fixed-width text** — delimiter-free aligned output with character-position columns
-10. **Whitespace-delimited plain text** (fallback)
+2. **Data-Block structured text** — multiple `data <table> [...]` blocks with named tables
+3. **HTML clipboard tables** — including `colspan`, `rowspan`, and `<br>`
+4. **CLI multi-block fixed-width tables** — repeated CLI blocks with aligned headers
+5. **ASCII / terminal tables**
+6. **Markdown / pipe tables** — including escaped pipes
+7. **TSV / Excel paste**
+8. **CSV** — quoted commas, escaped quotes, multiline cells
+9. **Semicolon-delimited CSV**
+10. **Fixed-width text** — columns separated by repeated spaces
+11. **Aligned fixed-width text** — delimiter-free aligned output with character-position columns
+12. **Whitespace-delimited plain text** (fallback)
 
 Additional import capabilities:
 

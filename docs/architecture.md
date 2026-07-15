@@ -17,7 +17,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `TextLayout` | Display-width tokenization, stable data-column starts, aligned header/data slicing |
 | `HeaderResolver` | Header inference and forced header modes |
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
-| Parser adapters | 10 adapters: `CliTableDataParser`, `HtmlTableParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
+| Parser adapters | 12 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
 | `ImportEngine` | Manual/automatic adapter selection, candidates, normalized result and diagnostics |
 | `Joiner` | Equality JOIN execution, statistics, dependency safety, projection |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
@@ -140,7 +140,7 @@ Web Workers, IndexedDB document storage, streaming export, and virtual scrolling
 
 All test scripts reside under `tools/`:
 
-- `run-parser-tests.js`: parser formats (all 10 adapters), malformed input, diagnostics, normalization, and aligned-table separator variants.
+- `run-parser-tests.js`: parser formats (all 12 adapters), malformed input, diagnostics, normalization, and aligned-table separator variants.
 - `run-build-tests.js`: source manifest completeness, deterministic release output, single-script packaging, and generated syntax.
 - `run-startup-tests.js`: browser-like DOM/storage smoke test for the module graph and application bootstrap.
 - `run-copy-tests.js`: copy formats (CSV/TSV/Markdown/ASCII/Lua/HTML/text), Lua literals and layouts, row-header restoration, multiline cells, HTML escaping, formula protection, and workspace format persistence.

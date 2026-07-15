@@ -18,6 +18,7 @@ const MODULES = [
   ['05-delimited.js', 'quote-aware delimited parsing'],
   ['06-html-parser.js', 'HTML clipboard parser'],
   ['07-delimited-parsers.js', 'CSV, TSV, and parser factories'],
+  ['08-data-block-parser.js', 'data-block structured text parser'],
   ['08-text-parsers.js', 'pipe, ASCII, fixed-width, aligned, plain, and CLI parsers'],
   ['09-import-engine.js', 'parser selection and diagnostics'],
   ['10-parser-facade.js', 'legacy parser facade'],

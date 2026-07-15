@@ -9,6 +9,7 @@ const sandbox = {
 };
 const { OTA } = loadBuiltModules(sandbox);
 const { ImportEngine } = OTA.require('import-engine');
+const { Joiner } = OTA.require('joiner');
 
 const cases = [];
 const test = (name, fn) => cases.push({ name, fn });
@@ -17,6 +18,50 @@ const assert = (cond, message) => { if (!cond) throw new Error(message); };
 test('legacy CLI multi-table', () => {
   const r = ImportEngine.parse('table-data Users\nvalidflag ID Name\n1 100 Alice\n1 101 Bob\n\ntable-data Orders\nvalidflag OrderID UserID\n1 5001 100');
   assert(r.tables.length === 2 && r.tables[0].rows.length === 2, 'legacy CLI failed');
+});
+
+test('data-block parser handles multiple named tables and sparse fields', () => {
+  const input = `module MALL;\n\ndata First [
+    {id : "0x01", name : "Alice", note : "a, b"},
+    {id : "0x02", name : "Bob"}
+]
+data Second [{id:"0x01", category:ELECTRONICS},{id:"0x03", category:"HOME"}]`;
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'data-block', 'data-block was not auto-detected');
+  assert(r.tables.length === 2, 'data-block table count failed');
+  assert(r.tables[0].name === 'First' && r.tables[1].name === 'Second', 'data-block names were not retained');
+  assert(r.tables[0].headers.join('|') === 'id|name|note', 'data-block header order failed');
+  assert(r.tables[0].rows[1].join('|') === '0x02|Bob|', 'missing data-block field was not padded');
+  assert(r.tables[1].rows[0].join('|') === '0x01|ELECTRONICS', 'unquoted data-block value failed');
+  assert(r.tables[0].rows[0][2] === 'a, b', 'quoted comma value was split');
+  assert(r.tables.every(table => table.headers.every(value => typeof value === 'string') && table.rows.every(row => row.every(value => typeof value === 'string'))), 'data-block values were not normalized to strings');
+  const joined = Joiner.run(r.tables, { view:'FirstSecond', left:'First', right:'Second', type:'inner', on:'id=id', select:'left.id,right.category' });
+  assert(joined && joined.rows.length === 1 && joined.rows[0].join('|') === '0x01|ELECTRONICS', 'data-block tables could not be joined');
+});
+
+test('data-block parser handles same-line records, escaped quotes, and empty blocks', () => {
+  const input = 'data Empty [] data Messages [{text:"say \\\"hello\\\"", path:"a/b"},{text:"next"}]';
+  const r = ImportEngine.parse(input, { format:'data-block' });
+  assert(r.tables.length === 2 && r.tables[0].rows.length === 0, 'empty data-block was not retained');
+  assert(r.tables[1].rows.length === 2, 'same-line data-block records failed');
+  assert(r.tables[1].rows[0][0] === 'say "hello"' && r.tables[1].rows[0][1] === 'a/b', 'escaped value failed');
+  assert(r.tables[1].rows[1][1] === '', 'sparse same-line record was not padded');
+});
+
+test('data-block malformed records keep later fields and report diagnostics', () => {
+  const r = ImportEngine.parse('data Broken [{id "1", name:"ok"},{id:"2"', { format:'data-block' });
+  assert(r.tables.length === 1 && r.tables[0].rows.length === 2, 'malformed data-block recovery failed');
+  assert(r.diagnostics.some(d => d.code === 'MISSING_COLON'), 'missing colon was not diagnosed');
+  assert(r.diagnostics.some(d => d.code === 'UNMATCHED_BRACE'), 'unmatched brace was not diagnosed');
+});
+
+test('data-block signature is not matched without a data bracket', () => {
+  const parser = ImportEngine.getParser('data-block');
+  assert(parser && parser.confidence({ text:'module MALL;' }) === 0, 'module-only input matched data-block');
+  assert(parser.confidence({ text:'data NotADataBlock;' }) === 0, 'incomplete data signature matched data-block');
+  assert(parser.confidence({ text:'data Broken [{id:"1"]' }) < 0.9, 'unmatched data-block braces kept high confidence');
+  const empty = ImportEngine.parse('module MALL;', { format:'data-block' });
+  assert(empty.tables.length === 0 && empty.diagnostics.some(d => d.code === 'NO_DATA_BLOCK'), 'module-only data-block diagnostics missing');
 });
 test('CSV quoted fields', () => {
   const r = ImportEngine.parse('id,name,comment\n1,Alice,"hello, world"\n2,Bob,"a ""quoted"" value"');

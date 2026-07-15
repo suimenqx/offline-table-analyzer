@@ -61,7 +61,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 
 ### FR-03 解析与规范化
 
-- 保持 10 类解析器：CLI `table-data`、HTML、ASCII、Markdown/pipe、TSV、CSV、分号 CSV、固定宽度、对齐固定宽度、空白分隔文本。
+- 保持 12 类解析器：CLI `table-data`、Data-Block、HTML、CLI 多块定宽表、ASCII、Markdown/pipe、TSV、CSV、分号 CSV、固定宽度、对齐固定宽度、空白分隔文本。
 - 自动识别返回最终格式、候选格式、置信度、规范化表格和诊断集合。
 - 支持 CSV 引号、转义引号、嵌入换行、HTML `rowspan`/`colspan`、Markdown 转义 pipe、BOM、CRLF、NBSP 和 `<br>`。
 - 支持自动表头、强制首行表头和生成 `ColumnN` 表头；空表头和重复表头必须稳定规范化。
@@ -175,7 +175,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 
 | 层级 | 必须覆盖 | 验收方式 |
 | --- | --- | --- |
-| 领域单元 | 表格规范化、表头推断、10 类解析器、筛选 token、JOIN、复制/Excel 序列化 | Node 测试，覆盖正常、边界、恶意输入 |
+| 领域单元 | 表格规范化、表头推断、12 类解析器、筛选 token、JOIN、复制/Excel 序列化 | Node 测试，覆盖正常、边界、恶意输入 |
 | 状态单元 | 默认状态、迁移、去重、临时数据、配额失败、撤销/重做 | Node + VM 隔离存储测试 |
 | 模块集成 | ImportEngine → normalized table、Store → App、Joiner → Preview、Exporter | 公开契约测试和构建后脚本测试 |
 | UI 合同 | 关键 ID、ARIA、快捷键、回归方法、离线约束 | 静态契约 + JS 语法校验 |

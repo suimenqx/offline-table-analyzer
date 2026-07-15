@@ -6,7 +6,7 @@
 
 | Method | How |
 | --- | --- |
-| **Paste** | Paste text directly into the left-panel source editor. The editor accepts CSV, TSV, HTML tables, Markdown/pipe tables, ASCII tables, fixed-width and aligned fixed-width tables, CLI `table-data` blocks, and plain whitespace-delimited text. |
+| **Paste** | Paste text directly into the left-panel source editor. The editor accepts CSV, TSV, HTML tables, Markdown/pipe tables, ASCII tables, fixed-width and aligned fixed-width tables, CLI `table-data` blocks, CLI multi-block tables, Data-Block `data <table> [...]` blocks, and plain whitespace-delimited text. |
 | **Drag file** | Drag a supported text file onto the editor area. A visible drop zone highlight confirms detection. |
 | **Select file** | Click **Select file** (or press `Ctrl/Cmd+O`) and choose a file. Accepted extensions: `.csv`, `.tsv`, `.txt`, `.log`, `.md`, `.markdown`, `.html`, `.htm`. |
 
@@ -28,19 +28,21 @@ If the auto-detected format was already set to "Auto detect", the selector is up
 
 ### 1.3 Format selection
 
-The **Format** dropdown includes eleven options:
+The **Format** dropdown includes thirteen options:
 
 1. **Auto detect** — runs all parsers and picks the highest-confidence match (recommended).
 2. **CLI table-data** — multi-table blocks with `table-data <name>` headers and `validflag` rows.
-3. **CSV** — comma-delimited, with quoted-field support.
-4. **Excel/TSV** — tab-delimited data (e.g., copy-paste from spreadsheet apps).
-5. **Semicolon CSV** — semicolon-delimited (common in some European locales).
-6. **HTML table** — extracts `<table>` elements from HTML markup.
-7. **Markdown/Pipe table** — GitHub-flavored pipe tables with optional alignment separators.
-8. **ASCII table** — box-drawn tables using `+`, `-`, and `|` characters.
-9. **Fixed width** — columns inferred from repeated spacing patterns.
-10. **Aligned fixed width** — delimiter-free aligned output whose column positions are inferred from the header row.
-11. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
+3. **Data-Block** — named tables using `data <table> [...]`, with one output table per block.
+4. **CLI multi-block** — repeated aligned CLI blocks with independent table names.
+5. **CSV** — comma-delimited, with quoted-field support.
+6. **Excel/TSV** — tab-delimited data (e.g., copy-paste from spreadsheet apps).
+7. **Semicolon CSV** — semicolon-delimited (common in some European locales).
+8. **HTML table** — extracts `<table>` elements from HTML markup.
+9. **Markdown/Pipe table** — GitHub-flavored pipe tables with optional alignment separators.
+10. **ASCII table** — box-drawn tables using `+`, `-`, and `|` characters.
+11. **Fixed width** — columns inferred from repeated spacing patterns.
+12. **Aligned fixed width** — delimiter-free aligned output whose column positions are inferred from the header row.
+13. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
 
 **When auto-detection is wrong:** Open the **Details** panel (beside the parse status indicator). It lists format candidates with confidence scores (e.g., "Excel/TSV — 87%"). Click any candidate to switch format and re-parse immediately.
 

@@ -153,7 +153,7 @@ The defining constraints are:
 
 ### Import and parsing
 - File selection via button and drag/drop import with automatic format detection from file extension.
-- Ten parsers: CLI table-data, HTML, ASCII, Markdown/pipe, Excel-paste (TSV), CSV, semicolon-CSV, fixed-width, aligned fixed-width, plain text.
+- Twelve parsers: CLI table-data, Data-Block, HTML, CLI multi-block, ASCII, Markdown/pipe, Excel-paste (TSV), CSV, semicolon-CSV, fixed-width, aligned fixed-width, plain text.
 - Format candidates returned with confidence scores; one-click format switching via the "Details" diagnostic dialog.
 - Parse-time Toast notification when parsing exceeds 800 ms.
 - `ROW_WIDTH_MISMATCH` diagnostics for mismatched rows (overflow preserved, short rows padded).

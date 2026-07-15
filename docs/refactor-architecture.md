@@ -60,7 +60,7 @@ Clipboard / Exporter / Selection → UI controllers → App bootstrap
 
 ## 5. 已落地模块地图
 
-当前发布构建包含 19 个源模块：
+当前发布构建包含 20 个源模块：
 
 | 源文件 | 职责 | 主要公开对象 |
 | --- | --- | --- |
@@ -74,6 +74,7 @@ Clipboard / Exporter / Selection → UI controllers → App bootstrap
 | `05-delimited.js` | 引号感知 CSV/TSV 解析 | `Delimited` |
 | `06-html-parser.js` | HTML 表格及跨度展开 | `HtmlTableParser` |
 | `07-delimited-parsers.js` | CSV、分号 CSV、TSV 适配器 | `CsvParser`, `SemicolonCsvParser`, `ExcelPasteParser` |
+| `08-data-block-parser.js` | `data <表名> [...]` 多表块解析 | `DataBlockParser` |
 | `08-text-parsers.js` | pipe、ASCII、固定宽度、对齐文本、CLI | 其余解析器 |
 | `09-import-engine.js` | 格式选择、候选和诊断 | `ImportEngine` |
 | `10-parser-facade.js` | 历史兼容入口 | `Parser` |
@@ -113,7 +114,7 @@ DOM event
 ### 阶段 A：可复现边界（当前）
 
 - 建立新分支。
-- 提取 template、styles 和 19 个按依赖排序的源模块。
+- 提取 template、styles 和 20 个按依赖排序的源模块。
 - 增加 `build:release`，使根 `index.html` 可从源完全生成。
 - 保持现有测试全部通过。
 
