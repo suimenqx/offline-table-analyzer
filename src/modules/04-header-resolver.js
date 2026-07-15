@@ -13,6 +13,7 @@ const HeaderResolver = {
         else hasHeader = this.isLikelyHeader(clean);
 
         const diagnostics = [];
+        const headerAnalysis = this.analyze(clean);
         let headers;
         let body;
         if(hasHeader) {
@@ -25,14 +26,25 @@ const HeaderResolver = {
             body = clean;
         }
         const rowsOut = TableUtils.normalizeRows(body, headers.length, diagnostics, options.tableName || 'Table');
-        return { headers, rows:rowsOut, hasHeader, generatedHeaders:!hasHeader, diagnostics };
+        return {
+            headers,
+            rows:rowsOut,
+            hasHeader,
+            generatedHeaders:!hasHeader,
+            headerConfidence: hasHeader ? headerAnalysis.score : Math.max(0, 1 - headerAnalysis.score),
+            headerReasons: headerAnalysis.reasons,
+            diagnostics
+        };
     },
     isLikelyHeader(rows) {
-        if(rows.length < 2) return false;
+        return this.analyze(rows).score >= 0.65;
+    },
+    analyze(rows) {
+        if(!Array.isArray(rows) || rows.length < 2) return { score:0, reasons:[] };
         const first = rows[0];
         const rest = rows.slice(1, Math.min(rows.length, 12));
         const nonEmpty = first.filter(v => String(v ?? '').trim() !== '').length;
-        if(!nonEmpty) return false;
+        if(!nonEmpty) return { score:0, reasons:[] };
         const unique = new Set(first.map(v => String(v ?? '').trim().toLowerCase()).filter(Boolean)).size;
         const idLike = first.filter(v => TableUtils.looksIdentifier(v)).length;
         const firstTypes = first.map(v => TableUtils.cellType(v));
@@ -45,12 +57,17 @@ const HeaderResolver = {
             return count + (t !== sampleMajor ? 1 : 0);
         }, 0);
         let score = 0;
-        if(unique === nonEmpty) score += 0.2;
-        if(idLike / nonEmpty >= 0.7) score += 0.35;
-        if(typeDiff / Math.max(nonEmpty, 1) >= 0.45) score += 0.35;
-        if(first.some(v => /^(id|name|key|type|date|time|status|amount|price|count|validflag)$/i.test(String(v).trim()))) score += 0.2;
-        if(allFirstNumeric) score -= 0.45;
-        return score >= 0.55;
+        const reasons = [];
+        if(unique === nonEmpty) { score += 0.2; reasons.push('字段名不重复'); }
+        if(idLike / nonEmpty >= 0.7) { score += 0.35; reasons.push('字段名形态稳定'); }
+        if(typeDiff / Math.max(nonEmpty, 1) >= 0.45) { score += 0.35; reasons.push('首行与数据类型不同'); }
+        if(first.some(v => /^(id|name|key|type|date|time|status|amount|price|count|validflag|field|column|addr|val|code|product|category|level|message|host|user|字段|编号|名称|时间|状态|金额|数量)$/i.test(String(v).trim()))) {
+            score += 0.2;
+            reasons.push('包含常见字段名');
+        }
+        if(allFirstNumeric && typeDiff === 0) { score -= 0.45; reasons.push('首行全部为数字'); }
+        else if(allFirstNumeric && typeDiff > 0) { score += 0.1; reasons.push('数字型字段名与数据类型不同'); }
+        return { score:Math.max(0, Math.min(1, score)), reasons };
     }
 };
 

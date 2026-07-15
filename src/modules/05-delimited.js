@@ -27,12 +27,21 @@ const Delimited = {
     delimiterStats(text='', delimiter=',') {
         const rows = this.parse(text, delimiter).slice(0, 30);
         const widths = rows.map(r => r.length).filter(n => n > 1);
-        if(!widths.length) return {score:0, rows, width:0, consistent:false};
+        if(!widths.length) return {score:0, rows, width:0, consistency:0, coverage:0, hasDelimiter:false, consistent:false};
         const freq = new Map(); widths.forEach(w => freq.set(w, (freq.get(w)||0)+1));
         const [width, count] = Array.from(freq.entries()).sort((a,b)=>b[1]-a[1])[0];
         const consistency = count / widths.length;
+        const coverage = widths.length / Math.max(rows.length, 1);
         const score = Math.min(0.95, 0.35 + consistency * 0.45 + Math.min(width, 12) / 40);
-        return { score, rows, width, consistent: consistency >= 0.65 };
+        return {
+            score,
+            rows,
+            width,
+            consistency,
+            coverage,
+            hasDelimiter:true,
+            consistent: consistency >= 0.65 && coverage >= 0.5
+        };
     }
 };
 
