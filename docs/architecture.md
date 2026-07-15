@@ -14,6 +14,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `Exporter` | Browser downloads and dependency-free XLSX ZIP/XML generation |
 | `Store` | Versioned workspace, migration, normalization, privacy preferences, safe local persistence |
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
+| `TextLayout` | Display-width tokenization, stable data-column starts, aligned header/data slicing |
 | `HeaderResolver` | Header inference and forced header modes |
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
 | Parser adapters | 10 adapters: `CliTableDataParser`, `HtmlTableParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
@@ -96,7 +97,7 @@ All downstream operations consume this shape regardless of the original source f
 paste / drop / file / fullscreen editor
   → source text + optional clipboard HTML
   → ImportEngine format scoring or manual adapter
-  → adapter parse
+  → adapter parse (TextLayout supplies position-aware aligned parsing)
   → HeaderResolver and TableUtils normalization
   → diagnostics + normalized tables
   → persisted correction overlay + edit undo/redo

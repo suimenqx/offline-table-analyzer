@@ -14,7 +14,7 @@ function assert(condition, message) {
 }
 
 assert(template.includes('{{STYLES}}') && template.includes('{{MODULES}}'), 'template placeholders are missing');
-assert(MODULES.length === 18, `unexpected module count: ${MODULES.length}`);
+assert(MODULES.length === 19, `unexpected module count: ${MODULES.length}`);
 assert(new Set(MODULES.map(([file]) => file)).size === MODULES.length, 'module manifest contains duplicates');
 assert(MODULES.every(([file]) => fs.existsSync(path.join(root, 'src', 'modules', file))), 'module manifest references a missing file');
 assert(html === expected, 'index.html is stale; run npm run build:release');
