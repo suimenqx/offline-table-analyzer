@@ -34,7 +34,7 @@ Source text is parsed through a 10-parser pipeline tried in this priority order:
 Additional import capabilities:
 
 - **Header modes**: automatic inference, forced first-row, or generated headers (`Column1`, `Column2`, …). CLI table-data uses `validflag` rows as headers. Duplicate and blank headers are normalized. Parse diagnostics are surfaced in the UI.
-- **Aligned-table input**: recognizes pure `-` separator lines, supports separator lines above/below a table or between header and data, preserves multiple tables, and keeps cell text such as `--` unchanged.
+- **Aligned-table input**: recognizes `-` or `-`/`+` separator lines, supports separator lines above/below a table or between header and data, preserves multiple tables, and keeps cell text such as `--` unchanged.
 - **Source input**: paste, drag-and-drop, or file picker. Format is auto-detected from file extension (`.csv` / `.tsv` / `.html` / `.htm` / `.md` / `.markdown`).
 - **Editors**: resizable source textarea (120–600 px) and a fullscreen source editor for large inputs.
 - 25 MB safety limit on source text and workspace files.

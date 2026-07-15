@@ -150,6 +150,27 @@ test('aligned table - header between dashes separated from data', () => {
   assert(r.tables[0].rows[0][0] === 'val1', 'val1');
   assert(r.tables[0].rows[1][2] === 'val6', 'val6');
 });
+test('aligned table - report header remains columns with a separator', () => {
+  const input = [
+    'ColA       ColB    ColC   ColD         ColE            ColF        ColG        ColH             ColI',
+    '------------------------------------------------------------------------------------------------------------------------',
+    'val1       down    full   type-1       attr-1          -40.00unit  -2.02unit   ModeA            PN-001',
+    'val2       down    full   type-2       attr-2          -40.00unit  -5.73unit   ModeA            PN-002',
+    'val3       up      full   type-3       attr-3          -2.44unit   -2.48unit   ModeB            PN-003'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'report was not detected as aligned table');
+  assert(r.tables.length === 1 && r.tables[0].name === 'Aligned Table', 'header was used as table name');
+  assert(r.tables[0].headers.join('|') === 'ColA|ColB|ColC|ColD|ColE|ColF|ColG|ColH|ColI', 'report headers lost');
+  assert(r.tables[0].rows.length === 3 && r.tables[0].rows[2][8] === 'PN-003', 'report rows were not mapped');
+});
+test('aligned table - plus separator and one data row', () => {
+  const input = 'ColA       ColB    ColC\n------+-------+----\nval1       down    full';
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'plus separator was not detected as aligned table');
+  assert(r.tables[0].headers.join('|') === 'ColA|ColB|ColC', 'plus separator lost headers');
+  assert(r.tables[0].rows.length === 1 && r.tables[0].rows[0][1] === 'down', 'plus separator row mapping failed');
+});
 test('aligned table - value wider than header truncated', () => {
   const input = 'ID    Name\n1     VeryLongNameHere\n2     Short';
   const r = ImportEngine.parse(input);

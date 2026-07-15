@@ -48,7 +48,7 @@ CLI `table-data` mode additionally auto-detects each data block's internal forma
 
 ### 1.4 Aligned fixed-width tables
 
-The **Aligned fixed width** parser is intended for reports whose columns line up by character position but have no `|` or `+` borders. It recognizes pure `-` separator lines and supports:
+The **Aligned fixed width** parser is intended for reports whose columns line up by character position but have no `|` borders. It recognizes `-` or `-`/`+` separator lines and supports:
 
 - separators above and/or below a table;
 - a separator between the header block and data block;

@@ -1921,30 +1921,49 @@ const FixedWidthParser = {
     }
 };
 
+function isAlignedSeparator(line='') {
+    const value = String(line).trim();
+    // Require a real horizontal run so values such as "--" remain data cells.
+    return value.length >= 3 && /^[\s+-]+$/.test(value) && /-{3,}/.test(value);
+}
+
+function isAlignedColumnLine(line='') {
+    const words = [];
+    const re = /\S+/g;
+    let match;
+    while((match = re.exec(line)) !== null) words.push({ s:match.index, e:match.index + match[0].length });
+    if(words.length < 2) return false;
+    for(let i = 1; i < words.length; i++) {
+        if(words[i].s - words[i - 1].e < 2) return false;
+    }
+    return true;
+}
+
 const AlignedTableParser = {
     id:'aligned-table', label:'定宽对齐表格',
     confidence(source) {
         const lines = TableUtils.lines(source.text || '').filter(l => l.trim());
-        const hasDashLine = lines.some(l => /^[\s-]+$/.test(l) && /-/.test(l) && !/[+|]/.test(l));
+        const separatorIndexes = lines
+            .map((line, index) => isAlignedSeparator(line) ? index : -1)
+            .filter(index => index >= 0);
+        const hasDashLine = separatorIndexes.length > 0;
         if(!hasDashLine) return 0;
-        const isColumnLine = (line) => {
-            const words = [];
-            const re = /\S+/g;
-            let m;
-            while((m = re.exec(line)) !== null) words.push({ s:m.index, e:m.index + m[0].length });
-            if(words.length < 2) return false;
-            for(let i = 1; i < words.length; i++) if(words[i].s - words[i - 1].e < 2) return false;
-            return true;
-        };
         for(let i = 0; i < lines.length - 1; i++) {
-            if(isColumnLine(lines[i]) && isColumnLine(lines[i + 1])) return 0.80;
+            if(isAlignedColumnLine(lines[i]) && isAlignedColumnLine(lines[i + 1])) return 0.80;
+        }
+        // A separator is a valid boundary, so do not require header and data
+        // lines to be adjacent (the common one-row case has no other pair).
+        for(const index of separatorIndexes) {
+            if(index > 0 && index + 1 < lines.length &&
+                isAlignedColumnLine(lines[index - 1]) && isAlignedColumnLine(lines[index + 1])) {
+                return 0.86;
+            }
         }
         return 0;
     },
     parse(source, options={}) {
-        // 1) 去掉纯 - 分隔线（替换为空行，保留表间边界）
-        const isSep = (l) => /^[\s-]+$/.test(l) && /-/.test(l) && !/[+|]/.test(l);
-        const clean = TableUtils.lines(source.text).map(l => isSep(l) ? '' : l);
+        // 1) 去掉定宽表分隔线（替换为空行，保留表间边界）
+        const clean = TableUtils.lines(source.text).map(l => isAlignedSeparator(l) ? '' : l);
         // 2) 按空行切 block
         const blocks = []; let cur = [];
         for(const l of clean) {

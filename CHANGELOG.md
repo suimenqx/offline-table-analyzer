@@ -11,6 +11,11 @@ All notable changes are documented here. The project follows semantic versioning
 - Added a local module registry, module graph checks, and browser-like startup smoke coverage.
 - Added full refactor requirements, architecture decisions, migration phases, and branch/worktree rollback policy.
 
+### Fixed-width aligned table detection
+
+- Treat separator lines between aligned headers and data as structural boundaries during automatic detection, including the one-data-row case.
+- Support `-`/`+` separator lines without promoting the header row to a table name or losing column metadata.
+
 ### Compatibility
 
 - Kept workspace schema 20, existing parser/JOIN/copy/export behavior, offline runtime constraints, and the v20 storage migration contract unchanged.

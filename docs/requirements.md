@@ -162,7 +162,7 @@ The defining constraints are:
 - `rowspan` preservation in HTML tables and escaped Markdown pipe handling.
 
 ### v20.1.0 data correctness additions
-- Added the aligned fixed-width parser for delimiter-free reports with pure `-` separator lines, multiple tables, separated header/data blocks, preserving `--` as cell text.
+- Added the aligned fixed-width parser for delimiter-free reports with `-` or `-`/`+` separator lines, multiple tables, separated header/data blocks, preserving `--` as cell text.
 - Clear persisted cell-correction overlays and session history when source text, imported file, parser format, or header mode changes.
 - Preserve HTML `rowspan` values across expanded rows, including combined `rowspan`/`colspan` cells.
 - Emit long or unsafe numeric-looking strings as Excel text to preserve identifiers and precision.
