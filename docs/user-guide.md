@@ -363,17 +363,58 @@ Choose the clipboard text format from the dropdown in the top toolbar:
 | **CSV** | Comma-delimited. |
 | **Markdown** | GitHub-flavored pipe table with alignment separator. Column widths are auto-calculated. |
 | **ASCII** | Box-drawn table with `+`, `-`, and `|`. |
+| **Lua inline** | A Lua table with one record per line. Field expressions are aligned by column when values have different widths. |
+| **Lua expanded** | A Lua table with one record per child table and one field per line, using four-space indentation. |
+
+Lua adds no separate configuration panel or export dialog. The current selection alone determines which fields and records are copied, and the selected copy format is saved as the existing global copy preference.
 
 ### 12.3 Clipboard behavior
 
 Copy writes **both** plain text and HTML to the clipboard:
 
-- **Plain text** uses the selected format (TSV/CSV/Markdown/ASCII).
-- **HTML** is always a complete `<table>` element with border styling, suitable for pasting into rich-text editors, email clients, or spreadsheet apps.
+- **Plain text** uses the selected format (TSV/CSV/Markdown/ASCII/Lua).
+- **HTML** remains a complete `<table>` element for TSV/CSV/Markdown/ASCII. Lua uses `<pre><code>` with HTML-escaped Lua text so rich-text editors preserve code indentation instead of rendering a data table.
 
-The column header row is always included as the first row in the copied data. In **Row header** mode, an extra "字段" (Field) header column is prepended.
+The selected rectangle determines both the copied rows and columns. In **Column header** mode, the selected column headers become Lua field names and each selected data row becomes one child table. Existing text formats include the synthetic "字段" (Field) header column in **Row header** mode; Lua instead restores the selected transposed rectangle to the same field-header-plus-record-row structure as Column header mode, without exporting that synthetic column.
 
-### 12.4 Formula protection
+Lua does not treat `validflag` specially: it is copied whenever it is inside the selected rectangle and omitted when it is outside it. Record indexes always start at `[1]` and increase in selected row order; original source row numbers are not used.
+
+### 12.4 Lua table rules
+
+Both Lua layouts use explicit string keys, such as `["fieldName"] = value`, so Chinese names, spaces, punctuation, and Lua keywords are safe. Values are converted as follows:
+
+- `0x...` and `0X...` hexadecimal integers remain hexadecimal, except all-zero values become `0`.
+- Decimal integers and standard decimal floats remain numeric literals. Multi-digit leading-zero integers such as `00123` remain strings.
+- Only lowercase `true` and `false` become booleans; `nil` remains the string `"nil"`.
+- Empty cells become `""`; other strings retain their cell text and escape backslashes, quotes, newlines, carriage returns, and tabs.
+
+With headers `fieldA`, `fieldB` and two rows, Lua inline produces:
+
+```lua
+{
+    [1] = { ["fieldA"] = 0, ["fieldB"] = 0x1 },
+    [2] = { ["fieldA"] = 1, ["fieldB"] = 0x2 },
+}
+```
+
+Lua expanded produces the same data structure with one field per line:
+
+```lua
+{
+    [1] = {
+        ["fieldA"] = 0,
+        ["fieldB"] = 0x1,
+    },
+    [2] = {
+        ["fieldA"] = 1,
+        ["fieldB"] = 0x2,
+    },
+}
+```
+
+If the selected rectangle contains only the header row, both layouts copy `{}`.
+
+### 12.5 Formula protection
 
 When enabled (default), cells that start with potentially executable spreadsheet formula characters receive a leading apostrophe (`'`) in the clipboard output:
 
@@ -385,7 +426,7 @@ When enabled (default), cells that start with potentially executable spreadsheet
 | `-` followed by non-numeric | Yes |
 | `-` followed by a number (e.g., `-42`) | No — treated as a negative number |
 
-This prevents pasted data from being interpreted as formulas in Excel, Google Sheets, and similar tools. Disable formula protection in **Config → Export options** when you need exact formula text and trust the destination.
+This prevents pasted data from being interpreted as formulas in Excel, Google Sheets, and similar tools. Disable formula protection in **Config → Export options** when you need exact formula text and trust the destination. Lua formats never apply this spreadsheet prefix: a cell such as `=value` becomes the Lua string `"=value"` regardless of the toggle.
 
 ---
 
@@ -430,7 +471,7 @@ Toggle in the sidebar Data tab. When **enabled** (default), all source text is p
 
 ### 14.2 Spreadsheet formula protection
 
-Toggle in Config → Export options. Controls whether a leading apostrophe is added to dangerous formula-starting cells when copying data (see §12.4). Does not affect the Excel export.
+Toggle in Config → Export options. Controls whether a leading apostrophe is added to dangerous formula-starting cells when copying spreadsheet-oriented text formats (see §12.5). It does not affect Lua formats or the Excel export.
 
 ### 14.3 Clear local data
 

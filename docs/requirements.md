@@ -39,7 +39,7 @@ The defining constraints are:
 
 - Create, close, activate, rename, and reorder analysis tabs.
 - Maintain unique IDs and titles and retain at least one tab.
-- Preserve theme, global JOIN views, and copy preferences.
+- Preserve theme, global JOIN views, and copy preferences. `copyFormat` remains the existing global field and accepts `default`, `csv`, `markdown`, `ascii`, `lua-inline`, or `lua-expanded`.
 - Backup/restore tabs and import/export configuration.
 
 ### Analysis rules
@@ -67,7 +67,8 @@ The defining constraints are:
 - Visual rectangular selection in either orientation.
 - Selection auto-scroll and table-wide Ctrl/Cmd+A.
 - Cell editing.
-- TSV/CSV/Markdown/ASCII text copy plus HTML clipboard content.
+- TSV/CSV/Markdown/ASCII/Lua inline/Lua expanded text copy plus format-appropriate HTML clipboard content.
+- Copying remains driven exclusively by the selected visual rectangle. Lua uses selected headers as string keys, selected records as child tables, continuous `[1]`-based indexes, and equivalent semantics in column-header and transposed row-header views.
 - Raw, full, and filtered-preview Excel export.
 - Multiline preservation appropriate to each output format.
 
@@ -200,8 +201,8 @@ The defining constraints are:
 - Raw, full, and filtered-preview export to Excel (.xlsx) with sanitized sheet names.
 - "Export displayed columns" semantics: `exportCols === 'shown'` projects focus columns.
 - Per-tab export options: `exportOnlyChecked` (visible tables only) and `exportCols`.
-- Copy: four text formats (default/TSV, CSV, Markdown, ASCII) plus HTML clipboard content.
-- Spreadsheet formula-prefix protection (`spreadsheetSafe` toggle).
+- Copy: six text formats (default/TSV, CSV, Markdown, ASCII, `lua-inline`, `lua-expanded`) plus HTML clipboard content; Lua HTML is a code block rather than a table.
+- Spreadsheet formula-prefix protection (`spreadsheetSafe` toggle) applies to spreadsheet-oriented copy formats and not to Lua.
 - Workspace and configuration JSON export.
 
 ### Accessibility and UX

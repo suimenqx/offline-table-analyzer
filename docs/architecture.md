@@ -20,7 +20,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `ImportEngine` | Manual/automatic adapter selection, candidates, normalized result and diagnostics |
 | `Joiner` | Equality JOIN execution, statistics, dependency safety, projection |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
-| `ClipboardFormatter` | TSV/CSV/Markdown/ASCII/HTML serialization and formula-prefix protection |
+| `ClipboardFormatter` | TSV/CSV/Markdown/ASCII/Lua text serialization, format-specific HTML clipboard payloads, and spreadsheet formula-prefix protection |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `App` | UI orchestration, parsing, pagination, filtering, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading |
 
@@ -37,7 +37,7 @@ activeId
 theme
 globalViews[]
 nextAnalysisSeq
-copyFormat
+copyFormat (`default`/`csv`/`markdown`/`ascii`/`lua-inline`/`lua-expanded`)
 spreadsheetSafe
 persistRaw
 lastSavedAt
@@ -103,7 +103,8 @@ paste / drop / file / fullscreen editor
   → filters/highlights/focus columns
   → optional JOIN views (dependency cycle check → execution)
   → paginated DOM preview
-  → clipboard / preview XLSX / full XLSX / workspace JSON / config JSON
+  → selected visual rectangle
+  → ClipboardFormatter text/HTML payload or preview XLSX / full XLSX / workspace JSON / config JSON
 ```
 
 Drag-and-drop of local files onto the source area is supported. A fullscreen source editor is available for working with large inputs. Config import/export (`table-tool-config` kind, 5 MB limit) transfers rules, filters, views, and UI settings across documents.
@@ -125,7 +126,7 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 - Workspace import: `kind` must be `'ota-workspace'` or `'table-tool-tabs'`, depth limit 12 levels, max 100 docs, max 2000 keys per object, prototype poison keys (`__proto__`, `prototype`, `constructor`) rejected. Config import: `kind` must be `'table-tool-config'`, file size capped at 5 MB.
 - Table/view names that map to JavaScript prototype keys are rejected or replaced.
 - JOIN compound keys use typed JSON tuples.
-- Clipboard delimiters prefix common spreadsheet-formula starters by default.
+- Clipboard TSV/CSV/Markdown/ASCII payloads prefix common spreadsheet-formula starters by default; Lua payloads serialize values as Lua literals and never apply that prefix.
 - Release validation rejects external scripts/styles and network API references.
 
 ## 7. Performance model
@@ -141,7 +142,7 @@ All test scripts reside under `tools/`:
 - `run-parser-tests.js`: parser formats (all 10 adapters), malformed input, diagnostics, normalization, and aligned-table separator variants.
 - `run-build-tests.js`: source manifest completeness, deterministic release output, single-script packaging, and generated syntax.
 - `run-startup-tests.js`: browser-like DOM/storage smoke test for the module graph and application bootstrap.
-- `run-copy-tests.js`: copy formats (CSV/TSV/Markdown/ASCII/HTML/text), multiline cells, HTML escaping, formula protection.
+- `run-copy-tests.js`: copy formats (CSV/TSV/Markdown/ASCII/Lua/HTML/text), Lua literals and layouts, row-header restoration, multiline cells, HTML escaping, formula protection, and workspace format persistence.
 - `run-tab-tests.js`: tab rules, Store migration shape, temporary mode, quota failures, workspace imports, config import/export.
 - `run-join-tests.js`: all JOIN types, compound-key collisions, missing fields, duplicate headers, dependency cycle detection.
 - `run-ui-tests.js`: full-script syntax and static interaction/accessibility contracts.

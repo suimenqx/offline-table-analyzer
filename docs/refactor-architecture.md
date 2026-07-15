@@ -78,7 +78,7 @@ Clipboard / Exporter / Selection → UI controllers → App bootstrap
 | `10-parser-facade.js` | 历史兼容入口 | `Parser` |
 | `11-joiner.js` | JOIN、复合键、依赖检测 | `Joiner` |
 | `12-join-editor.js` | JOIN 设计交互 | `JoinEditor` |
-| `13-clipboard.js` | TSV/CSV/Markdown/ASCII/HTML | `ClipboardFormatter` |
+| `13-clipboard.js` | TSV/CSV/Markdown/ASCII/Lua 文本及按格式区分的 HTML 剪贴板内容 | `ClipboardFormatter` |
 | `14-selection.js` | 预览矩形选区和复制 | `Select` |
 | `15-app.js` | 页面组合、事件、渲染 | `App` |
 | `16-bootstrap.js` | 生产启动入口 | `OTA.start('app')` |
