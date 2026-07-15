@@ -287,6 +287,101 @@ test('candidate explanations', () => {
   assert(Array.isArray(r.candidates) && r.candidates.length > 0 && typeof r.candidates[0].score === 'number', 'candidate metadata missing');
 });
 
+test('CLI multi-block mode A', () => {
+  const input = [
+    'Module Overview:',
+    '====================================================================================',
+    'ModuleName             Description',
+    '------------------------------------------------------------------------------------',
+    'SNPX200ACL1            Optix X8K 2*10G Service Board',
+    '',
+    'Resource allocation:',
+    '====================================================================================',
+    'ModuleName             Reserved     InUse        Free         Total',
+    '------------------------------------------------------------------------------------',
+    'SNPX200ACL1            0            1            3            4',
+    '',
+    'Port status:',
+    '====================================================================================',
+    'Slot/Port          ModuleName      Configured    Connected     OperState',
+    '------------------------------------------------------------------------------------',
+    '1/1/0              SNPX200ACL1     1             1             Up',
+    '1/1/1              SNPX200ACL1     1             0             Down',
+    '1/1/2              SNPX200ACL1     0             0             Idle'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'cli-multi-block' && r.tables.length === 3, 'CLI mode A table count or format failed');
+  assert(r.tables.map(t => t.name).join('|') === 'Module Overview|Resource allocation|Port status', 'CLI mode A names failed');
+  assert(r.tables[1].headers.join('|') === 'ModuleName|Reserved|InUse|Free|Total', 'CLI mode A headers failed');
+  assert(r.tables[1].rows[0].join('|') === 'SNPX200ACL1|0|1|3|4', 'CLI mode A narrow numeric columns failed');
+  assert(r.tables[2].rows[2].join('|') === '1/1/2|SNPX200ACL1|0|0|Idle', 'CLI mode A position slicing failed');
+  const compact = ImportEngine.parse(input.replace(/\n\n/g, '\n'));
+  assert(compact.tables.map(t => t.name).join('|') === 'Module Overview|Resource allocation|Port status', 'CLI mode A title inference without blank lines failed');
+});
+
+test('CLI multi-block mode B with decorated separators', () => {
+  const input = [
+    'GE0/3/2 performance counters',
+    '=============|=====================================================================================',
+    '             sampling   highThresh   lowThresh    period       alarmCtrl  alarmType  counter',
+    '-------------|-------------------------------------------------------------------------------------',
+    'rx-unicast    on         5000         200          5            off        none       0',
+    'tx-unicast    on         5000         200          5            off        none       0',
+    '=============|=====================================================================================',
+    '             enable        threshold       alarmCtrl   alarmType',
+    '-------------|-------------------------------------------------------------------------------------',
+    'bip8-sd      on            3                off         none'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'cli-multi-block' && r.tables.length === 2, 'CLI mode B table count or format failed');
+  assert(r.tables[0].name === 'GE0/3/2 performance counters' && r.tables[1].name === 'GE0/3/2 performance counters (2)', 'CLI subtable names failed');
+  assert(r.tables[0].headers[0] === 'Column1' && r.tables[0].headers[7] === 'counter', 'missing first CLI header was not generated');
+  assert(r.tables[0].rows[1].join('|') === 'tx-unicast|on|5000|200|5|off|none|0', 'CLI mode B row mapping failed');
+  assert(r.tables[1].headers.join('|') === 'Column1|enable|threshold|alarmCtrl|alarmType', 'CLI mode B second header failed');
+  assert(r.tables[1].rows[0].join('|') === 'bip8-sd|on|3|off|none', 'CLI mode B second row failed');
+  assert(r.diagnostics.filter(d => d.code === 'MISSING_FIRST_HEADER').length === 2, 'missing first header diagnostic failed');
+});
+
+test('CLI multi-block fallback and width diagnostics', () => {
+  const input = [
+    'Table',
+    '====================',
+    'A     B     C',
+    '--------------------',
+    '1     wide value     2     overflow'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'cli-multi-block', 'CLI fallback format failed');
+  assert(r.tables[0].rows[0].join('|') === '1|wide value|2|overflow', 'CLI whitespace fallback did not preserve overflow');
+  assert(r.diagnostics.some(d => d.code === 'POSITION_MISMATCH'), 'POSITION_MISMATCH diagnostic missing');
+  assert(r.diagnostics.some(d => d.code === 'ROW_WIDTH_MISMATCH'), 'ROW_WIDTH_MISMATCH diagnostic missing');
+});
+
+test('CLI multi-block incomplete input degrades with diagnostics', () => {
+  const parser = ImportEngine.getParser('cli-multi-block');
+  assert(parser && parser.confidence({ text:'A\n--------------------\n1' }) === 0, 'CLI parser matched without ==== separator');
+  const missingSeparator = ImportEngine.parse('Title\n====================', { format:'cli-multi-block' });
+  assert(missingSeparator.tables.length === 0 && missingSeparator.diagnostics.some(d => d.code === 'MISSING_SEPARATOR'), 'missing separator was not diagnosed');
+  const emptyBlock = ImportEngine.parse('Title\n====================\nA     B\n--------------------', { format:'cli-multi-block' });
+  assert(emptyBlock.tables.length === 0 && emptyBlock.diagnostics.some(d => d.code === 'EMPTY_TABLE_BLOCK'), 'empty CLI block was not diagnosed');
+  const plain = ImportEngine.parse('A     B\n--------------------\n1     2');
+  assert(plain.format === 'aligned-table', 'single aligned table should remain a fallback when ==== is absent');
+});
+
+test('CLI multi-block parser meets the 10x100 row performance target', () => {
+  const chunks = [];
+  for(let block = 0; block < 10; block++) {
+    chunks.push(`Block ${block + 1}`, '='.repeat(80), 'Name             Value        State', '-'.repeat(80));
+    for(let row = 0; row < 100; row++) chunks.push(`item-${block}-${row}       ${row}            Up`);
+    if(block < 9) chunks.push('');
+  }
+  const started = Date.now();
+  const r = ImportEngine.parse(chunks.join('\n'));
+  const elapsed = Date.now() - started;
+  assert(r.format === 'cli-multi-block' && r.tables.length === 10 && r.tables.every(t => t.rows.length === 100), 'CLI performance fixture parsed incorrectly');
+  assert(elapsed <= 500, `CLI 10x100 parse exceeded 500ms: ${elapsed}ms`);
+});
+
 const failures = [];
 for (const item of cases) {
   try { item.fn(); } catch (error) { failures.push(`${item.name}: ${error.message}`); }

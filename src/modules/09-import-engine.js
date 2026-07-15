@@ -1,6 +1,6 @@
-OTA.define('import-engine', ["table-utils","html-parser","delimited-parsers","text-parsers"], ({TableUtils}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, {PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser}) => {
+OTA.define('import-engine', ["table-utils","html-parser","delimited-parsers","text-parsers"], ({TableUtils}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, {PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, CliMultiBlockParser}) => {
 const ImportEngine = {
-    parsers: [CliTableDataParser, HtmlTableParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
+    parsers: [CliTableDataParser, HtmlTableParser, CliMultiBlockParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
     parseQuality(parsed) {
         const tables = parsed && Array.isArray(parsed.tables) ? parsed.tables : [];
@@ -45,8 +45,13 @@ const ImportEngine = {
                     // A malformed candidate must not prevent trying the next parser.
                 }
             };
-            scored.slice(0, 3).forEach(probe);
-            if(!evaluated.length) scored.slice(3).some(candidate => { probe(candidate); return evaluated.length > 0; });
+            // A validated CLI block signature is structurally specific and
+            // can contain thousands of rows. Avoid spending the detection
+            // budget reparsing it as CSV/plain text after the precise parser
+            // has already won the score race.
+            const probeLimit = scored[0] && scored[0].parser.id === 'cli-multi-block' ? 1 : 3;
+            scored.slice(0, probeLimit).forEach(probe);
+            if(!evaluated.length) scored.slice(probeLimit).some(candidate => { probe(candidate); return evaluated.length > 0; });
             selectedEvaluation = evaluated.sort((a,b) => b.adjustedScore - a.adjustedScore)[0] || null;
             chosen = selectedEvaluation && selectedEvaluation.parser;
             parsed = selectedEvaluation && selectedEvaluation.parsed;
@@ -55,9 +60,13 @@ const ImportEngine = {
         if(!parsed) parsed = chosen.parse(source, options);
         const tables = parsed.tables || [];
         const diagnostics = [];
+        const diagnosticKeys = new Set();
         [...(Array.isArray(parsed.diagnostics) ? parsed.diagnostics : []), ...tables.flatMap(table => table.diagnostics || [])].forEach(item => {
             const key = `${item.code || ''}|${item.table || ''}|${item.row || ''}|${item.message || ''}`;
-            if(!diagnostics.some(existing => `${existing.code || ''}|${existing.table || ''}|${existing.row || ''}|${existing.message || ''}` === key)) diagnostics.push(item);
+            if(!diagnosticKeys.has(key)) {
+                diagnosticKeys.add(key);
+                diagnostics.push(item);
+            }
         });
         if(!selectedType && selectedEvaluation) {
             const next = scored.find(item => item.parser.id !== selectedEvaluation.parser.id);

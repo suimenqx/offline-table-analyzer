@@ -95,6 +95,222 @@ const FixedWidthParser = {
     }
 };
 
+function isCliSeparator(line='', marker='=') {
+    const compact = String(line || '').replace(/\s/g, '');
+    if(compact.length < 10) return false;
+    const count = compact.split(marker).length - 1;
+    if(count < 10 || count / compact.length < 0.6) return false;
+    return marker === '=' ? /^[=|]+$/.test(compact) : /^[-|]+$/.test(compact);
+}
+
+function isCliBlockSeparator(line='') {
+    return isCliSeparator(line, '=');
+}
+
+function isCliDataSeparator(line='') {
+    return isCliSeparator(line, '-');
+}
+
+function collapseCliBlockSeparators(lines=[]) {
+    const indexes = [];
+    lines.forEach((line, index) => {
+        if(!isCliBlockSeparator(line)) return;
+        const previous = indexes[indexes.length - 1];
+        if(previous !== undefined && lines.slice(previous + 1, index).every(line => !line.trim())) return;
+        indexes.push(index);
+    });
+    return indexes;
+}
+
+function cleanCliTitle(line='') {
+    const title = String(line || '').trim().replace(/\s*:\s*$/, '');
+    return title || null;
+}
+
+function cliTitleBeforeMarker(lines, markerIndex, markerIndexes, ordinal, previousTitle, previousWidth) {
+    const start = ordinal > 0 ? markerIndexes[ordinal - 1] + 1 : 0;
+    const before = lines.slice(start, markerIndex);
+    if(ordinal === 0) {
+        for(let i = before.length - 1; i >= 0; i--) {
+            if(before[i].trim() && !isCliBlockSeparator(before[i]) && !isCliDataSeparator(before[i])) {
+                return cleanCliTitle(before[i]);
+            }
+        }
+        return null;
+    }
+    let lastBlank = -1;
+    before.forEach((line, index) => { if(!line.trim()) lastBlank = index; });
+    if(lastBlank < 0) {
+        for(let i = before.length - 1; i >= 0; i--) {
+            if(!before[i].trim() || isCliBlockSeparator(before[i]) || isCliDataSeparator(before[i])) continue;
+            if(previousWidth && cliWhitespaceParts(before[i]).length === previousWidth) return previousTitle || null;
+            return cleanCliTitle(before[i]);
+        }
+        return previousTitle || null;
+    }
+    for(let i = before.length - 1; i > lastBlank; i--) {
+        if(before[i].trim() && !isCliBlockSeparator(before[i]) && !isCliDataSeparator(before[i])) {
+            return cleanCliTitle(before[i]);
+        }
+    }
+    return previousTitle || null;
+}
+
+function cliBlockParts(lines, markerIndex, nextMarkerIndex) {
+    const chunk = lines.slice(markerIndex + 1, nextMarkerIndex === undefined ? lines.length : nextMarkerIndex);
+    const separatorIndex = chunk.findIndex(isCliDataSeparator);
+    if(separatorIndex < 0) return { headerLine:null, extraHeaderLines:[], dataLines:[], hasSeparator:false };
+    const headerLines = chunk.slice(0, separatorIndex).filter(line =>
+        line.trim() && !isCliBlockSeparator(line) && !isCliDataSeparator(line)
+    );
+    if(!headerLines.length) return { headerLine:null, extraHeaderLines:[], dataLines:[], hasSeparator:true };
+    const rawDataLines = [...headerLines.slice(1), ...chunk.slice(separatorIndex + 1)];
+    const dataLines = [];
+    for(const line of rawDataLines) {
+        if(!line.trim()) break;
+        if(isCliBlockSeparator(line) || isCliDataSeparator(line)) continue;
+        dataLines.push(line);
+    }
+    return { headerLine:headerLines[0], extraHeaderLines:headerLines.slice(1), dataLines, hasSeparator:true };
+}
+
+function cliDisplayRanges(headerLine='') {
+    const ranges = [];
+    const regex = /\S+/g;
+    let match;
+    while((match = regex.exec(String(headerLine))) !== null) {
+        ranges.push({ s:terminalDisplayWidth(String(headerLine).substring(0, match.index)) });
+    }
+    if(ranges.length && ranges[0].s > 0) ranges.unshift({ s:0, generated:true });
+    for(let i = 0; i < ranges.length; i++) ranges[i].e = i + 1 < ranges.length ? ranges[i + 1].s : Infinity;
+    return ranges;
+}
+
+function cliWhitespaceParts(line='') {
+    return String(line).trim().split(/\s{2,}/).map(value => value.trim()).filter((value, index, values) => values.length === 1 || value !== '' || index < values.length - 1);
+}
+
+function inspectCliMultiBlock(source) {
+    const lines = TableUtils.lines(source.text || '');
+    const markerIndexes = collapseCliBlockSeparators(lines);
+    let validBlocks = 0;
+    let consistent = true;
+    for(let i = 0; i < markerIndexes.length; i++) {
+        const parts = cliBlockParts(lines, markerIndexes[i], markerIndexes[i + 1]);
+        if(!parts.headerLine || !parts.dataLines.length) continue;
+        const width = cliDisplayRanges(parts.headerLine).length;
+        if(!width) continue;
+        validBlocks++;
+        parts.dataLines.forEach(line => {
+            if(cliWhitespaceParts(line).length !== width) consistent = false;
+        });
+    }
+    if(!validBlocks) return { markerIndexes, validBlocks, score:0, consistent:false };
+    let score = 0.75;
+    if(markerIndexes.length > 1) score += 0.10;
+    if(consistent) score += 0.05;
+    return { markerIndexes, validBlocks, score:Math.min(0.95, score), consistent };
+}
+
+const CliMultiBlockParser = {
+    id:'cli-multi-block', label:'CLI 多块定宽表',
+    confidence(source) {
+        return inspectCliMultiBlock(source).score;
+    },
+    parse(source, options={}) {
+        const lines = TableUtils.lines(source.text || '');
+        const inspected = inspectCliMultiBlock(source);
+        const markerIndexes = inspected.markerIndexes;
+        const tables = [];
+        const diagnostics = [];
+        const used = new Set();
+        const titleCounts = new Map();
+        let previousTitle = null;
+        let previousWidth = 0;
+        const addDiagnostic = (item) => diagnostics.push({ level:'warning', ...item });
+
+        for(let i = 0; i < markerIndexes.length; i++) {
+            const markerIndex = markerIndexes[i];
+            const title = cliTitleBeforeMarker(lines, markerIndex, markerIndexes, i, previousTitle, previousWidth);
+            if(title) previousTitle = title;
+            const parts = cliBlockParts(lines, markerIndex, markerIndexes[i + 1]);
+            if(!parts.hasSeparator) {
+                addDiagnostic({ code:'MISSING_SEPARATOR', block:i + 1, message:`CLI 块 ${i + 1} 缺少 ---- 表头/数据分隔线` });
+                continue;
+            }
+            if(!parts.headerLine) {
+                addDiagnostic({ code:'MISSING_HEADER', block:i + 1, message:`CLI 块 ${i + 1} 缺少表头行` });
+                continue;
+            }
+            if(!parts.dataLines.length) {
+                addDiagnostic({ code:'EMPTY_TABLE_BLOCK', block:i + 1, message:`CLI 块 ${i + 1} 的 ---- 分隔线后没有数据行` });
+                continue;
+            }
+            const ranges = cliDisplayRanges(parts.headerLine);
+            if(!ranges.length) {
+                addDiagnostic({ code:'MISSING_HEADER', block:i + 1, message:`CLI 块 ${i + 1} 缺少有效表头列` });
+                continue;
+            }
+            previousWidth = ranges.length;
+            const rawHeaders = ranges.map(range => sliceByDisplayColumns(parts.headerLine, range.s, range.e));
+            const blockDiagnostics = [];
+            if(ranges[0].generated) {
+                blockDiagnostics.push({ level:'warning', code:'MISSING_FIRST_HEADER', row:1, message:'CLI 表格首列无表头，已生成 Column1' });
+            }
+            const rows = [];
+            parts.dataLines.forEach((line, rowIndex) => {
+                const sliced = ranges.map(range => sliceByDisplayColumns(line, range.s, range.e));
+                const fallback = cliWhitespaceParts(line);
+                const widthMismatch = fallback.length !== ranges.length;
+                if(widthMismatch) {
+                    blockDiagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', row:rowIndex + 1, message:`CLI 数据行 ${rowIndex + 1} 列数为 ${fallback.length}，目标列数为 ${ranges.length}` });
+                }
+                const positionMismatch = fallback.length >= ranges.length && (
+                    fallback.length !== ranges.length || fallback.some((value, index) => value !== sliced[index])
+                );
+                const values = positionMismatch ? fallback : sliced;
+                if(positionMismatch) {
+                    blockDiagnostics.push({ level:'warning', code:'POSITION_MISMATCH', row:rowIndex + 1, message:`CLI 定宽数据行 ${rowIndex + 1} 的位置截取与空白分割不一致，已按空白分割保留值` });
+                }
+                if(!TableUtils.isEmptyRow(values)) rows.push(values);
+            });
+            if(!rows.length) {
+                addDiagnostic({ code:'EMPTY_TABLE_BLOCK', block:i + 1, message:`CLI 块 ${i + 1} 没有有效数据行` });
+                continue;
+            }
+            const baseName = title || null;
+            let requestedName;
+            if(baseName) {
+                const count = (titleCounts.get(baseName) || 0) + 1;
+                titleCounts.set(baseName, count);
+                requestedName = count > 1 ? `${baseName} (${count})` : baseName;
+            } else {
+                requestedName = `CLI Block Table ${tables.length + 1}`;
+            }
+            const name = TableUtils.makeTableName(requestedName, tables.length, used);
+            const resolved = HeaderResolver.infer([rawHeaders, ...rows], { ...options, hasHeader:true, tableName:name });
+            resolved.diagnostics.push(...blockDiagnostics.map(item => ({ ...item, table:name })));
+            resolved.name = name;
+            resolved.sourceType = this.id;
+            resolved.meta = {
+                delimiter:'position',
+                hasHeader:resolved.hasHeader,
+                generatedHeaders:resolved.generatedHeaders,
+                headerConfidence:resolved.headerConfidence,
+                blockIndex:i + 1
+            };
+            tables.push(resolved);
+        }
+        if(!markerIndexes.length && options.format === this.id) {
+            addDiagnostic({ code:'MISSING_SEPARATOR', message:'未检测到 ==== CLI 块起始分隔线' });
+        }
+        return {
+            tables,
+            diagnostics:[...diagnostics, ...tables.flatMap(table => table.diagnostics || [])]
+        };
+    }
+};
+
 function isAlignedSeparator(line='') {
     const value = String(line).trim();
     // Require a real horizontal run so values such as "--" remain data cells.
@@ -181,6 +397,11 @@ const AlignedTableParser = {
     id:'aligned-table', label:'定宽对齐表格',
     confidence(source) {
         const lines = TableUtils.lines(source.text || '').filter(l => l.trim());
+        // CLI multi-block input has a more precise block/header model. Keep
+        // the legacy aligned parser from winning auto-detection on its ----
+        // separators while preserving explicit aligned-table parsing.
+        const hasCliBlock = lines.some(isCliBlockSeparator) && lines.some(isCliDataSeparator);
+        if(hasCliBlock) return 0;
         const separatorIndexes = lines
             .map((line, index) => isAlignedSeparator(line) ? index : -1)
             .filter(index => index >= 0);
@@ -398,5 +619,5 @@ const CliTableDataParser = {
     }
 };
 
-    return { PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser };
+    return { PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, CliMultiBlockParser };
 });
