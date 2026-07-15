@@ -59,6 +59,7 @@
                             <select id="formatSelect" class="format-select" title="输入格式">
                                 <option value="auto">自动识别</option>
                                 <option value="cli-table-data">CLI table-data</option>
+                                <option value="cli-multi-block">CLI 多块定宽表</option>
                                 <option value="csv">CSV</option>
                                 <option value="excel-paste">Excel/TSV</option>
                                 <option value="html-table">HTML 表格</option>
@@ -69,7 +70,7 @@
                                 <option value="aligned-table">定宽对齐</option>
                                 <option value="plain-text">空白文本</option>
                             </select>
-                            <select id="headerModeSelect" class="format-select narrow" title="表头处理，CLI table-data 固定使用 validflag 行作为表头">
+                            <select id="headerModeSelect" class="format-select narrow" title="表头处理，CLI table-data 与 CLI 多块定宽表固定使用解析出的表头">
                                 <option value="auto">自动表头</option>
                                 <option value="first-row">首行表头</option>
                                 <option value="none">无表头</option>
@@ -275,6 +276,7 @@
                 <select id="formatSelectLarge" class="format-select" title="输入格式">
                     <option value="auto">自动识别</option>
                     <option value="cli-table-data">CLI table-data</option>
+                    <option value="cli-multi-block">CLI 多块定宽表</option>
                     <option value="csv">CSV</option>
                     <option value="excel-paste">Excel/TSV</option>
                     <option value="html-table">HTML 表格</option>
@@ -285,7 +287,7 @@
                     <option value="aligned-table">定宽对齐</option>
                     <option value="plain-text">空白文本</option>
                 </select>
-                <select id="headerModeSelectLarge" class="format-select narrow" title="表头处理，CLI table-data 固定使用 validflag 行作为表头">
+                <select id="headerModeSelectLarge" class="format-select narrow" title="表头处理，CLI table-data 与 CLI 多块定宽表固定使用解析出的表头">
                     <option value="auto">自动表头</option>
                     <option value="first-row">首行表头</option>
                     <option value="none">无表头</option>

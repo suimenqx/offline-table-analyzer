@@ -174,13 +174,37 @@ function cliBlockParts(lines, markerIndex, nextMarkerIndex) {
     return { headerLine:headerLines[0], extraHeaderLines:headerLines.slice(1), dataLines, hasSeparator:true };
 }
 
-function cliDisplayRanges(headerLine='') {
-    const ranges = [];
+function cliDisplayTokens(line='') {
+    const tokens = [];
     const regex = /\S+/g;
     let match;
-    while((match = regex.exec(String(headerLine))) !== null) {
-        ranges.push({ s:terminalDisplayWidth(String(headerLine).substring(0, match.index)) });
+    while((match = regex.exec(String(line))) !== null) {
+        const start = terminalDisplayWidth(String(line).substring(0, match.index));
+        tokens.push({ start, end:start + terminalDisplayWidth(match[0]) });
     }
+    return tokens;
+}
+
+function cliDisplayTokenStarts(line='') {
+    return cliDisplayTokens(line).map(token => token.start);
+}
+
+function cliDisplayStartSupport(start, dataLines=[]) {
+    return dataLines.reduce((count, line) => cliDisplayTokenStarts(line).includes(start) ? count + 1 : count, 0);
+}
+
+function cliDisplayRanges(headerLine='', dataLines=[]) {
+    const tokens = cliDisplayTokens(headerLine);
+    const ranges = [];
+    const supportThreshold = Math.max(1, Math.ceil(dataLines.length * 0.6));
+    tokens.forEach((token, index) => {
+        const previous = tokens[index - 1];
+        const gap = previous ? token.start - previous.end : Infinity;
+        const alignedDataStart = dataLines.length > 0 && cliDisplayStartSupport(token.start, dataLines) >= supportThreshold;
+        if(!previous || gap >= 2 || alignedDataStart) {
+            ranges.push({ s:token.start });
+        }
+    });
     if(ranges.length && ranges[0].s > 0) ranges.unshift({ s:0, generated:true });
     for(let i = 0; i < ranges.length; i++) ranges[i].e = i + 1 < ranges.length ? ranges[i + 1].s : Infinity;
     return ranges;
@@ -198,11 +222,14 @@ function inspectCliMultiBlock(source) {
     for(let i = 0; i < markerIndexes.length; i++) {
         const parts = cliBlockParts(lines, markerIndexes[i], markerIndexes[i + 1]);
         if(!parts.headerLine || !parts.dataLines.length) continue;
-        const width = cliDisplayRanges(parts.headerLine).length;
+        const ranges = cliDisplayRanges(parts.headerLine, parts.dataLines);
+        const width = ranges.length;
         if(!width) continue;
         validBlocks++;
         parts.dataLines.forEach(line => {
-            if(cliWhitespaceParts(line).length !== width) consistent = false;
+            const fallbackWidth = cliWhitespaceParts(line).length;
+            const positioned = ranges.every(range => cliDisplayTokenStarts(line).includes(range.s));
+            if(fallbackWidth >= width ? fallbackWidth !== width : !positioned) consistent = false;
         });
     }
     if(!validBlocks) return { markerIndexes, validBlocks, score:0, consistent:false };
@@ -246,7 +273,7 @@ const CliMultiBlockParser = {
                 addDiagnostic({ code:'EMPTY_TABLE_BLOCK', block:i + 1, message:`CLI 块 ${i + 1} 的 ---- 分隔线后没有数据行` });
                 continue;
             }
-            const ranges = cliDisplayRanges(parts.headerLine);
+            const ranges = cliDisplayRanges(parts.headerLine, parts.dataLines);
             if(!ranges.length) {
                 addDiagnostic({ code:'MISSING_HEADER', block:i + 1, message:`CLI 块 ${i + 1} 缺少有效表头列` });
                 continue;
@@ -261,7 +288,8 @@ const CliMultiBlockParser = {
             parts.dataLines.forEach((line, rowIndex) => {
                 const sliced = ranges.map(range => sliceByDisplayColumns(line, range.s, range.e));
                 const fallback = cliWhitespaceParts(line);
-                const widthMismatch = fallback.length !== ranges.length;
+                const positioned = ranges.every(range => cliDisplayTokenStarts(line).includes(range.s));
+                const widthMismatch = fallback.length > ranges.length || (fallback.length < ranges.length && !positioned);
                 if(widthMismatch) {
                     blockDiagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', row:rowIndex + 1, message:`CLI 数据行 ${rowIndex + 1} 列数为 ${fallback.length}，目标列数为 ${ranges.length}` });
                 }

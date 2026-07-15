@@ -13,6 +13,7 @@ function assert(cond, msg) {
   'id="sourceEditorModal"',
   'id="rawInputLarge"',
   'id="formatSelectLarge"',
+  'value="cli-multi-block"',
   'id="headerModeSelectLarge"',
   'id="sourceEditorParseBtn"',
   'id="sourceEditorDoneBtn"',

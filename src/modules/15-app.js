@@ -176,8 +176,9 @@ const App = {
         if(!res.format || res.format === 'empty') return [];
         const tables = res.tables || [];
         const hasGeneratedHeaders = tables.some(t => t.meta && t.meta.generatedHeaders);
-        const isCli = res.format === 'cli-table-data';
-        const headerText = isCli ? 'validflag 行' : (hasGeneratedHeaders ? '自动生成 Column1...' : '已识别');
+        const isLegacyCli = res.format === 'cli-table-data';
+        const isMultiBlockCli = res.format === 'cli-multi-block';
+        const headerText = isLegacyCli ? 'validflag 行' : (isMultiBlockCli ? (hasGeneratedHeaders ? 'CLI 表头 · 自动生成列名' : 'CLI 表头') : (hasGeneratedHeaders ? '自动生成 Column1...' : '已识别'));
         return [
             `格式: ${res.label || res.format}`,
             `表头: ${headerText}`
@@ -279,7 +280,7 @@ const App = {
             headerSelect.value = (d.ui && d.ui.importHeaderMode) || 'auto';
             const manualFormat = formatSelect ? formatSelect.value : 'auto';
             const parsedFormat = Parser.lastResult && Parser.lastResult.format;
-            const isCli = manualFormat === 'cli-table-data' || (manualFormat === 'auto' && parsedFormat === 'cli-table-data');
+            const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
             headerSelect.disabled = isCli;
         }
         this.syncSourceEditorControls();
@@ -405,7 +406,7 @@ const App = {
         if(headerLarge && headerMain) headerLarge.value = headerMain.value || 'auto';
         const manualFormat = formatLarge ? formatLarge.value : (formatMain ? formatMain.value : 'auto');
         const parsedFormat = Parser.lastResult && Parser.lastResult.format;
-        const isCli = manualFormat === 'cli-table-data' || (manualFormat === 'auto' && parsedFormat === 'cli-table-data');
+        const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
         if(headerLarge) headerLarge.disabled = isCli;
         if(headerMain) headerMain.disabled = isCli;
     },

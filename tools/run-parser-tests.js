@@ -319,6 +319,35 @@ test('CLI multi-block mode A', () => {
   assert(compact.tables.map(t => t.name).join('|') === 'Module Overview|Resource allocation|Port status', 'CLI mode A title inference without blank lines failed');
 });
 
+test('CLI multi-block keeps spaces inside header titles', () => {
+  const input = [
+    'Port status',
+    '============================================================',
+    'Slot/Port          Module Name      Oper State       Link Type',
+    '------------------------------------------------------------',
+    '1/1/0              SNPX200ACL1     Up               Ethernet',
+    '1/1/1              SNPX200ACL2     Down             Optical'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.tables.length === 1, 'CLI spaced-header table count failed');
+  assert(r.format === 'cli-multi-block', 'CLI spaced-header input was not auto-detected');
+  assert(r.tables[0].headers.join('|') === 'Slot/Port|Module Name|Oper State|Link Type', 'spaces in CLI header titles were split into columns');
+  assert(r.tables[0].rows[0].join('|') === '1/1/0|SNPX200ACL1|Up|Ethernet', 'CLI rows followed incorrectly split spaced headers');
+  const manual = ImportEngine.parse(input, { format:'cli-multi-block' });
+  assert(manual.format === 'cli-multi-block' && manual.tables[0].headers[1] === 'Module Name', 'manual CLI multi-block selection failed');
+  const adjacentColumns = [
+    'Port status',
+    '============================================================',
+    'A B        Module Name    Oper State',
+    '------------------------------------------------------------',
+    '1 2        SNPX200ACL1    Up',
+    '3 4        SNPX200ACL2    Down'
+  ].join('\n');
+  const adjacent = ImportEngine.parse(adjacentColumns, { format:'cli-multi-block' });
+  assert(adjacent.tables[0].headers.join('|') === 'A|B|Module Name|Oper State', 'one-space adjacent columns were not inferred from aligned data');
+  assert(adjacent.tables[0].rows[0].join('|') === '1|2|SNPX200ACL1|Up' && adjacent.diagnostics.length === 0, 'one-space adjacent columns were mapped incorrectly');
+});
+
 test('CLI multi-block mode B with decorated separators', () => {
   const input = [
     'GE0/3/2 performance counters',
