@@ -163,14 +163,37 @@ const Select = {
         }
         return matrix;
     },
+    buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC) {
+        const mode = tbl.dataset.viewMode || 'column-header';
+        if(mode !== 'row-header') return this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
+
+        // Row-header previews display the original matrix transposed. For Lua,
+        // restore the selected rectangle to field headers plus record rows so
+        // each original record remains one Lua child table.
+        const headers = [];
+        for(let r=minR; r<=maxR; r++) headers.push(this.getRowHeaderText(tbl, r));
+        const matrix = [headers];
+        for(let c=minC; c<=maxC; c++) {
+            const row = [];
+            for(let r=minR; r<=maxR; r++) {
+                const td = this.findVisualCell(tbl, r, c);
+                row.push(td ? td.textContent : '');
+            }
+            matrix.push(row);
+        }
+        return matrix;
+    },
     copy(e) {
         const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`);
         if(!tbl) return;
         const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
-        const matrix = this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
         const format = Store.state.copyFormat || 'default';
-        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix));
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        const matrix = isLua
+            ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
+            : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
+        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format));
         e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format));
         Toast.show(`已复制 ${Math.max(0, matrix.length - 1)} 行 · ${ClipboardFormatter.label(format)}`);
     }

@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -838,7 +838,7 @@ validflag Time      Level   Message                 Code
                     const count = Store.importWorkspace(d, !replace);
                     if(d.preferences && typeof d.preferences === 'object') {
                         if(['light','dark'].includes(d.preferences.theme)) Store.state.theme = d.preferences.theme;
-                        if(['default','csv','markdown','ascii'].includes(d.preferences.copyFormat)) Store.state.copyFormat = d.preferences.copyFormat;
+                        if(COPY_FORMATS.includes(d.preferences.copyFormat)) Store.state.copyFormat = d.preferences.copyFormat;
                         if(typeof d.preferences.persistRaw === 'boolean') Store.state.persistRaw = d.preferences.persistRaw;
                         if(typeof d.preferences.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = d.preferences.spreadsheetSafe;
                         Store.applyTheme(); Store.save();

@@ -74,6 +74,15 @@ assert(Store.renameDoc('c', 'Analysis 2'), 'rename to duplicate should still suc
 assert(Store.state.docs[2].title === 'Analysis 2 (2)', 'duplicate rename should be made unique');
 Store.setCopyFormat('markdown');
 assert(Store.state.copyFormat === 'markdown', 'copy format should persist globally');
+Store.setCopyFormat('lua-inline');
+assert(Store.state.copyFormat === 'lua-inline', 'lua inline copy format should persist globally');
+Store.setCopyFormat('lua-expanded');
+assert(Store.state.copyFormat === 'lua-expanded', 'lua expanded copy format should persist globally');
+const persistedCopyFormat = JSON.parse(storage.get('ota_v20_workspace'));
+assert(persistedCopyFormat.copyFormat === 'lua-expanded', 'lua copy format should be written to workspace storage');
+Store.state.copyFormat = 'default';
+Store.init();
+assert(Store.state.copyFormat === 'lua-expanded', 'lua copy format should restore during store initialization');
 Store.setCopyFormat('invalid');
 assert(Store.state.copyFormat === 'default', 'invalid copy format should reset to default');
 reset();
@@ -104,4 +113,4 @@ assert(new Set(Store.state.docs.map(d => d.title)).size === Store.state.docs.len
 let rejected = false;
 try { Store.importWorkspace({ kind:'ota-workspace', schemaVersion:999, docs:[{}] }); } catch(error) { rejected = true; }
 assert(rejected, 'future workspace schema must be rejected');
-console.log('Tab and storage tests passed: 31');
+console.log('Tab and storage tests passed: 34');

@@ -63,8 +63,9 @@ Additional import capabilities:
 
 ### Copy, export, and recovery
 
-- **Copy formats**: TSV (default), CSV, Markdown, and ASCII. Every copy also includes an HTML clipboard payload for pasting into rich-text editors.
+- **Copy formats**: TSV (default), CSV, Markdown, ASCII, Lua inline, and Lua expanded. Lua copies use plain-text/code HTML payloads so they paste as code rather than a table.
 - **Spreadsheet formula injection protection**: cells starting with `=`, `+`, `@`, or a non-numeric `-` are prefixed to prevent accidental execution when pasting into spreadsheet applications.
+- Lua serialization does not apply spreadsheet formula prefixes and converts numbers, booleans, empty cells, hexadecimal values, and strings to Lua literals.
 - **Excel export**:
   - **Raw Excel** — the parsed tables as stored, before any filtering.
   - **Full Excel** — select which tables and views to include, with display-column projection.

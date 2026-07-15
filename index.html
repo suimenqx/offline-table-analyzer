@@ -686,6 +686,8 @@
                     <option value="csv">复制: CSV</option>
                     <option value="markdown">复制: Markdown</option>
                     <option value="ascii">复制: ASCII</option>
+                    <option value="lua-inline">复制: Lua 单行</option>
+                    <option value="lua-expanded">复制: Lua 展开</option>
                 </select>
                 <button class="sm export-secondary" id="exportFullBtn" type="button" title="导出当前页签的全量数据">全量 Excel</button>
                 <button class="primary sm" id="exportPrevBtn" type="button" title="导出当前筛选后的预览结果">导出预览</button>
@@ -1182,6 +1184,7 @@ const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
+const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'lua-inline', 'lua-expanded']);
 
 const Store = {
     state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
@@ -1215,7 +1218,7 @@ const Store = {
         this.state.schemaVersion = WORKSPACE_SCHEMA_VERSION;
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!Array.isArray(this.state.globalViews)) this.state.globalViews = [];
-        if(!['default','csv','markdown','ascii'].includes(this.state.copyFormat)) this.state.copyFormat = 'default';
+        if(!COPY_FORMATS.includes(this.state.copyFormat)) this.state.copyFormat = 'default';
         if(typeof this.state.spreadsheetSafe !== 'boolean') this.state.spreadsheetSafe = true;
         if(typeof this.state.persistRaw !== 'boolean') this.state.persistRaw = true;
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
@@ -1460,7 +1463,7 @@ const Store = {
         return hadEdits;
     },
     setCopyFormat(format='default') {
-        this.state.copyFormat = ['default','csv','markdown','ascii'].includes(format) ? format : 'default';
+        this.state.copyFormat = COPY_FORMATS.includes(format) ? format : 'default';
         this.save();
     },
     setPersistRaw(enabled=true) {
@@ -1475,7 +1478,7 @@ const Store = {
     applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); }
 };
 
-    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, Store };
+    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, Store };
 });
 
 /* @module 03-table-utils.js: table normalization */
@@ -3503,6 +3506,57 @@ const ClipboardFormatter = {
             .replace(/\r\n/g, '\n')
             .replace(/\r/g, '\n');
     },
+    escapeLuaString(value='') {
+        return String(value ?? '')
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\r/g, '\\r')
+            .replace(/\n/g, '\\n')
+            .replace(/\t/g, '\\t');
+    },
+    formatLuaValue(value='') {
+        const raw = String(value ?? '');
+        const text = raw.trim();
+        if(raw === '') return '""';
+        if(/^0[xX][0-9a-fA-F]+$/.test(text)) {
+            return /^0+$/.test(text.slice(2)) ? '0' : text;
+        }
+        if(/^-?(?:0|[1-9]\d*)$/.test(text)) return text;
+        if(/^-?(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)$/.test(text)) return text;
+        if(text === 'true' || text === 'false') return text;
+        return `"${this.escapeLuaString(raw)}"`;
+    },
+    toLua(matrix, layout='inline') {
+        if(!matrix || matrix.length < 2) return '{}';
+        const headers = Array.isArray(matrix[0]) ? matrix[0] : [];
+        const rows = matrix.slice(1);
+        const fieldExpressions = row => headers.map((header, index) =>
+            `["${this.escapeLuaString(header)}"] = ${this.formatLuaValue(row && row[index] !== undefined ? row[index] : '')}`
+        );
+        if(layout === 'expanded') {
+            const lines = ['{'];
+            rows.forEach((row, rowIndex) => {
+                lines.push(`    [${rowIndex + 1}] = {`);
+                fieldExpressions(row).forEach(expression => lines.push(`        ${expression},`));
+                lines.push('    },');
+            });
+            lines.push('}');
+            return lines.join('\n');
+        }
+        const expressions = rows.map(fieldExpressions);
+        const widths = headers.map((_, index) => Math.max(0, ...expressions.map(row => String(row[index] || '').length)));
+        const lines = ['{'];
+        expressions.forEach((row, rowIndex) => {
+            const fields = row.map((expression, index) => {
+                if(index === row.length - 1) return expression;
+                const gap = ' '.repeat(Math.max(1, widths[index] - expression.length + 1));
+                return `${expression},${gap}`;
+            });
+            lines.push(`    [${rowIndex + 1}] = { ${fields.join('')} },`);
+        });
+        lines.push('}');
+        return lines.join('\n');
+    },
     protectSpreadsheetFormula(value='') {
         const text = this.normalizeCell(value);
         const enabled = typeof Store === 'undefined' || !Store.state || Store.state.spreadsheetSafe !== false;
@@ -3545,7 +3599,11 @@ const ClipboardFormatter = {
         const width = Math.max(0, ...(matrix || []).map(row => row.length));
         return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
     },
-    toHtml(matrix) {
+    toHtml(matrix, format='default') {
+        if(format === 'lua-inline' || format === 'lua-expanded') {
+            const layout = format === 'lua-expanded' ? 'expanded' : 'inline';
+            return `<pre><code>${this.escapeHtml(this.toLua(matrix, layout))}</code></pre>`;
+        }
         if(!matrix || !matrix.length) return '<table></table>';
         const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
         const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
@@ -3556,12 +3614,14 @@ const ClipboardFormatter = {
             case 'csv': return this.toDelimited(matrix, ',');
             case 'markdown': return this.toMarkdown(matrix);
             case 'ascii': return this.toAscii(matrix);
+            case 'lua-inline': return this.toLua(matrix, 'inline');
+            case 'lua-expanded': return this.toLua(matrix, 'expanded');
             case 'default':
             default: return this.toDelimited(matrix, '\t');
         }
     },
     label(format='default') {
-        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII' })[format] || '默认';
+        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
     }
 };
 
@@ -3734,14 +3794,37 @@ const Select = {
         }
         return matrix;
     },
+    buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC) {
+        const mode = tbl.dataset.viewMode || 'column-header';
+        if(mode !== 'row-header') return this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
+
+        // Row-header previews display the original matrix transposed. For Lua,
+        // restore the selected rectangle to field headers plus record rows so
+        // each original record remains one Lua child table.
+        const headers = [];
+        for(let r=minR; r<=maxR; r++) headers.push(this.getRowHeaderText(tbl, r));
+        const matrix = [headers];
+        for(let c=minC; c<=maxC; c++) {
+            const row = [];
+            for(let r=minR; r<=maxR; r++) {
+                const td = this.findVisualCell(tbl, r, c);
+                row.push(td ? td.textContent : '');
+            }
+            matrix.push(row);
+        }
+        return matrix;
+    },
     copy(e) {
         const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`);
         if(!tbl) return;
         const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
-        const matrix = this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
         const format = Store.state.copyFormat || 'default';
-        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix));
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        const matrix = isLua
+            ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
+            : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
+        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format));
         e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format));
         Toast.show(`已复制 ${Math.max(0, matrix.length - 1)} 行 · ${ClipboardFormatter.label(format)}`);
     }
@@ -3751,7 +3834,7 @@ const Select = {
 });
 
 /* @module 15-app.js: application orchestration and UI */
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -4591,7 +4674,7 @@ validflag Time      Level   Message                 Code
                     const count = Store.importWorkspace(d, !replace);
                     if(d.preferences && typeof d.preferences === 'object') {
                         if(['light','dark'].includes(d.preferences.theme)) Store.state.theme = d.preferences.theme;
-                        if(['default','csv','markdown','ascii'].includes(d.preferences.copyFormat)) Store.state.copyFormat = d.preferences.copyFormat;
+                        if(COPY_FORMATS.includes(d.preferences.copyFormat)) Store.state.copyFormat = d.preferences.copyFormat;
                         if(typeof d.preferences.persistRaw === 'boolean') Store.state.persistRaw = d.preferences.persistRaw;
                         if(typeof d.preferences.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = d.preferences.spreadsheetSafe;
                         Store.applyTheme(); Store.save();

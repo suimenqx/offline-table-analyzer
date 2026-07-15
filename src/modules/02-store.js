@@ -5,6 +5,7 @@ const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
+const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'lua-inline', 'lua-expanded']);
 
 const Store = {
     state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
@@ -38,7 +39,7 @@ const Store = {
         this.state.schemaVersion = WORKSPACE_SCHEMA_VERSION;
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!Array.isArray(this.state.globalViews)) this.state.globalViews = [];
-        if(!['default','csv','markdown','ascii'].includes(this.state.copyFormat)) this.state.copyFormat = 'default';
+        if(!COPY_FORMATS.includes(this.state.copyFormat)) this.state.copyFormat = 'default';
         if(typeof this.state.spreadsheetSafe !== 'boolean') this.state.spreadsheetSafe = true;
         if(typeof this.state.persistRaw !== 'boolean') this.state.persistRaw = true;
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
@@ -283,7 +284,7 @@ const Store = {
         return hadEdits;
     },
     setCopyFormat(format='default') {
-        this.state.copyFormat = ['default','csv','markdown','ascii'].includes(format) ? format : 'default';
+        this.state.copyFormat = COPY_FORMATS.includes(format) ? format : 'default';
         this.save();
     },
     setPersistRaw(enabled=true) {
@@ -298,5 +299,5 @@ const Store = {
     applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); }
 };
 
-    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, Store };
+    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, Store };
 });

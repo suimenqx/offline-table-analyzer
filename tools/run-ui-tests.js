@@ -33,6 +33,8 @@ function assert(cond, msg) {
   'id="helpBtn"',
   '复制: Markdown',
   '复制: ASCII',
+  '复制: Lua 单行',
+  '复制: Lua 展开',
   '全量 Excel',
   'Right Join',
   'Full Join',
@@ -89,6 +91,8 @@ assert(script.includes('data-vr') && script.includes('startAutoScroll()'), 'prev
 assert(script.includes("td.classList.contains('row-header-cell')"), 'row-header labels should not behave like editable data cells');
 assert(script.includes('nextAnalysisSeq') && script.includes('getMaxAnalysisNumber()'), 'analysis titles should use a monotonic sequence');
 assert(script.includes('ClipboardFormatter.toText(matrix, format)'), 'copy should support global text table formats');
+assert(script.includes('buildLuaClipboardMatrix') && script.includes('ClipboardFormatter.toHtml(matrix, format)'), 'Lua copy should use a normalized matrix and code HTML payload');
+assert(script.includes("lua-inline") && script.includes("lua-expanded"), 'Lua copy format values should be wired into the release');
 assert(script.includes("document.addEventListener('keydown', e => {") && script.includes('this.selectAll(table);'), 'ctrl+a should select all cells in active preview table');
 assert(html.includes('#sourceEditorModal .source-editor-shell { width: 100vw; height: 100vh;'), 'source editor should occupy the full browser viewport');
 assert(script.includes("if(e.key === 'Escape') { e.preventDefault(); this.closeSourceEditor(); }"), 'source editor Escape behavior should be explicit and synchronized');
@@ -104,4 +108,4 @@ vm.runInContext(`const FilterHarness = {${script.slice(procStart, procEnd).trim(
 const filterTable = { name:'Logs', headers:['level','message'], rows:[['WARN','memory'],['ERROR','timeout'],['INFO','ok']] };
 const regexRows = procSandbox.window.FilterHarness.proc(filterTable, { rules:{}, columnFilters:{}, globalFilter:'/ERROR|WARN/' }).rows;
 assert(regexRows.length === 2 && regexRows[0].d[0] === 'WARN' && regexRows[1].d[0] === 'ERROR', 'regex alternation must not be split as plain OR tokens');
-console.log('UI interaction tests passed: 62');
+console.log('UI interaction tests passed: 66');
