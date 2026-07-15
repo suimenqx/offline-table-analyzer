@@ -13,12 +13,14 @@ const ImportEngine = {
         }, 0);
         if(!totalCells) return 0.2;
         let quality = 1;
+        let alignedMismatchCount = 0;
         diagnostics.forEach(item => {
             if(item.code === 'UNCLOSED_QUOTE') quality -= 0.3;
             else if(item.code === 'ROW_WIDTH_MISMATCH') quality -= 0.04;
-            else if(item.code === 'ALIGNED_POSITION_MISMATCH') quality -= 0.08;
+            else if(item.code === 'ALIGNED_POSITION_MISMATCH') alignedMismatchCount++;
             else if(item.level === 'error') quality -= 0.35;
         });
+        if(alignedMismatchCount) quality -= Math.min(0.16, 0.08 + (alignedMismatchCount - 1) * 0.01);
         return Math.max(0.15, Math.min(1, quality));
     },
     parse(input, options={}) {

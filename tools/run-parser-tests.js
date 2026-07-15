@@ -164,6 +164,39 @@ test('aligned table - report header remains columns with a separator', () => {
   assert(r.tables[0].headers.join('|') === 'ColA|ColB|ColC|ColD|ColE|ColF|ColG|ColH|ColI', 'report headers lost');
   assert(r.tables[0].rows.length === 3 && r.tables[0].rows[2][8] === 'PN-003', 'report rows were not mapped');
 });
+test('aligned table - CJK terminal-width inventory report', () => {
+  const input = [
+    '---------------------------------------------------------------------------------------------------------------------------------------------',
+    'SKU                    Status  Pack   Spec                  NetWeight       CostPrice   ListPrice   Storage           SupplierCode',
+    '---------------------------------------------------------------------------------------------------------------------------------------------',
+    'SP-A02-00              缺货    整箱   500ml-24pk-PET        12.00kg         18.50       36.80       常温              HSF-243MD',
+    'SP-A02-01              缺货    整箱   500ml-12pk-PET        6.00kg          15.20       32.50       常温              RXTX191-400',
+    'SP-A02-02              缺货    整箱   500ml-12pk-PET        6.00kg          11.42       31.75       常温              HSF-243S',
+    'SP-A02-03              缺货    整箱   500ml-12pk-PET        6.00kg          19.10       30.89       常温              LTD1302-BC1',
+    'SP-A02-04              缺货    整箱   500ml-12pk-PET        6.00kg          16.64       28.64       常温              HSF-243S',
+    'SP-A02-05              缺货    整箱   500ml-12pk-PET        6.00kg          20.99       29.99       常温              HSF-243S',
+    'SP-A02-06              缺货    整箱   500ml-12pk-PET        6.00kg          18.07       27.07       常温              HSF-243S',
+    'SP-A02-07              缺货    整箱   500ml-12pk-PET        6.00kg          14.60       30.60       常温              HSF-243S',
+    'SP-A02-08              缺货    整箱   330ml-24pk-CAN        7.92kg          22.31       45.31       冷藏              PLRX-SCS43HW',
+    'SP-A02-09              缺货    整箱   250ml-6pk-GLS         1.50kg          10.25       22.25       常温              HSF-033S',
+    'SP-A02-17              在售    整箱   1L-12pk-PET           12.00kg         12.48       24.48       常温              RXTX228-401',
+    'SP-A02-19              缺货    整箱   330ml-24pk-CAN        7.92kg          12.53       25.53       冷藏              LTF8502-BC1',
+    'SP-A02-21              缺货    整箱   1L-6pk-GLS            6.00kg          13.37       27.37       常温              MTRS-02X13G',
+    'SP-A02-22              在售    整箱   2L-6pk-PET            12.00kg         20.00       40.00       常温              MTRA-3E61A',
+    'SP-A02-23              缺货    整箱   1L-6pk-GLS            6.00kg          21.45       42.45       常温              FTLX1471D3B',
+    'SP-A02-24              缺货    整箱   2L-6pk-PET            12.00kg         17.16       34.76       常温              LTF1325-BH1',
+    'SP-A02-25              缺货    整箱   330ml-24pk-CAN        7.92kg          10.75       21.75       冷藏              TR-PY85S-N00',
+    '---------------------------------------------------------------------------------------------------------------------------------------------'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'CJK inventory report was not detected as aligned table');
+  assert(r.tables[0].headers.join('|') === 'SKU|Status|Pack|Spec|NetWeight|CostPrice|ListPrice|Storage|SupplierCode', 'CJK report headers lost');
+  assert(r.tables[0].rows.length === 17, 'CJK report row count includes separator rows');
+  assert(r.tables[0].rows[0].join('|') === 'SP-A02-00|缺货|整箱|500ml-24pk-PET|12.00kg|18.50|36.80|常温|HSF-243MD', 'CJK first row mapping failed');
+  assert(r.tables[0].rows[10][1] === '在售' && r.tables[0].rows[10][8] === 'RXTX228-401', 'CJK middle row mapping failed');
+  assert(r.tables[0].rows[16][8] === 'TR-PY85S-N00', 'CJK last row mapping failed');
+  assert(!r.diagnostics.some(d => d.code === 'ALIGNED_POSITION_MISMATCH'), 'valid CJK alignment emitted position mismatch diagnostics');
+});
 test('aligned table - plus separator and one data row', () => {
   const input = 'ColA       ColB    ColC\n------+-------+----\nval1       down    full';
   const r = ImportEngine.parse(input);
@@ -192,6 +225,23 @@ test('aligned table preserves values that overflow a header position', () => {
   const r = ImportEngine.parse(input, { format:'aligned-table' });
   assert(r.tables[0].rows[0].join('|') === '1|VeryLongNameHere|20', 'aligned overflow value was truncated');
   assert(r.diagnostics.some(d => d.code === 'ALIGNED_POSITION_MISMATCH'), 'missing aligned position diagnostic');
+});
+test('aligned table repeated recoverable overflow remains auto-detected', () => {
+  const input = [
+    '------------------------------',
+    'ID    Name    Age',
+    '------------------------------',
+    '1     VeryLongNameOne    20',
+    '2     VeryLongNameTwo    21',
+    '3     VeryLongNameThree  22',
+    '4     VeryLongNameFour   23',
+    '5     VeryLongNameFive   24',
+    '6     VeryLongNameSix    25',
+    '------------------------------'
+  ].join('\n');
+  const r = ImportEngine.parse(input);
+  assert(r.format === 'aligned-table', 'repeated recoverable overflow lost aligned format detection');
+  assert(r.tables[0].rows.length === 6 && r.tables[0].rows[5].join('|') === '6|VeryLongNameSix|25', 'repeated overflow rows were not preserved');
 });
 test('ambiguous string rows keep the first row as data', () => {
   const r = ImportEngine.parse('Alice,NY\nBob,LA');

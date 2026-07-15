@@ -113,6 +113,48 @@ function isAlignedColumnLine(line='') {
     return true;
 }
 
+function terminalCodePointWidth(codePoint) {
+    if(codePoint === 0 || codePoint < 32 || (codePoint >= 0x7f && codePoint < 0xa0)) return 0;
+    if((codePoint >= 0x0300 && codePoint <= 0x036f) ||
+        (codePoint >= 0x1ab0 && codePoint <= 0x1aff) ||
+        (codePoint >= 0x1dc0 && codePoint <= 0x1dff) ||
+        (codePoint >= 0x20d0 && codePoint <= 0x20ff) ||
+        (codePoint >= 0xfe00 && codePoint <= 0xfe0f) ||
+        (codePoint >= 0xfe20 && codePoint <= 0xfe2f) ||
+        (codePoint >= 0xe0100 && codePoint <= 0xe01ef)) return 0;
+    const wide = codePoint >= 0x1100 && (
+        codePoint <= 0x115f || codePoint === 0x2329 || codePoint === 0x232a ||
+        (codePoint >= 0x2e80 && codePoint <= 0xa4cf && codePoint !== 0x303f) ||
+        (codePoint >= 0xac00 && codePoint <= 0xd7a3) ||
+        (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+        (codePoint >= 0xfe10 && codePoint <= 0xfe19) ||
+        (codePoint >= 0xfe30 && codePoint <= 0xfe6f) ||
+        (codePoint >= 0xff00 && codePoint <= 0xff60) ||
+        (codePoint >= 0xffe0 && codePoint <= 0xffe6) ||
+        (codePoint >= 0x1f300 && codePoint <= 0x1faff) ||
+        (codePoint >= 0x20000 && codePoint <= 0x3fffd)
+    );
+    return wide ? 2 : 1;
+}
+
+function terminalDisplayWidth(value='') {
+    let width = 0;
+    for(const char of String(value)) width += terminalCodePointWidth(char.codePointAt(0));
+    return width;
+}
+
+function sliceByDisplayColumns(line='', start=0, end=Infinity) {
+    let column = 0;
+    let value = '';
+    for(const char of String(line)) {
+        const next = column + terminalCodePointWidth(char.codePointAt(0));
+        if(column >= end) break;
+        if(next > start && column < end) value += char;
+        column = next;
+    }
+    return value.trim();
+}
+
 const AlignedTableParser = {
     id:'aligned-table', label:'定宽对齐表格',
     confidence(source) {
@@ -122,9 +164,6 @@ const AlignedTableParser = {
             .filter(index => index >= 0);
         const hasDashLine = separatorIndexes.length > 0;
         if(!hasDashLine) return 0;
-        for(let i = 0; i < lines.length - 1; i++) {
-            if(isAlignedColumnLine(lines[i]) && isAlignedColumnLine(lines[i + 1])) return 0.80;
-        }
         // A separator is a valid boundary, so do not require header and data
         // lines to be adjacent (the common one-row case has no other pair).
         for(const index of separatorIndexes) {
@@ -132,6 +171,9 @@ const AlignedTableParser = {
                 isAlignedColumnLine(lines[index - 1]) && isAlignedColumnLine(lines[index + 1])) {
                 return 0.86;
             }
+        }
+        for(let i = 0; i < lines.length - 1; i++) {
+            if(isAlignedColumnLine(lines[i]) && isAlignedColumnLine(lines[i + 1])) return 0.80;
         }
         return 0;
     },
@@ -174,7 +216,9 @@ const AlignedTableParser = {
             }
             const headerLine = block[0];
             const regex = /\S+/g; let m; const ranges = [];
-            while((m = regex.exec(headerLine)) !== null) ranges.push({s:m.index});
+            while((m = regex.exec(headerLine)) !== null) {
+                ranges.push({s:terminalDisplayWidth(headerLine.substring(0, m.index))});
+            }
             if(ranges.length < 2) continue;
             // 校验列间间隙 ≥ 2 空格（isHeaderLike 已保证，但安全起见再校验）
             const words = []; const re2 = /\S+/g; let gapOk = true;
@@ -188,13 +232,11 @@ const AlignedTableParser = {
             for(let k = 0; k < ranges.length; k++) {
                 ranges[k].e = (k < ranges.length - 1) ? ranges[k + 1].s : 99999;
             }
-            const headers = ranges.map(r => headerLine.substring(r.s, Math.min(r.e, headerLine.length)).trim());
+            const headers = ranges.map(r => sliceByDisplayColumns(headerLine, r.s, r.e));
             const rows = [];
             const blockDiagnostics = [];
             for(let i = 1; i < block.length; i++) {
-                const sliced = ranges.map(r => {
-                    return block[i].substring(r.s, Math.min(r.e, block[i].length)).trim();
-                });
+                const sliced = ranges.map(r => sliceByDisplayColumns(block[i], r.s, r.e));
                 const fallback = block[i].trim().split(/\s{2,}/).map(v => v.trim());
                 const positionMismatch = fallback.length >= ranges.length && (
                     fallback.length !== ranges.length || fallback.some((value, index) => value !== sliced[index])

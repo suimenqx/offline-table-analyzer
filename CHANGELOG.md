@@ -15,6 +15,8 @@ All notable changes are documented here. The project follows semantic versioning
 
 - Treat separator lines between aligned headers and data as structural boundaries during automatic detection, including the one-data-row case.
 - Support `-`/`+` separator lines without promoting the header row to a table name or losing column metadata.
+- Calculate aligned column ranges using terminal display width so CJK values remain mapped to their ASCII headers.
+- Cap repeated aligned-position penalties so a recoverable fallback cannot make large valid tables lose automatic format detection.
 
 ### Compatibility
 
