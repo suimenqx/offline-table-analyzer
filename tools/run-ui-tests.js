@@ -28,6 +28,8 @@ function assert(cond, msg) {
   'id="diagnosticsBtn"',
   'id="persistRawToggle"',
   'id="pageSizeSelect"',
+  'id="previewTablePicker"',
+  'id="previewTableSelect"',
   'id="storageStatus"',
   'id="undoEditBtn"',
   'id="redoEditBtn"',
@@ -66,6 +68,8 @@ function assert(cond, msg) {
   ,'undoCellEdit()'
   ,'redoCellEdit()'
   ,'setTablePage(tableName, page)'
+  ,'shouldUseSingleTableView(tables=[])'
+  ,'syncPreviewTablePicker(tables=[], singleTableView=false)'
   ,'updateStorageStatus(detail={})'
 ].forEach(token => assert(script.includes(token), `missing method ${token}`));
 assert(script.includes("if(e.detail > 1) return;"), 'sidebar double-click should not toggle twice');
@@ -89,6 +93,8 @@ assert(script.includes("$('rawInput').oninput = e => {\n            this.invalid
 assert(script.includes('rawLarge.oninput = () => {\n                this.invalidateCellEdits();'), 'full-screen source edits must invalidate stale cell corrections');
 assert(script.includes('if(current !== mode) this.invalidateCellEdits();') && script.includes('if(current !== next) this.invalidateCellEdits();'), 'parser option changes must invalidate stale cell corrections');
 assert(script.includes('data-vr') && script.includes('startAutoScroll()'), 'preview selection should support visual coordinates and auto-scroll');
+assert(script.includes("table.closest('.table-scroll')"), 'preview selection should scroll the table container');
+assert(script.includes("const tablesToRender = singleTableView"), 'large datasets should render one selected table at a time');
 assert(script.includes("td.classList.contains('row-header-cell')"), 'row-header labels should not behave like editable data cells');
 assert(script.includes('nextAnalysisSeq') && script.includes('getMaxAnalysisNumber()'), 'analysis titles should use a monotonic sequence');
 assert(script.includes('ClipboardFormatter.toText(matrix, format)'), 'copy should support global text table formats');

@@ -227,6 +227,7 @@
         td.row-header-cell { font-weight: 700; color: var(--text-strong); background: var(--bg-elevated) !important; position: sticky; left: 0; z-index: 4; box-shadow: 1px 0 0 var(--border); white-space: nowrap; }
 
         .table-container { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; margin: 0 0 14px 0; display: flex; flex-direction: column; overflow: visible; box-shadow: var(--shadow-xs); }
+        .table-scroll { max-width: 100%; max-height: calc(100vh - 260px); overflow: auto; overscroll-behavior: contain; border-radius: 0 0 11px 11px; }
         .table-meta { padding: 10px 14px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); display: flex; gap: 10px; font-family: var(--font-table-title); font-size: 12px; color: var(--text-mid); align-items: center; flex-wrap: wrap; }
         .table-title { color: var(--text-strong); font-family: var(--font-table-title); font-size: 13px; font-weight: 750; letter-spacing: 0.01em; }
         .filterable-th { cursor: pointer; position: relative; }
@@ -234,10 +235,10 @@
         .filterable-th .th-filter-dot { display: inline-block; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; }
         .filterable-th .th-filter-clear { font-size: 11px; color: var(--text-tertiary); cursor: pointer; padding: 2px 4px; border-radius: 6px; }
         .filterable-th .th-filter-clear:hover { color: var(--primary); background: var(--bg-hover); }
-        table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--font-table); font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; cursor: cell; user-select: none; display: block; overflow: auto hidden; }
+        table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-family: var(--font-table); font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; cursor: cell; user-select: none; }
         th, td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
         th { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent); color: var(--text-strong); font-weight: 700; position: sticky; top: 0; z-index: 5; white-space: nowrap; }
-        td { white-space: pre-wrap; }
+        td { white-space: nowrap; }
         tbody tr:nth-child(even) td { background: rgba(15, 23, 42, 0.015); }
         tbody tr:hover td { background: color-mix(in srgb, var(--primary) 6%, transparent); }
         tr.highlight-row td { background: var(--highlight-row); }
@@ -417,13 +418,16 @@
         .workspace-summary strong { font-size: 12px; }
         .workspace-summary span { color: var(--text-weak); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .subbar-actions { display: flex; align-items: center; gap: 6px; }
+        .preview-table-picker { display: none; align-items: center; gap: 6px; min-width: 0; }
+        .preview-table-picker.active { display: inline-flex; }
+        #previewTableSelect { min-width: 220px; max-width: 360px; }
         #toggleSidebarMobileBtn { display: none; }
         .compact-select { width: auto; min-width: 92px; height: 28px; padding: 0 7px; font-size: 11px; }
         .preview-area { padding: 14px 16px 18px; gap: 12px; background: var(--bg-app); }
-        .table-container { border-radius: 12px; box-shadow: none; overflow: hidden; margin: 0; }
-        .table-meta { min-height: 46px; padding: 8px 11px; background: var(--bg-card); position: sticky; top: -14px; z-index: 8; }
+        .table-container { border-radius: 12px; box-shadow: none; overflow: visible; margin: 0; }
+        .table-meta { min-height: 46px; padding: 8px 11px; background: var(--bg-card); position: relative; top: auto; z-index: 1; }
         .meta-tag { background: var(--bg-elevated); border: 1px solid var(--border); padding: 3px 7px; }
-        table { background: var(--bg-card); max-height: calc(100vh - 238px); overflow: auto; }
+        .table-scroll { max-height: calc(100vh - 238px); }
         th, td { padding: 8px 11px; }
         th { background: var(--bg-elevated); }
         .table-pagination { min-height: 40px; padding: 6px 10px; display: flex; align-items: center; justify-content: flex-end; gap: 7px; border-top: 1px solid var(--border); background: var(--bg-card); color: var(--text-weak); font-size: 11px; }
@@ -470,9 +474,11 @@
             .workspace-actions { gap: 3px; }
             .workspace-actions .copy-format-select, .workspace-actions .export-secondary { display: none; }
             .workspace-subbar { padding: 7px 10px; }
+            .preview-table-picker { max-width: 52vw; }
+            #previewTableSelect { min-width: 120px; max-width: 180px; }
             #toggleSidebarMobileBtn { display: inline-flex; }
             .preview-area { padding: 9px; }
-            .table-meta { top: -9px; }
+            .table-meta { top: auto; }
             .statusbar { padding: 4px 9px; }
             .statusbar .status-secondary { display: none; }
             .source-editor-tools { width: 100%; justify-content: flex-start; }
@@ -702,6 +708,10 @@
                 <span id="datasetSummary">所有处理均在本地浏览器完成</span>
             </div>
             <div class="subbar-actions">
+                <div class="preview-table-picker" id="previewTablePicker">
+                    <label for="previewTableSelect" class="muted">查看表</label>
+                    <select id="previewTableSelect" class="compact-select" title="大数据模式下选择要查看的表"></select>
+                </div>
                 <label for="pageSizeSelect" class="muted" style="margin:0;font-size:11px;">每页</label>
                 <select id="pageSizeSelect" class="compact-select" title="每张表最多渲染的行数">
                     <option value="50">50 行</option>
@@ -1352,7 +1362,7 @@ const Store = {
         return imported.length;
     },
     createDefaultUI() {
-        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, tablePages:{}, pageSize:100, cellEdits:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto", exportOnlyChecked:false, exportCols:'all' };
+        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, tablePages:{}, previewTable:"", pageSize:100, cellEdits:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto", exportOnlyChecked:false, exportCols:'all' };
     },
     normalizeDoc(doc, idx=0) {
         if(!doc.id) doc.id = this.generateDocId();
@@ -4583,12 +4593,13 @@ const Select = {
             if(!this.active || !this.tableEl || !this.lastPointer) { this.autoScrollRaf = null; return; }
             const pointer = this.lastPointer;
             const table = this.tableEl;
-            const tr = table.getBoundingClientRect();
+            const scrollBox = table.closest('.table-scroll') || table;
+            const tr = scrollBox.getBoundingClientRect();
             const edge = 36;
             let dx = 0;
             if(pointer.x > tr.right - edge) dx = Math.min(34, Math.ceil((pointer.x - (tr.right - edge)) / 2));
             else if(pointer.x < tr.left + edge) dx = -Math.min(34, Math.ceil(((tr.left + edge) - pointer.x) / 2));
-            if(dx) table.scrollLeft += dx;
+            if(dx) scrollBox.scrollLeft += dx;
 
             const preview = $('previewArea');
             if(preview) {
@@ -4906,6 +4917,36 @@ const App = {
         wrap.appendChild(colBtn);
         wrap.appendChild(rowBtn);
         meta.appendChild(wrap);
+    },
+
+    shouldUseSingleTableView(tables=[]) {
+        const tableCount = tables.length;
+        const totalRows = tables.reduce((sum, table) => sum + (table.rows || []).length, 0);
+        const totalCells = tables.reduce((sum, table) => sum + (table.rows || []).length * (table.headers || []).length, 0);
+        return tableCount >= 8 || totalRows >= 1000 || totalCells >= 30000;
+    },
+
+    syncPreviewTablePicker(tables=[], singleTableView=false) {
+        const picker = $('previewTablePicker');
+        const select = $('previewTableSelect');
+        if(!picker || !select) return '';
+        picker.classList.toggle('active', singleTableView && tables.length > 0);
+        select.innerHTML = '';
+        if(!singleTableView || !tables.length) return '';
+        const ui = Store.curr().ui;
+        const selected = tables.some(table => table.name === ui.previewTable) ? ui.previewTable : tables[0].name;
+        ui.previewTable = selected;
+        tables.forEach(table => {
+            const option = document.createElement('option');
+            const rowCount = (table.rows || []).length;
+            const colCount = (table.headers || []).length;
+            option.value = table.name;
+            option.textContent = `${table.name} · ${rowCount.toLocaleString()} 行 × ${colCount} 列`;
+            select.appendChild(option);
+        });
+        select.value = selected;
+        select.title = `大数据单表模式：当前查看 ${selected}`;
+        return selected;
     },
 
     updateWorkspaceSummary() {
@@ -5486,6 +5527,14 @@ validflag Time      Level   Message                 Code
             Store.save();
             this.renderPreview();
         };
+        if($('previewTableSelect')) $('previewTableSelect').onchange = e => {
+            const ui = Store.curr().ui;
+            ui.previewTable = e.target.value || '';
+            if(!ui.tablePages) ui.tablePages = {};
+            ui.tablePages[ui.previewTable] = 1;
+            Store.save();
+            this.renderPreview();
+        };
         if($('toggleSidebarMobileBtn')) $('toggleSidebarMobileBtn').onclick = () => {
             const sidebar = $('sidebar');
             if(sidebar) sidebar.classList.toggle('collapsed');
@@ -6029,6 +6078,7 @@ validflag Time      Level   Message                 Code
         if(this.activeEditor) this.finishCellEdit(true);
         const div = $('previewArea'); div.innerHTML = '';
         this.rendered = []; Select.clear();
+        this.syncPreviewTablePicker([], false);
         if(!this.raw.length) { 
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
@@ -6060,10 +6110,21 @@ validflag Time      Level   Message                 Code
             return;
         }
 
-        combined.forEach((t, tIdx) => {
-            const res = this.proc(t, ui);
+        const processedTables = combined.map((table, tIdx) => {
+            const res = this.proc(table, ui);
             res.rows.forEach((row, index) => { row._resultIndex = index; });
-            this.rendered.push({name: t.name, ...res}); 
+            return { table, res, tIdx };
+        });
+        // Keep filtered results for full preview export and column configuration,
+        // while only materializing one table's DOM in large-table mode.
+        this.rendered = processedTables.map(({table, res}) => ({name:table.name, ...res}));
+        const singleTableView = this.shouldUseSingleTableView(combined);
+        const activeTableName = this.syncPreviewTablePicker(combined, singleTableView);
+        const tablesToRender = singleTableView
+            ? processedTables.filter(({table}) => table.name === activeTableName).slice(0, 1)
+            : processedTables;
+
+        tablesToRender.forEach(({table:t, res, tIdx}) => {
             const colFilters = (ui.columnFilters && ui.columnFilters[t.name]) || {};
             const filterCount = Object.values(colFilters).filter(v => (v ?? '').toString().trim()).length;
             const isCollapsed = ui.collapsedTables && ui.collapsedTables[t.name];
@@ -6079,6 +6140,11 @@ validflag Time      Level   Message                 Code
             }
             const rowTag = createEl('span', 'meta-tag'); rowTag.textContent = `Row: ${t.rows.length}`; meta.appendChild(rowTag);
             const showTag = createEl('span', 'meta-tag'); showTag.textContent = `Show: ${res.rows.length}`; meta.appendChild(showTag);
+            if(singleTableView) {
+                const modeTag = createEl('span', 'meta-tag');
+                modeTag.textContent = `单表查看 · 共 ${combined.length} 表`;
+                meta.appendChild(modeTag);
+            }
             if(filterCount>0) { 
                 const fTag = createEl('span','meta-tag'); 
                 fTag.textContent = `列过滤: ${filterCount}`; 
@@ -6113,7 +6179,9 @@ validflag Time      Level   Message                 Code
             ui.tablePages[t.name] = page;
             const pageRes = { headers:res.headers, rows:res.rows.slice((page - 1) * pageSize, page * pageSize) };
             const tbl = mode === 'row-header' ? this.buildRowHeaderTable(t, pageRes, tIdx, colFilters) : this.buildColumnHeaderTable(t, pageRes, tIdx, colFilters);
-            card.appendChild(tbl);
+            const tableScroll = createEl('div', 'table-scroll');
+            tableScroll.appendChild(tbl);
+            card.appendChild(tableScroll);
             if(totalPages > 1) {
                 const pager = createEl('div', 'table-pagination');
                 const info = createEl('span');

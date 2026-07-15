@@ -59,6 +59,7 @@ ui:
   collapsedTables
   previewModes
   tablePages
+  previewTable (large-table single-view selection)
   pageSize (100)
   cellEdits
   sidebarTab ("data")
@@ -103,7 +104,7 @@ paste / drop / file / fullscreen editor
   → persisted correction overlay + edit undo/redo
   → filters/highlights/focus columns
   → optional JOIN views (dependency cycle check → execution)
-  → paginated DOM preview
+  → paginated DOM preview (large datasets materialize one selected table)
   → selected visual rectangle
   → ClipboardFormatter text/HTML payload or preview XLSX / full XLSX / workspace JSON / config JSON
 ```

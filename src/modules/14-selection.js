@@ -98,12 +98,13 @@ const Select = {
             if(!this.active || !this.tableEl || !this.lastPointer) { this.autoScrollRaf = null; return; }
             const pointer = this.lastPointer;
             const table = this.tableEl;
-            const tr = table.getBoundingClientRect();
+            const scrollBox = table.closest('.table-scroll') || table;
+            const tr = scrollBox.getBoundingClientRect();
             const edge = 36;
             let dx = 0;
             if(pointer.x > tr.right - edge) dx = Math.min(34, Math.ceil((pointer.x - (tr.right - edge)) / 2));
             else if(pointer.x < tr.left + edge) dx = -Math.min(34, Math.ceil(((tr.left + edge) - pointer.x) / 2));
-            if(dx) table.scrollLeft += dx;
+            if(dx) scrollBox.scrollLeft += dx;
 
             const preview = $('previewArea');
             if(preview) {

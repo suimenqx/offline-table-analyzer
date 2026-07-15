@@ -218,6 +218,36 @@ const App = {
         meta.appendChild(wrap);
     },
 
+    shouldUseSingleTableView(tables=[]) {
+        const tableCount = tables.length;
+        const totalRows = tables.reduce((sum, table) => sum + (table.rows || []).length, 0);
+        const totalCells = tables.reduce((sum, table) => sum + (table.rows || []).length * (table.headers || []).length, 0);
+        return tableCount >= 8 || totalRows >= 1000 || totalCells >= 30000;
+    },
+
+    syncPreviewTablePicker(tables=[], singleTableView=false) {
+        const picker = $('previewTablePicker');
+        const select = $('previewTableSelect');
+        if(!picker || !select) return '';
+        picker.classList.toggle('active', singleTableView && tables.length > 0);
+        select.innerHTML = '';
+        if(!singleTableView || !tables.length) return '';
+        const ui = Store.curr().ui;
+        const selected = tables.some(table => table.name === ui.previewTable) ? ui.previewTable : tables[0].name;
+        ui.previewTable = selected;
+        tables.forEach(table => {
+            const option = document.createElement('option');
+            const rowCount = (table.rows || []).length;
+            const colCount = (table.headers || []).length;
+            option.value = table.name;
+            option.textContent = `${table.name} · ${rowCount.toLocaleString()} 行 × ${colCount} 列`;
+            select.appendChild(option);
+        });
+        select.value = selected;
+        select.title = `大数据单表模式：当前查看 ${selected}`;
+        return selected;
+    },
+
     updateWorkspaceSummary() {
         const title = $('workspaceTitle');
         const summary = $('datasetSummary');
@@ -796,6 +826,14 @@ validflag Time      Level   Message                 Code
             Store.save();
             this.renderPreview();
         };
+        if($('previewTableSelect')) $('previewTableSelect').onchange = e => {
+            const ui = Store.curr().ui;
+            ui.previewTable = e.target.value || '';
+            if(!ui.tablePages) ui.tablePages = {};
+            ui.tablePages[ui.previewTable] = 1;
+            Store.save();
+            this.renderPreview();
+        };
         if($('toggleSidebarMobileBtn')) $('toggleSidebarMobileBtn').onclick = () => {
             const sidebar = $('sidebar');
             if(sidebar) sidebar.classList.toggle('collapsed');
@@ -1339,6 +1377,7 @@ validflag Time      Level   Message                 Code
         if(this.activeEditor) this.finishCellEdit(true);
         const div = $('previewArea'); div.innerHTML = '';
         this.rendered = []; Select.clear();
+        this.syncPreviewTablePicker([], false);
         if(!this.raw.length) { 
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
@@ -1370,10 +1409,21 @@ validflag Time      Level   Message                 Code
             return;
         }
 
-        combined.forEach((t, tIdx) => {
-            const res = this.proc(t, ui);
+        const processedTables = combined.map((table, tIdx) => {
+            const res = this.proc(table, ui);
             res.rows.forEach((row, index) => { row._resultIndex = index; });
-            this.rendered.push({name: t.name, ...res}); 
+            return { table, res, tIdx };
+        });
+        // Keep filtered results for full preview export and column configuration,
+        // while only materializing one table's DOM in large-table mode.
+        this.rendered = processedTables.map(({table, res}) => ({name:table.name, ...res}));
+        const singleTableView = this.shouldUseSingleTableView(combined);
+        const activeTableName = this.syncPreviewTablePicker(combined, singleTableView);
+        const tablesToRender = singleTableView
+            ? processedTables.filter(({table}) => table.name === activeTableName).slice(0, 1)
+            : processedTables;
+
+        tablesToRender.forEach(({table:t, res, tIdx}) => {
             const colFilters = (ui.columnFilters && ui.columnFilters[t.name]) || {};
             const filterCount = Object.values(colFilters).filter(v => (v ?? '').toString().trim()).length;
             const isCollapsed = ui.collapsedTables && ui.collapsedTables[t.name];
@@ -1389,6 +1439,11 @@ validflag Time      Level   Message                 Code
             }
             const rowTag = createEl('span', 'meta-tag'); rowTag.textContent = `Row: ${t.rows.length}`; meta.appendChild(rowTag);
             const showTag = createEl('span', 'meta-tag'); showTag.textContent = `Show: ${res.rows.length}`; meta.appendChild(showTag);
+            if(singleTableView) {
+                const modeTag = createEl('span', 'meta-tag');
+                modeTag.textContent = `单表查看 · 共 ${combined.length} 表`;
+                meta.appendChild(modeTag);
+            }
             if(filterCount>0) { 
                 const fTag = createEl('span','meta-tag'); 
                 fTag.textContent = `列过滤: ${filterCount}`; 
@@ -1423,7 +1478,9 @@ validflag Time      Level   Message                 Code
             ui.tablePages[t.name] = page;
             const pageRes = { headers:res.headers, rows:res.rows.slice((page - 1) * pageSize, page * pageSize) };
             const tbl = mode === 'row-header' ? this.buildRowHeaderTable(t, pageRes, tIdx, colFilters) : this.buildColumnHeaderTable(t, pageRes, tIdx, colFilters);
-            card.appendChild(tbl);
+            const tableScroll = createEl('div', 'table-scroll');
+            tableScroll.appendChild(tbl);
+            card.appendChild(tableScroll);
             if(totalPages > 1) {
                 const pager = createEl('div', 'table-pagination');
                 const info = createEl('span');

@@ -49,6 +49,7 @@ Additional import capabilities:
 - **Per-table visible-column selection** and collapsible table cards.
 - **Column-header and transposed row-header preview modes** for inspecting wide or tall tables.
 - **Pagination**: 50, 100, 250, or 500 rows per page per table.
+- **Large-dataset preview**: when many tables or cells are present, only the selected table is rendered; switch tables from the summary selector without flooding the page with simultaneous table DOM.
 - **Persisted cell corrections** with undo/redo (`Ctrl`+`Z` / `Ctrl`+`Y`).
 - Corrections are cleared with a visible notice when the source text, imported file, parser format, or header mode changes, preventing row-indexed edits from being applied to different records.
 

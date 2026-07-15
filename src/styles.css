@@ -218,6 +218,7 @@
         td.row-header-cell { font-weight: 700; color: var(--text-strong); background: var(--bg-elevated) !important; position: sticky; left: 0; z-index: 4; box-shadow: 1px 0 0 var(--border); white-space: nowrap; }
 
         .table-container { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; margin: 0 0 14px 0; display: flex; flex-direction: column; overflow: visible; box-shadow: var(--shadow-xs); }
+        .table-scroll { max-width: 100%; max-height: calc(100vh - 260px); overflow: auto; overscroll-behavior: contain; border-radius: 0 0 11px 11px; }
         .table-meta { padding: 10px 14px; background: var(--bg-elevated); border-bottom: 1px solid var(--border); display: flex; gap: 10px; font-family: var(--font-table-title); font-size: 12px; color: var(--text-mid); align-items: center; flex-wrap: wrap; }
         .table-title { color: var(--text-strong); font-family: var(--font-table-title); font-size: 13px; font-weight: 750; letter-spacing: 0.01em; }
         .filterable-th { cursor: pointer; position: relative; }
@@ -225,10 +226,10 @@
         .filterable-th .th-filter-dot { display: inline-block; width: 8px; height: 8px; background: var(--primary); border-radius: 50%; }
         .filterable-th .th-filter-clear { font-size: 11px; color: var(--text-tertiary); cursor: pointer; padding: 2px 4px; border-radius: 6px; }
         .filterable-th .th-filter-clear:hover { color: var(--primary); background: var(--bg-hover); }
-        table { border-collapse: separate; border-spacing: 0; width: 100%; font-family: var(--font-table); font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; cursor: cell; user-select: none; display: block; overflow: auto hidden; }
+        table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-family: var(--font-table); font-size: 12px; line-height: 1.45; font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; cursor: cell; user-select: none; }
         th, td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
         th { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent); color: var(--text-strong); font-weight: 700; position: sticky; top: 0; z-index: 5; white-space: nowrap; }
-        td { white-space: pre-wrap; }
+        td { white-space: nowrap; }
         tbody tr:nth-child(even) td { background: rgba(15, 23, 42, 0.015); }
         tbody tr:hover td { background: color-mix(in srgb, var(--primary) 6%, transparent); }
         tr.highlight-row td { background: var(--highlight-row); }
@@ -408,13 +409,16 @@
         .workspace-summary strong { font-size: 12px; }
         .workspace-summary span { color: var(--text-weak); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .subbar-actions { display: flex; align-items: center; gap: 6px; }
+        .preview-table-picker { display: none; align-items: center; gap: 6px; min-width: 0; }
+        .preview-table-picker.active { display: inline-flex; }
+        #previewTableSelect { min-width: 220px; max-width: 360px; }
         #toggleSidebarMobileBtn { display: none; }
         .compact-select { width: auto; min-width: 92px; height: 28px; padding: 0 7px; font-size: 11px; }
         .preview-area { padding: 14px 16px 18px; gap: 12px; background: var(--bg-app); }
-        .table-container { border-radius: 12px; box-shadow: none; overflow: hidden; margin: 0; }
-        .table-meta { min-height: 46px; padding: 8px 11px; background: var(--bg-card); position: sticky; top: -14px; z-index: 8; }
+        .table-container { border-radius: 12px; box-shadow: none; overflow: visible; margin: 0; }
+        .table-meta { min-height: 46px; padding: 8px 11px; background: var(--bg-card); position: relative; top: auto; z-index: 1; }
         .meta-tag { background: var(--bg-elevated); border: 1px solid var(--border); padding: 3px 7px; }
-        table { background: var(--bg-card); max-height: calc(100vh - 238px); overflow: auto; }
+        .table-scroll { max-height: calc(100vh - 238px); }
         th, td { padding: 8px 11px; }
         th { background: var(--bg-elevated); }
         .table-pagination { min-height: 40px; padding: 6px 10px; display: flex; align-items: center; justify-content: flex-end; gap: 7px; border-top: 1px solid var(--border); background: var(--bg-card); color: var(--text-weak); font-size: 11px; }
@@ -461,9 +465,11 @@
             .workspace-actions { gap: 3px; }
             .workspace-actions .copy-format-select, .workspace-actions .export-secondary { display: none; }
             .workspace-subbar { padding: 7px 10px; }
+            .preview-table-picker { max-width: 52vw; }
+            #previewTableSelect { min-width: 120px; max-width: 180px; }
             #toggleSidebarMobileBtn { display: inline-flex; }
             .preview-area { padding: 9px; }
-            .table-meta { top: -9px; }
+            .table-meta { top: auto; }
             .statusbar { padding: 4px 9px; }
             .statusbar .status-secondary { display: none; }
             .source-editor-tools { width: 100%; justify-content: flex-start; }

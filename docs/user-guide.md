@@ -322,6 +322,10 @@ Choose **50, 100, 250, or 500** rows per page from the sub-bar selector. Paginat
 
 **Important:** Filtering, highlighting, and export always operate on **ALL matching rows** across all pages, not just the visible page. The page control affects only what is rendered on screen.
 
+### 9.3 Large datasets and many tables
+
+When an input contains many tables or a large number of cells, the preview automatically switches to **single-table mode**. The sub-bar shows a table selector with each table's row and column counts; only the selected table is materialized in the page, while filtering and preview export still cover all matching rows in the current tab. Each table uses its own horizontal/vertical scroll area, and long cells are shown on one line with the full value available on hover.
+
 ---
 
 ## 10. Cell corrections
