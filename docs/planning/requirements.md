@@ -222,7 +222,13 @@ The defining constraints are:
 ### Sample data
 - Three built-in CLI sample tables: Inventory (products/stock), Orders (customer orders), SystemLogs (log entries).
 
-## 5. Explicit non-goals for 20.0.0
+### v21.0.0 architecture improvements
+- Extracted `FilterEngine` (pure filtering/highlighting/column-projection) and `TableBuilder` (preview table DOM construction) as independent modules.
+- `App.proc()` reduced from ~100 lines to 7-line delegation to `FilterEngine`.
+- Build manifest expanded to 30 source modules.
+- All six test suites and release validation continue to pass without regression.
+
+## 5. Explicit non-goals for v20–v21
 
 - XLSX import.
 - Remote URLs, database connectors, accounts, sharing, or synchronization.

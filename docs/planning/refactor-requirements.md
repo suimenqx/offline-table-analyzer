@@ -175,7 +175,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 
 | 层级 | 必须覆盖 | 验收方式 |
 | --- | --- | --- |
-| 领域单元 | 表格规范化、表头推断、12 类解析器、筛选 token、JOIN、复制/Excel 序列化 | Node 测试，覆盖正常、边界、恶意输入 |
+| 领域单元 | 表格规范化、表头推断、12 类解析器、筛选 token（FilterEngine）、JOIN、复制/Excel 序列化 | Node 测试，覆盖正常、边界、恶意输入。FilterEngine 为纯函数，支持直接 Node 测试。 |
 | 状态单元 | 默认状态、迁移、去重、临时数据、配额失败、撤销/重做 | Node + VM 隔离存储测试 |
 | 模块集成 | ImportEngine → normalized table、Store → App、Joiner → Preview、Exporter | 公开契约测试和构建后脚本测试 |
 | UI 合同 | 关键 ID、ARIA、快捷键、回归方法、离线约束 | 静态契约 + JS 语法校验 |

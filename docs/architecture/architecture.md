@@ -167,7 +167,7 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 
 ## 7. Performance model
 
-Parsing, filtering, JOINs, and XLSX generation currently run on the main thread. v20 reduces the most visible DOM cost through pagination and source-save debouncing. Input size is capped at 25 MB.
+Parsing, filtering, JOINs, and XLSX generation currently run on the main thread. Since v21, filtering logic is centralised in the pure `FilterEngine` module, making it amenable to future off-main-thread execution. DOM cost is reduced through pagination and source-save debouncing. Input size is capped at 25 MB.
 
 Web Workers, IndexedDB document storage, streaming export, and virtual scrolling remain architectural follow-ups when real benchmarks justify their complexity.
 

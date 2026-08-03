@@ -1,17 +1,27 @@
 # Roadmap
 
-v20 deliberately prioritizes trustworthiness and open-source release quality over an unlimited feature list.
+v21 delivered the first wave of architecture modularisation: domain logic extraction (`FilterEngine`, `TableBuilder`), a stable public filtering API, and build-manifest growth to 30 modules. Future work builds on that foundation.
 
-## 20.x — reliability follow-ups
+The project continues to prioritise trustworthiness, offline integrity, and single-file delivery over feature quantity.
+
+## 21.x — maintainability and domain purity (current)
+
+- Extract remaining domain logic from `app.js` into pure modules (sorting, aggregation primitives).
+- Split Store into schema/defaults/migration/persistence layers.
+- Separate tab, preview, filter, export, and modal controllers from the App orchestrator.
+- Unified command/event refresh protocol between controllers.
+- Allow Node test suites to load domain modules directly instead of extracting from built HTML.
+- Performance fixtures for 1 MB, 5 MB, 20 MB, and 100,000-row sources.
+
+## 22 — reliability and browser coverage
 
 - Real browser E2E automation for paste → parse → filter → JOIN → copy → export.
 - Cross-browser clipboard and download matrix, including Safari.
 - XLSX round-trip validation with a real reader in development tests.
-- Performance fixtures for 1 MB, 5 MB, 20 MB, and 100,000-row sources.
 - Improved focus trapping and screen-reader announcements for complex dialogs.
 - Additional malformed HTML/CSV fixtures and fuzz tests.
 
-## 21 — large-data architecture
+## 23+ — large-data architecture
 
 - IndexedDB document/source storage with transactional migrations.
 - Web Worker parsing and rule execution with cancellation and progress.
