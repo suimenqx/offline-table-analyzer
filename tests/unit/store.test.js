@@ -209,3 +209,184 @@ describe('Store — workspace import', () => {
     }));
   });
 });
+
+// ---------------------------------------------------------------------------
+// Store — transition / event protocol (v22 infrastructure)
+// ---------------------------------------------------------------------------
+describe('Store — transition protocol', () => {
+  it('tab:create emits tab:created + state:changed', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    const doc = Store.transition('tab:create');
+    assert.equal(typeof doc.id, 'string');
+    assert.ok(doc.title.startsWith('Analysis'));
+
+    // _notify is batched with setTimeout(0) — wait
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    const createdEvents = events.filter(e => e.evt === 'tab:created');
+    const changedEvents = events.filter(e => e.evt === 'state:changed');
+    assert.ok(createdEvents.length >= 1, 'tab:created should be emitted');
+    assert.ok(changedEvents.length >= 1, 'state:changed should be emitted');
+    assert.equal(createdEvents[0].payload.id, doc.id);
+
+    unsub();
+  });
+
+  it('tab:activate switches activeId and emits events', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    // Activate first tab
+    const ok = Store.transition('tab:activate', { id: 'a' });
+    assert.equal(ok, true);
+    assert.equal(Store.state.activeId, 'a');
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    const activatedEvents = events.filter(e => e.evt === 'tab:activated');
+    assert.ok(activatedEvents.length >= 1, 'tab:activated should be emitted');
+    assert.equal(activatedEvents[0].payload.id, 'a');
+
+    unsub();
+  });
+
+  it('tab:activate with same id is no-op without force', () => {
+    // First switch to 'a'
+    Store.transition('tab:activate', { id: 'a' });
+    assert.equal(Store.state.activeId, 'a');
+    // Then try the same id again without force
+    const ok = Store.transition('tab:activate', { id: 'a' });
+    assert.equal(ok, false);
+  });
+
+  it('tab:activate with force=true re-activates same tab', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    const ok = Store.transition('tab:activate', { id: 'a', force: true });
+    assert.equal(ok, true);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const activatedEvents = events.filter(e => e.evt === 'tab:activated');
+    assert.ok(activatedEvents.length >= 1);
+
+    unsub();
+  });
+
+  it('tab:remove returns last_doc for single remaining tab', () => {
+    // We have at least 4 tabs now. Remove until one left.
+    while (Store.state.docs.length > 1) {
+      Store.removeDoc(Store.state.docs[Store.state.docs.length - 1].id);
+    }
+    const lastId = Store.state.docs[0].id;
+    const result = Store.transition('tab:remove', { id: lastId });
+    assert.equal(result, 'last_doc');
+  });
+
+  it('filter:global updates ui.globalFilter and emits filter:changed', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    Store.transition('filter:global', { value: 'status=active' });
+    const doc = Store.curr();
+    assert.equal(doc.ui.globalFilter, 'status=active');
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const filterEvents = events.filter(e => e.evt === 'filter:changed');
+    assert.ok(filterEvents.length >= 1);
+    assert.equal(filterEvents[0].payload.scope, 'global');
+    assert.equal(filterEvents[0].payload.value, 'status=active');
+
+    unsub();
+  });
+
+  it('filter:column adds and removes column filters', () => {
+    Store.transition('filter:column', { table: 'T1', column: 'Status', value: 'active' });
+    const doc = Store.curr();
+    assert.equal(doc.ui.columnFilters.T1.Status, 'active');
+
+    Store.transition('filter:column', { table: 'T1', column: 'Status', value: '' });
+    assert.equal('Status' in (doc.ui.columnFilters.T1 || {}), false);
+  });
+
+  it('ui:theme toggles light↔dark', () => {
+    const initial = Store.state.theme;
+    Store.transition('ui:theme', {});
+    assert.notEqual(Store.state.theme, initial);
+    Store.transition('ui:theme', {});
+    assert.equal(Store.state.theme, initial);
+  });
+
+  it('ui:copyFormat sets and validates format', () => {
+    Store.transition('ui:copyFormat', { format: 'lua-inline' });
+    assert.equal(Store.state.copyFormat, 'lua-inline');
+
+    Store.transition('ui:copyFormat', { format: 'invalid' });
+    assert.equal(Store.state.copyFormat, 'default');
+  });
+
+  it('workspace:save emits workspace:saved on success', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    const ok = Store.transition('workspace:save', {});
+    assert.equal(ok, true);
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const savedEvents = events.filter(e => e.evt === 'workspace:saved');
+    assert.ok(savedEvents.length >= 1);
+
+    unsub();
+  });
+
+  it('workspace:save emits workspace:saveFailed on quota error', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    storage.enableQuotaFailure();
+    const ok = Store.transition('workspace:save', {});
+    assert.equal(ok, false);
+    storage.disableQuotaFailure();
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const failedEvents = events.filter(e => e.evt === 'workspace:saveFailed');
+    assert.ok(failedEvents.length >= 1);
+
+    unsub();
+  });
+
+  it('onChange returns unsubscribe function that works', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    Store.transition('ui:theme', {});
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(events.length >= 1);
+
+    unsub();
+    const countBefore = events.length;
+    Store.transition('ui:theme', {});
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(events.length, countBefore, 'no new events after unsubscribe');
+  });
+
+  it('listener errors do not prevent other listeners', async () => {
+    const events = [];
+    const unsub1 = Store.onChange(() => { throw new Error('BANG'); });
+    const unsub2 = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    Store.transition('ui:theme', {});
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(events.length >= 1, 'second listener should still receive events');
+
+    unsub1();
+    unsub2();
+  });
+
+  it('_notify is a no-op when there are zero listeners', () => {
+    // Should not throw
+    Store._notify('noop', {});
+  });
+});

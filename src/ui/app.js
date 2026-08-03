@@ -1,44 +1,13 @@
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
-    filterPopover: { open:false, table:null, col:null },
-    activeEditor: null,
     tabDrag: { sourceId:null },
-    sourceEditorPersistTimer: null,
-    sourceEditorStatsTimer: null,
-    sourceInputPersistTimer: null,
-    sourceEditorReturnFocus: null,
-    modalReturnFocus: null,
-    editHistory: [],
-    editRedo: [],
-    lastPaste: null,
     // Shared utilities (imported from runtime)
     escapeHtml,
     formatBytes,
-    sourceFileFormat(file) {
-        const name = String(file && file.name || '').toLowerCase();
-        if(/\.csv$/.test(name)) return 'csv';
-        if(/\.tsv$/.test(name)) return 'excel-paste';
-        if(/\.html?$/.test(name)) return 'html-table';
-        if(/\.(md|markdown)$/.test(name)) return 'pipe-table';
-        return 'auto';
-    },
-    persistCurrentDocFromInputs() {
-        const input = $('rawInput');
-        const doc = Store.curr();
-        if(input) doc.raw = input.value;
-        Store.save();
-    },
     createNewTab(e) {
-        if(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        this.persistCurrentDocFromInputs();
-        Store.addDoc();
-        this.renderTabs();
-        this.loadDoc();
+        TabController.createNew(e);
     },
     activateTab(id, force=false) {
         if(!id) return false;
@@ -54,13 +23,76 @@ const App = {
     init() {
         document.title = `Offline Table Analyzer v${APP_VERSION}`;
         Store.init(); Select.init();
+
+        // --- Register Store -> UI event subscribers ---
+        Store.onChange((event, payload) => {
+            switch (event) {
+                case 'state:changed':
+                    this.updateWorkspaceSummary();
+                    this.updateStorageStatus();
+                    break;
+                case 'tab:created':
+                case 'tab:activated':
+                case 'tab:removed':
+                    this.renderTabs();
+                    break;
+                case 'parse:completed':
+                    this.updSelects();
+                    this.renderPreview();
+                    this.updChips();
+                    if (payload && payload.elapsed > 800) {
+                        Toast.show(`\u89e3\u6790\u5b8c\u6210 \u00b7 ${payload.elapsed} ms`);
+                    }
+                    break;
+                case 'filter:changed':
+                    this.renderPreview();
+                    break;
+                case 'preview:changed':
+                case 'preview:renderRequested':
+                    this.renderPreview();
+                    break;
+                case 'workspace:saved':
+                    this.updateStorageStatus(payload || {});
+                    break;
+                case 'workspace:saveFailed':
+                    this.updateStorageStatus({ ok: false, message: payload && payload.error });
+                    break;
+                case 'ui:copyFormatChanged':
+                    this.syncCopyFormatControl();
+                    break;
+            }
+        });
+
+        // Listen for SourceController and cross-controller events
+        if (typeof document !== 'undefined' && document.addEventListener) {
+            document.addEventListener('ota:sourceFileLoaded', () => { this.run(); });
+            document.addEventListener('ota:sourceParseRequested', () => { this.run(); });
+            document.addEventListener('ota:formatChanged', (e) => {
+                if (e.detail && e.detail.format) this.setImportFormat(e.detail.format);
+            });
+            document.addEventListener('ota:headerModeChanged', (e) => {
+                if (e.detail && e.detail.mode) this.setHeaderMode(e.detail.mode);
+            });
+            document.addEventListener('ota:tabsChanged', () => {
+                this.renderTabs();
+                this.loadDoc();
+            });
+        }
+
+        // --- Init sub-controllers ---
+        SourceController.init();
+        CellEditController.init();
+        FilterController.init();
+        ModalController.init();
+        TabController.init();
+        ExportController.init();
+
         this.bindSidebar(); this.bindAccordions();
         this.bind(); this.renderTabs(); this.loadDoc();
         if(window.matchMedia && window.matchMedia('(max-width: 760px)').matches) {
             $('sidebar').classList.add('collapsed');
             $('sidebarToggle').setAttribute('aria-expanded', 'false');
         }
-        this.initInputResizer();
 
         // Picker Logic
         $('previewArea').addEventListener('click', e => {
@@ -72,77 +104,6 @@ const App = {
         });
     },
 
-    initInputResizer() {
-        const resizer = $('inputResizer');
-        const rawInput = $('rawInput');
-        if(!resizer || !rawInput) return;
-
-        // Restore saved height
-        const savedHeight = localStorage.getItem('v16_4_inputHeight');
-        if(savedHeight) {
-            const h = parseInt(savedHeight, 10);
-            if(h >= 120 && h <= 600) {
-                rawInput.style.height = h + 'px';
-            }
-        }
-
-        let isDragging = false;
-        let startY = 0;
-        let startHeight = 0;
-
-        const onMouseDown = (e) => {
-            isDragging = true;
-            startY = e.clientY;
-            startHeight = rawInput.offsetHeight;
-            resizer.classList.add('dragging');
-            document.body.style.cursor = 'ns-resize';
-            document.body.style.userSelect = 'none';
-            e.preventDefault();
-        };
-
-        const onMouseMove = (e) => {
-            if(!isDragging) return;
-            const delta = e.clientY - startY;
-            let newHeight = startHeight + delta;
-
-            // Constrain height
-            if(newHeight < 120) newHeight = 120;
-            if(newHeight > 600) newHeight = 600;
-
-            rawInput.style.height = newHeight + 'px';
-        };
-
-        const onMouseUp = () => {
-            if(isDragging) {
-                isDragging = false;
-                resizer.classList.remove('dragging');
-                document.body.style.cursor = '';
-                document.body.style.userSelect = '';
-
-                // Save height to localStorage
-                localStorage.setItem('v16_4_inputHeight', rawInput.style.height);
-            }
-        };
-
-        resizer.addEventListener('mousedown', onMouseDown);
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-
-        // Touch support for mobile
-        resizer.addEventListener('touchstart', (e) => {
-            const touch = e.touches[0];
-            onMouseDown({ clientY: touch.clientY, preventDefault: () => e.preventDefault() });
-        }, { passive: false });
-
-        document.addEventListener('touchmove', (e) => {
-            if(!isDragging) return;
-            const touch = e.touches[0];
-            onMouseMove({ clientY: touch.clientY });
-        }, { passive: false });
-
-        document.addEventListener('touchend', onMouseUp);
-    },
-    
     getAvailableTables() {
         const raws = this.raw.map(t => t.name);
         const views = Store.state.globalViews.map(v => v.view);
@@ -300,7 +261,7 @@ const App = {
             const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
             headerSelect.disabled = isCli;
         }
-        this.syncSourceEditorControls();
+        if (SourceController._syncControls) SourceController._syncControls();
     },
 
     setHeaderMode(mode) {
@@ -332,7 +293,7 @@ const App = {
     getParseOptions() {
         const d = Store.curr();
         const text = $('rawInput').value;
-        const last = this.lastPaste || {};
+        const last = SourceController.getLastPaste() || {};
         const html = last.html && last.plain && last.docId === Store.state.activeId && text.trim() === last.plain.trim() ? last.html : '';
         const formatEl = $('formatSelect');
         const headerEl = $('headerModeSelect');
@@ -341,143 +302,30 @@ const App = {
         return { html, format, headerMode };
     },
 
-    getSourceEditorText() {
-        const input = $('rawInputLarge');
-        return input ? input.value : '';
-    },
 
-    getExportPrefix(kind='export') {
-        const title = Store.curr().title || 'Analysis';
-        return Exporter.sanitizeFilePrefix(`${title}_${kind}`);
-    },
+    getExportPrefix(kind) { return ExportController._getPrefix(kind); },
 
-    getEnabledJoinTables(full=true) {
-        const ui = Store.curr().ui;
-        const names = ui.enabledViews || [];
-        return names.map(v => {
-            const cfg = Store.state.globalViews.find(g=>g.view===v);
-            return cfg ? Joiner.run(this.raw, cfg, Store.state.globalViews) : null;
-        }).filter(Boolean);
-    },
-    projectTableForExport(table, shownOnly=false) {
-        const headers = table.headers || [];
-        const rows = (table.rows || []).map(row => Array.isArray(row) ? row : (row.d || row.data || []));
-        if(!shownOnly) return { name:table.name || 'Sheet', headers, rows };
-        const focus = ((Store.curr().ui.rules || {})[table.name] || {}).focus;
-        if(!Array.isArray(focus) || focus.length === 0) return { name:table.name || 'Sheet', headers, rows };
-        const indexes = focus.map(name => headers.indexOf(name)).filter(index => index >= 0);
-        if(!indexes.length) return { name:table.name || 'Sheet', headers, rows };
-        return { name:table.name || 'Sheet', headers:indexes.map(index => headers[index]), rows:rows.map(row => indexes.map(index => row[index])) };
-    },
+    getEnabledJoinTables(full) { return ExportController._getEnabledJoinTables(full); },
+    projectTableForExport(table, shownOnly) { return ExportController._projectTableForExport(table, shownOnly); },
 
-    getFullExportTables() {
-        const ui = Store.curr().ui;
-        let tables = this.raw || [];
-        if(ui.exportOnlyChecked && Array.isArray(ui.displayTables)) {
-            const selected = new Set(ui.displayTables);
-            tables = tables.filter(t => selected.has(t.name));
-        }
-        const joins = this.getEnabledJoinTables(true);
-        const shownOnly = ui.exportCols === 'shown';
-        return [...tables, ...joins].map(table => this.projectTableForExport(table, shownOnly));
-    },
+    getFullExportTables() { return ExportController._getFullExportTables(); },
 
-    getPreviewExportTables() {
-        return this.rendered.map(r => ({
-            name: r.name || 'Sheet',
-            headers: r.headers,
-            rows: r.rows.map(row => row.d)
-        }));
-    },
+    getPreviewExportTables() { return ExportController._getPreviewExportTables(); },
 
-    updateSourceEditorStats() {
-        const stats = $('sourceEditorStats');
-        if(!stats) return;
-        const text = this.getSourceEditorText();
-        let lines = text ? 1 : 0;
-        for(let i = 0; i < text.length; i++) if(text.charCodeAt(i) === 10) lines++;
-        stats.textContent = `${text.length} 字符 · ${lines} 行`;
-    },
 
-    scheduleSourceEditorStats() {
-        clearTimeout(this.sourceEditorStatsTimer);
-        this.sourceEditorStatsTimer = setTimeout(() => this.updateSourceEditorStats(), 180);
-    },
 
-    scheduleSourceEditorPersist() {
-        clearTimeout(this.sourceEditorPersistTimer);
-        this.sourceEditorPersistTimer = setTimeout(() => {
-            const large = $('rawInputLarge');
-            if(!large) return;
-            Store.curr().raw = large.value;
-            Store.save();
-        }, 900);
-    },
 
-    syncSourceEditorControls() {
-        const formatMain = $('formatSelect');
-        const headerMain = $('headerModeSelect');
-        const formatLarge = $('formatSelectLarge');
-        const headerLarge = $('headerModeSelectLarge');
-        if(formatLarge && formatMain) formatLarge.value = formatMain.value || 'auto';
-        if(headerLarge && headerMain) headerLarge.value = headerMain.value || 'auto';
-        const manualFormat = formatLarge ? formatLarge.value : (formatMain ? formatMain.value : 'auto');
-        const parsedFormat = Parser.lastResult && Parser.lastResult.format;
-        const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
-        if(headerLarge) headerLarge.disabled = isCli;
-        if(headerMain) headerMain.disabled = isCli;
-    },
 
-    syncSourceTextFromLarge() {
-        const large = $('rawInputLarge');
-        const main = $('rawInput');
-        if(!large || !main) return;
-        clearTimeout(this.sourceEditorPersistTimer);
-        clearTimeout(this.sourceEditorStatsTimer);
-        main.value = large.value;
-        Store.curr().raw = large.value;
-        Store.save();
-        this.updateSourceEditorStats();
-    },
 
     invalidateCellEdits() {
         if(!Store.clearCellEdits()) return false;
-        this.editHistory = [];
-        this.editRedo = [];
-        this.updateUndoButtons();
+        CellEditController.reset();
         Toast.show('源数据或解析方式已变化，旧单元格修订已清除');
         return true;
     },
 
-    openSourceEditor() {
-        const modal = $('sourceEditorModal');
-        const large = $('rawInputLarge');
-        const main = $('rawInput');
-        if(!modal || !large || !main) return;
-        this.sourceEditorReturnFocus = document.activeElement;
-        large.value = main.value || '';
-        this.syncSourceEditorControls();
-        this.updateSourceEditorStats();
-        modal.classList.remove('hidden');
-        document.body.classList.add('modal-open');
-        setTimeout(() => { large.focus(); }, 0);
-    },
 
-    closeSourceEditor() {
-        this.syncSourceTextFromLarge();
-        const modal = $('sourceEditorModal');
-        if(modal) modal.classList.add('hidden');
-        document.body.classList.remove('modal-open');
-        if(this.sourceEditorReturnFocus && typeof this.sourceEditorReturnFocus.focus === 'function') this.sourceEditorReturnFocus.focus();
-        this.sourceEditorReturnFocus = null;
-    },
 
-    runFromSourceEditor(close=false) {
-        this.syncSourceTextFromLarge();
-        this.run();
-        this.syncSourceEditorControls();
-        if(close) this.closeSourceEditor();
-    },
 
     applySidebarTab(tabName='data', persist=true) {
         const next = tabName === 'config' ? 'config' : 'data';
@@ -555,12 +403,12 @@ const App = {
         const addTabBtn = $('addTabBtn');
         if(addTabBtn) {
             addTabBtn.type = 'button';
-            addTabBtn.onclick = e => this.createNewTab(e);
+            addTabBtn.onclick = e => TabController.createNew(e);
         }
         const doParse = () => this.run();
         const doClear = () => {
             $('rawInput').value='';
-            this.lastPaste = null;
+            SourceController.clearLastPaste();
             Store.curr().ui.cellEdits = {};
             this.run();
         };
@@ -598,187 +446,10 @@ validflag Time      Level   Message                 Code
         const sampleBtn = $('sampleBtn'); if(sampleBtn) sampleBtn.onclick = loadSample;
         const sampleLink = $('sampleLink'); if(sampleLink) sampleLink.onclick = loadSample;
 
-        $('rawInput').oninput = e => {
-            this.invalidateCellEdits();
-            Store.curr().raw = e.target.value;
-            if(this.lastPaste && String(e.target.value).trim() !== String(this.lastPaste.plain || '').trim()) this.lastPaste = null;
-            this.scheduleSourceInputPersist();
-        };
-        $('rawInput').addEventListener('paste', e => {
-            const data = e.clipboardData;
-            if(!data) return;
-            const html = data.getData('text/html');
-            const plain = data.getData('text/plain');
-            this.lastPaste = html && /<table[\s>]/i.test(html) ? { html, plain, docId:Store.state.activeId } : null;
-        });
-        const importSourceBtn = $('importSourceBtn');
-        const sourceFileInput = $('sourceFileInput');
-        if(importSourceBtn && sourceFileInput) importSourceBtn.onclick = () => sourceFileInput.click();
-        if(sourceFileInput) sourceFileInput.onchange = e => {
-            const file = e.target.files && e.target.files[0];
-            this.loadSourceFile(file);
-            e.target.value = '';
-        };
-        const sourceDropZone = $('sourceDropZone');
-        if(sourceDropZone) {
-            ['dragenter','dragover'].forEach(type => sourceDropZone.addEventListener(type, e => { e.preventDefault(); sourceDropZone.classList.add('drag-over'); }));
-            ['dragleave','drop'].forEach(type => sourceDropZone.addEventListener(type, e => { e.preventDefault(); sourceDropZone.classList.remove('drag-over'); }));
-            sourceDropZone.addEventListener('drop', e => this.loadSourceFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]));
-        }
-        if($('diagnosticsBtn')) $('diagnosticsBtn').onclick = () => this.showDiagnostics();
-        if($('persistRawToggle')) $('persistRawToggle').onchange = e => {
-            Store.setPersistRaw(e.target.checked);
-            this.updateStorageStatus();
-            Toast.show(e.target.checked ? '原始数据将保存在此设备' : '已切换为临时数据模式');
-        };
-        if($('checkFormulaSafe')) $('checkFormulaSafe').onchange = e => Store.setSpreadsheetSafe(e.target.checked);
-        const expandSourceBtn = $('expandSourceBtn');
-        if(expandSourceBtn) expandSourceBtn.onclick = () => this.openSourceEditor();
-        const sourceClose = $('sourceEditorCloseBtn');
-        if(sourceClose) sourceClose.onclick = () => this.closeSourceEditor();
-        const sourceDone = $('sourceEditorDoneBtn');
-        if(sourceDone) sourceDone.onclick = () => this.closeSourceEditor();
-        const sourceParse = $('sourceEditorParseBtn');
-        if(sourceParse) sourceParse.onclick = () => this.runFromSourceEditor(false);
-        const rawLarge = $('rawInputLarge');
-        if(rawLarge) {
-            rawLarge.oninput = () => {
-                this.invalidateCellEdits();
-                if(this.lastPaste && String(rawLarge.value).trim() !== String(this.lastPaste.plain || '').trim()) this.lastPaste = null;
-                this.scheduleSourceEditorStats();
-                this.scheduleSourceEditorPersist();
-            };
-            rawLarge.addEventListener('paste', e => {
-                const data = e.clipboardData;
-                if(!data) return;
-                const html = data.getData('text/html');
-                const plain = data.getData('text/plain');
-                this.lastPaste = html && /<table[\s>]/i.test(html) ? { html, plain, docId:Store.state.activeId } : null;
-            });
-            rawLarge.onkeydown = e => {
-                if((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); this.runFromSourceEditor(false); }
-                if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); this.syncSourceTextFromLarge(); Toast.show('工作区已保存'); }
-            };
-        }
-        const formatLarge = $('formatSelectLarge');
-        if(formatLarge) formatLarge.onchange = e => {
-            const main = $('formatSelect');
-            if(main) main.value = e.target.value;
-            this.setImportFormat(e.target.value);
-            this.syncSourceEditorControls();
-        };
-        const headerLarge = $('headerModeSelectLarge');
-        if(headerLarge) headerLarge.onchange = e => {
-            const main = $('headerModeSelect');
-            if(main) main.value = e.target.value;
-            this.setHeaderMode(e.target.value);
-            this.syncSourceEditorControls();
-        };
-        const sourceModal = $('sourceEditorModal');
-        if(sourceModal) sourceModal.addEventListener('click', e => {
-            // Full-page editor returns only through explicit 完成/关闭 actions.
-            if(e.target === sourceModal) e.stopPropagation();
-        });
+        // Note: rawInput, file import, drag/drop, fullscreen editor are now handled by SourceController.init()
         const modalOverlay = $('modalOverlay');
         if(modalOverlay) modalOverlay.addEventListener('click', e => { if(e.target === modalOverlay) this.closeModal(); });
-        const tabsContainer = $('tabsContainer');
-        tabsContainer.onclick = e => {
-            if(e.target.closest('.doc-tab-title-input')) return;
-            if(e.target.classList.contains('doc-tab-close')) {
-                e.stopPropagation();
-                const t = e.target.closest('.doc-tab');
-                const removed = t && Store.removeDoc(t.dataset.id);
-                if(removed === true) {
-                    App.renderTabs(); App.loadDoc();
-                } else if(removed === 'last_doc') {
-                    Toast.show('至少保留一个页签', true);
-                }
-                return;
-            }
-            const t = e.target.closest('.doc-tab'); if(!t) return;
-            this.activateTab(t.dataset.id);
-        };
-        tabsContainer.ondblclick = e => {
-            const titleEl = e.target.closest('.doc-tab-title');
-            if(!titleEl) return;
-            const tab = titleEl.closest('.doc-tab');
-            if(!tab) return;
-            e.preventDefault();
-            e.stopPropagation();
-            const id = tab.dataset.id;
-            if(Store.state.activeId !== id) this.activateTab(id);
-            setTimeout(() => this.startTabRename(id), 0);
-        };
-        tabsContainer.onkeydown = e => {
-            const tab = e.target.closest('.doc-tab');
-            if(!tab || e.target.closest('.doc-tab-title-input')) return;
-            const tabs = Array.from(tabsContainer.querySelectorAll('.doc-tab'));
-            const index = tabs.indexOf(tab);
-            if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.activateTab(tab.dataset.id); }
-            if(e.key === 'F2') { e.preventDefault(); e.stopPropagation(); this.startTabRename(tab.dataset.id); }
-            if(e.key === 'Delete' && Store.state.docs.length > 1) {
-                e.preventDefault();
-                if(Store.removeDoc(tab.dataset.id)) { this.renderTabs(); this.loadDoc(); }
-            }
-            if(['ArrowLeft','ArrowRight'].includes(e.key)) {
-                e.preventDefault();
-                const offset = e.key === 'ArrowRight' ? 1 : -1;
-                const next = tabs[(index + offset + tabs.length) % tabs.length];
-                if(next) this.activateTab(next.dataset.id);
-            }
-        };
-        tabsContainer.addEventListener('dragstart', e => {
-            const tab = e.target.closest('.doc-tab');
-            if(!tab || e.target.closest('.doc-tab-close') || e.target.closest('.doc-tab-title-input')) {
-                e.preventDefault();
-                return;
-            }
-            this.tabDrag.sourceId = tab.dataset.id;
-            tab.classList.add('dragging');
-            if(e.dataTransfer) {
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', tab.dataset.id);
-            }
-        });
-        tabsContainer.addEventListener('dragover', e => {
-            const tab = e.target.closest('.doc-tab');
-            if(!this.tabDrag.sourceId) return;
-            if(!tab && e.target === tabsContainer) {
-                e.preventDefault();
-                if(e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-                return;
-            }
-            if(!tab || tab.dataset.id === this.tabDrag.sourceId) return;
-            e.preventDefault();
-            const rect = tab.getBoundingClientRect();
-            const place = e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
-            this.markTabDrop(tab, place);
-            if(e.dataTransfer) e.dataTransfer.dropEffect = 'move';
-        });
-        tabsContainer.addEventListener('dragleave', e => {
-            const tab = e.target.closest('.doc-tab');
-            if(tab && !tab.contains(e.relatedTarget)) this.clearTabDragMarkers(tab);
-        });
-        tabsContainer.addEventListener('drop', e => {
-            let tab = e.target.closest('.doc-tab');
-            if(!this.tabDrag.sourceId) return;
-            if(!tab && e.target === tabsContainer) {
-                const tabs = Array.from(tabsContainer.querySelectorAll('.doc-tab')).filter(el => el.dataset.id !== this.tabDrag.sourceId);
-                tab = tabs[tabs.length - 1];
-                if(!tab) return;
-            }
-            if(!tab || tab.dataset.id === this.tabDrag.sourceId) return;
-            e.preventDefault();
-            const place = tab.classList.contains('drag-over-after') || e.target === tabsContainer ? 'after' : 'before';
-            Store.moveDoc(this.tabDrag.sourceId, tab.dataset.id, place);
-            this.clearAllTabDragMarkers();
-            this.tabDrag.sourceId = null;
-            this.renderTabs();
-        });
-        tabsContainer.addEventListener('dragend', () => {
-            this.clearAllTabDragMarkers();
-            this.tabDrag.sourceId = null;
-        });
+        // Tab events handled by TabController.init()
 
         const inputBind = (id, k, subK) => $(id).oninput = e => {
             const val = e.target.type==='checkbox'?e.target.checked:e.target.value;
@@ -807,8 +478,8 @@ validflag Time      Level   Message                 Code
         $('selectColsBtn').onclick = () => this.modCols();
         $('themeBtn').onclick = () => Store.toggleTheme();
         if($('helpBtn')) $('helpBtn').onclick = () => this.showHelp();
-        if($('undoEditBtn')) $('undoEditBtn').onclick = () => this.undoCellEdit();
-        if($('redoEditBtn')) $('redoEditBtn').onclick = () => this.redoCellEdit();
+        if($('undoEditBtn')) $('undoEditBtn').onclick = () => CellEditController.undo();
+        if($('redoEditBtn')) $('redoEditBtn').onclick = () => CellEditController.redo();
         if($('pageSizeSelect')) $('pageSizeSelect').onchange = e => {
             const ui = Store.curr().ui;
             ui.pageSize = Number(e.target.value) || 100;
@@ -836,131 +507,9 @@ validflag Time      Level   Message                 Code
             } else Toast.show(Store.lastSaveError || '清除失败', true);
         };
         document.addEventListener('ota:storage', event => this.updateStorageStatus(event.detail || {}));
-        const copyFormatSelect = $('copyFormatSelect');
-        if(copyFormatSelect) {
-            copyFormatSelect.value = Store.state.copyFormat || 'default';
-            copyFormatSelect.onchange = e => this.setCopyFormat(e.target.value);
-        }
 
-        $('exportRawBtn').onclick = () => Exporter.toExcel(this.raw, this.getExportPrefix('raw'));
-        const exportFullBtn = $('exportFullBtn');
-        if(exportFullBtn) exportFullBtn.onclick = () => Exporter.toExcel(this.getFullExportTables(), this.getExportPrefix('full'));
-        $('exportPrevBtn').onclick = () => Exporter.toExcel(this.getPreviewExportTables(), this.getExportPrefix('preview'));
-        $('exportTabBtn').onclick = () => Exporter.toJson({
-            kind:'ota-workspace',
-            schemaVersion:WORKSPACE_SCHEMA_VERSION,
-            appVersion:APP_VERSION,
-            exportedAt:new Date().toISOString(),
-            docs:Store.state.docs,
-            globalViews:Store.state.globalViews,
-            preferences:{ theme:Store.state.theme, copyFormat:Store.state.copyFormat, persistRaw:Store.state.persistRaw, spreadsheetSafe:Store.state.spreadsheetSafe }
-        }, this.getExportPrefix('workspace'));
-        $('importTabBtn').onclick = () => $('fileInputTab').click();
-        $('fileInputTab').onchange = e => {
-            const f = e.target.files[0]; if(!f) return;
-            if(f.size > MAX_IMPORT_BYTES) { Toast.show('工作区文件超过 25 MB 限制', true); e.target.value=''; return; }
-            const r = new FileReader();
-            r.onload = evt => {
-                try {
-                    const d = JSON.parse(evt.target.result);
-                    const replace = confirm('确定：替换当前工作区\n取消：把备份追加为新页签');
-                    const count = Store.importWorkspace(d, !replace);
-                    if(d.preferences && typeof d.preferences === 'object') {
-                        if(['light','dark'].includes(d.preferences.theme)) Store.state.theme = d.preferences.theme;
-                        if(COPY_FORMATS.includes(d.preferences.copyFormat)) Store.state.copyFormat = d.preferences.copyFormat;
-                        if(typeof d.preferences.persistRaw === 'boolean') Store.state.persistRaw = d.preferences.persistRaw;
-                        if(typeof d.preferences.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = d.preferences.spreadsheetSafe;
-                        Store.applyTheme(); Store.save();
-                    }
-                    App.renderTabs(); App.loadDoc(); Toast.show(`已恢复 ${count} 个页签`);
-                } catch(error){ Toast.show(`工作区导入失败：${error.message || '格式错误'}`, true); }
-                e.target.value = '';
-            };
-            r.readAsText(f);
-        };
-        $('exportConfigBtn').onclick = () => Exporter.toJson({ kind:'table-tool-config', globalViews: Store.state.globalViews, docs: Store.state.docs.map(d=>({id:d.id, title:d.title, ui:d.ui})) }, this.getExportPrefix('config'));
-        $('importConfigBtn').onclick = () => $('fileInputConfig').click();
-        $('fileInputConfig').onchange = e => {
-            const f = e.target.files[0]; if(!f) return;
-            if(f.size > 5 * 1024 * 1024) { Toast.show('配置文件超过 5 MB 限制', true); e.target.value=''; return; }
-            const r = new FileReader();
-            r.onload = evt => {
-                try {
-                    const d = JSON.parse(evt.target.result);
-                    if(d.kind !== 'table-tool-config' || !Store.isSafePayload(d)) throw new Error('配置结构无效');
+        // Export/copy/workspace/config handled by ExportController.init()
 
-                    // 更新全局视图
-                    if(Array.isArray(d.globalViews)) {
-                        const oldCount = Store.state.globalViews.length;
-                        Store.state.globalViews = d.globalViews.slice(0, 500).filter(view => view && typeof view === 'object' && typeof view.view === 'string');
-                        Toast.show(`全局视图已更新 (${oldCount} → ${d.globalViews.length} 个)`, false, 2000);
-                    }
-
-                    // 更新文档配置
-                    if(Array.isArray(d.docs) && d.docs.length > 0 && d.docs.length <= 100) {
-                        let appliedCount = 0;
-                        let ignoredDocs = [];
-                        let createdDocs = [];
-
-                        d.docs.filter(x => x && typeof x === 'object').forEach(x => {
-                            // 优先使用 title 匹配（更符合用户预期），如果 title 不存在才用 id 匹配
-                            let t = Store.state.docs.find(y => y.title === x.title);
-                            if(!t) t = Store.state.docs.find(y => y.id === x.id);
-
-                            if(t) {
-                                // 匹配到文档，更新配置
-                                if(x.ui && typeof x.ui === 'object') t.ui = x.ui;
-                                appliedCount++;
-                            } else {
-                                // 没有匹配到，记录下来
-                                ignoredDocs.push(x.title || x.id);
-                            }
-                        });
-
-                        // 如果有被忽略的配置，询问用户是否创建新文档
-                        if(ignoredDocs.length > 0) {
-                            const msg = `配置导入完成：\n• 已应用 ${appliedCount} 个文档的配置\n• ${ignoredDocs.length} 个配置无法匹配（${ignoredDocs.slice(0, 3).join(', ')}${ignoredDocs.length > 3 ? '...' : ''}）\n\n是否为这些配置创建新文档？`;
-
-                            if(confirm(msg)) {
-                                ignoredDocs.forEach((docName, idx) => {
-                                    const config = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
-                                    if(config) {
-                                        const newDoc = Store.addDoc({ title:config.title, raw:'', ui:(config.ui && typeof config.ui === 'object') ? config.ui : {} });
-                                        createdDocs.push(newDoc.title);
-                                    }
-                                });
-
-                                Store.save();
-                                App.renderTabs();
-                                App.loadDoc();
-
-                                if(createdDocs.length > 0) {
-                                    Toast.show(`配置已更新，新增 ${createdDocs.length} 个文档`, false, 3000);
-                                }
-                            } else {
-                                Store.save();
-                                App.loadDoc();
-                                Toast.show(`配置已更新（应用了 ${appliedCount} 个文档）`, false, 2000);
-                            }
-                        } else {
-                            // 所有配置都成功应用
-                            Store.save();
-                            App.loadDoc();
-                            Toast.show(`配置已更新（应用了 ${appliedCount} 个文档）`, false, 2000);
-                        }
-                    } else {
-                        Store.save();
-                        App.loadDoc();
-                        Toast.show('配置已更新');
-                    }
-                } catch(e) {
-                    console.error(e);
-                    alert('配置文件格式错误，请检查文件是否完整');
-                }
-                e.target.value = '';
-            };
-            r.readAsText(f);
-        };
         
         // Editor Bindings
         const closeJoin = () => JoinEditor.close();
@@ -1009,7 +558,7 @@ validflag Time      Level   Message                 Code
         document.addEventListener('keydown', e => {
             const sourceModal = $('sourceEditorModal');
             if(sourceModal && !sourceModal.classList.contains('hidden')) {
-                if(e.key === 'Escape') { e.preventDefault(); this.closeSourceEditor(); }
+                if(e.key === 'Escape') { e.preventDefault(); SourceController.close(); }
                 return;
             }
             const modalOverlay = $('modalOverlay');
@@ -1023,9 +572,9 @@ validflag Time      Level   Message                 Code
             if(mod && e.key.toLowerCase() === 'n') { e.preventDefault(); this.createNewTab(e); return; }
             if(mod && e.key.toLowerCase() === 'o') { e.preventDefault(); $('sourceFileInput').click(); return; }
             if(mod && e.key.toLowerCase() === 's') { e.preventDefault(); this.persistCurrentDocFromInputs(); Toast.show('工作区已保存'); return; }
-            if(mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); this.undoCellEdit(); return; }
-            if(mod && !typing && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); this.redoCellEdit(); return; }
-            if(e.key === 'F2' && !typing) { e.preventDefault(); this.startTabRename(Store.state.activeId); return; }
+            if(mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); CellEditController.undo(); return; }
+            if(mod && !typing && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); CellEditController.redo(); return; }
+            if(e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeId); return; }
             if(e.key === '?' && !typing) { e.preventDefault(); this.showHelp(); return; }
             if($('joinModal').classList.contains('hidden')) return;
             if(!$('modalOverlay').classList.contains('hidden')) return;
@@ -1040,25 +589,13 @@ validflag Time      Level   Message                 Code
             if(e.key === 'Enter' && !e.shiftKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); JoinEditor.save(); return; }
         });
 
-        // Filter popover bindings
-        this.initFilterPopover();
 
-        // Cell inline editing
-        $('previewArea').addEventListener('dblclick', e => {
-            const td = e.target.closest('td');
-            if(!td || !td.closest('table') || td.classList.contains('row-header-cell')) return;
-            e.stopPropagation();
-            Select.clear();
-            this.startCellEdit(td);
-        });
     },
 
     loadDoc() {
         const d = Store.curr();
-        this.lastPaste = null;
-        this.editHistory = [];
-        this.editRedo = [];
-        this.updateUndoButtons();
+        SourceController.clearLastPaste();
+        CellEditController.reset();
         $('rawInput').value = d.raw || '';
         $('globalFilter').value = d.ui.globalFilter || '';
         const formatSelect = $('formatSelect'); if(formatSelect) formatSelect.value = d.ui.importFormat || 'auto';
@@ -1093,38 +630,7 @@ validflag Time      Level   Message                 Code
         });
     },
 
-    scheduleSourceInputPersist() {
-        clearTimeout(this.sourceInputPersistTimer);
-        this.sourceInputPersistTimer = setTimeout(() => {
-            Store.curr().raw = $('rawInput').value;
-            Store.save();
-        }, 650);
-    },
 
-    loadSourceFile(file) {
-        if(!file) return;
-        if(file.size > MAX_IMPORT_BYTES) return Toast.show('文件超过 25 MB 安全限制', true);
-        const reader = new FileReader();
-        reader.onerror = () => Toast.show('无法读取该文件', true);
-        reader.onload = event => {
-            const text = String(event.target.result || '').replace(/^\uFEFF/, '');
-            this.invalidateCellEdits();
-            $('rawInput').value = text;
-            const detected = this.sourceFileFormat(file);
-            if(detected === 'html-table') this.lastPaste = { html:text, plain:text, docId:Store.state.activeId };
-            else this.lastPaste = null;
-            Store.curr().raw = text;
-            const select = $('formatSelect');
-            if(select && select.value === 'auto' && detected !== 'auto') {
-                select.value = detected;
-                Store.curr().ui.importFormat = detected;
-            }
-            Store.save();
-            this.run();
-            Toast.show(`已导入 ${file.name}`);
-        };
-        reader.readAsText(file);
-    },
 
     showDiagnostics() {
         const result = Parser.lastResult || {};
@@ -1155,12 +661,17 @@ validflag Time      Level   Message                 Code
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
             Store.curr().raw = sourceText; Store.save();
             this.raw = Parser.parse(sourceText, this.getParseOptions());
+            CellEditController.setRawTables(this.raw);
+            ExportController.setContext({ raw: this.raw });
             this.applyStoredCellEdits();
             this.updateImportSummary();
-            this.updSelects();
-            if(render) this.renderPreview();
-            this.updChips();
             const elapsed = Math.round(performance.now() - started);
+            dispatch('parse:completed', { tables: this.raw, elapsed: elapsed });
+            if(render) {
+                this.updSelects();
+                this.renderPreview();
+                this.updChips();
+            }
             if(this.raw.length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
         } catch(e) {
             console.error(e);
@@ -1200,72 +711,20 @@ validflag Time      Level   Message                 Code
         $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>`<span class="chip">${this.escapeHtml(n)}</span>`).join('') : `<span class="placeholder">未启用</span>`;
     },
 
-    renderTabs() {
-        const container = $('tabsContainer');
-        if(!container) return;
-        container.innerHTML = Store.state.docs.map((d, idx) => {
-            Store.normalizeDoc(d, idx);
-            const title = d.title || `Analysis ${idx + 1}`;
-            const safeTitle = this.escapeHtml(title);
-            const safeId = this.escapeHtml(d.id);
-            const active = d.id === Store.state.activeId;
-            return `<div class="doc-tab ${active?'active':''}" data-id="${safeId}" draggable="true" title="${safeTitle}" role="tab" aria-selected="${active?'true':'false'}" tabindex="${active?'0':'-1'}"><span class="doc-tab-title">${safeTitle}</span><button class="doc-tab-close" type="button" draggable="false" title="关闭" aria-label="关闭 ${safeTitle}">×</button></div>`;
-        }).join('');
-    },
+    renderTabs() { TabController.render(); },
 
-    startTabRename(id) {
-        const tab = Array.from(document.querySelectorAll('.doc-tab')).find(el => el.dataset.id === id);
-        if(!tab) return;
-        const titleEl = tab.querySelector('.doc-tab-title');
-        const doc = Store.state.docs.find(d => d.id === id);
-        if(!titleEl || !doc) return;
-        const oldTitle = doc.title || '';
-        tab.setAttribute('draggable', 'false');
-        const input = document.createElement('input');
-        input.className = 'doc-tab-title-input';
-        input.value = oldTitle;
-        input.maxLength = 40;
-        titleEl.innerHTML = '';
-        titleEl.appendChild(input);
-        let done = false;
-        const finish = (save) => {
-            if(done) return;
-            done = true;
-            if(save) Store.renameDoc(id, input.value);
-            this.renderTabs();
-        };
-        input.onclick = e => e.stopPropagation();
-        input.ondblclick = e => e.stopPropagation();
-        input.onkeydown = e => {
-            e.stopPropagation();
-            if(e.key === 'Enter') finish(true);
-            if(e.key === 'Escape') finish(false);
-        };
-        input.onblur = () => finish(true);
-        setTimeout(() => { input.focus(); input.select(); }, 0);
-    },
+    startTabRename(id) { TabController.startRename(id); },
 
-    markTabDrop(tab, place) {
-        document.querySelectorAll('.doc-tab.drag-over-before, .doc-tab.drag-over-after').forEach(el => {
-            if(el !== tab) this.clearTabDragMarkers(el);
-        });
-        tab.classList.toggle('drag-over-before', place === 'before');
-        tab.classList.toggle('drag-over-after', place === 'after');
-    },
+    markTabDrop(tab, place) { TabController._markDrop(tab, place); },
 
-    clearTabDragMarkers(tab) {
-        if(!tab) return;
-        tab.classList.remove('dragging', 'drag-over-before', 'drag-over-after');
-    },
+    clearTabDragMarkers(tab) { TabController._clearMarkers(tab); },
 
-    clearAllTabDragMarkers() {
-        document.querySelectorAll('.doc-tab').forEach(tab => this.clearTabDragMarkers(tab));
-    },
+    clearAllTabDragMarkers() { TabController._clearAllMarkers(); },
 
     buildColumnHeaderTable(t, res, tIdx, colFilters={}) {
         return TableBuilder.buildColumnHeaderTable(t, res, tIdx, colFilters,
-            (tableName, colName, anchorEl) => this.promptColumnFilter(tableName, colName, anchorEl),
-            (tableName, colName) => this.clearColumnFilter(tableName, colName)
+            (tableName, colName, anchorEl) => FilterController.show(tableName, colName, anchorEl),
+            (tableName, colName) => FilterController.clearColumn(tableName, colName)
         );
     },
 
@@ -1276,7 +735,7 @@ validflag Time      Level   Message                 Code
     },
 
     renderPreview() {
-        if(this.activeEditor) this.finishCellEdit(true);
+        if(CellEditController.activeEditor) CellEditController.finish(true);
         const div = $('previewArea'); div.innerHTML = '';
         this.rendered = []; Select.clear();
         this.syncPreviewTablePicker([], false);
@@ -1351,7 +810,7 @@ validflag Time      Level   Message                 Code
                 fTag.textContent = `列过滤: ${filterCount}`; 
                 fTag.style.cursor = 'pointer';
                 fTag.title = '清除本表全部列过滤';
-                fTag.onclick = () => this.clearTableFilters(t.name);
+                fTag.onclick = () => FilterController.clearTableFilters(t.name);
                 meta.appendChild(fTag); 
             }
             const tableActions = createEl('span', 'table-meta-actions');
@@ -1397,229 +856,28 @@ validflag Time      Level   Message                 Code
         });
     },
 
-    initFilterPopover() {
-        const pop = $('filterPopover');
-        if(!pop) return;
-        const title = $('fpTitle');
-        const input = $('fpInput');
-        const btnApply = $('fpApply');
-        const btnClear = $('fpClear');
-        const btnClose = $('fpClose');
-        const hide = () => { pop.classList.add('hidden'); this.filterPopover = {open:false, table:null, col:null, pop, input, title}; };
-        this.filterPopover.pop = pop;
-        this.filterPopover.input = input;
-        this.filterPopover.title = title;
-        btnClose.onclick = hide;
-        btnClear.onclick = () => {
-            if(!this.filterPopover.table || !this.filterPopover.col) { hide(); return; }
-            const ui = Store.curr().ui;
-            if(ui.columnFilters && ui.columnFilters[this.filterPopover.table]) {
-                delete ui.columnFilters[this.filterPopover.table][this.filterPopover.col];
-            }
-            Store.save();
-            hide();
-            this.renderPreview();
-        };
-        btnApply.onclick = () => {
-            if(!this.filterPopover.table || !this.filterPopover.col) { hide(); return; }
-            const val = (input.value || '').trim();
-            const ui = Store.curr().ui;
-            if(!ui.columnFilters) ui.columnFilters = {};
-            if(!ui.columnFilters[this.filterPopover.table]) ui.columnFilters[this.filterPopover.table] = {};
-            if(val) ui.columnFilters[this.filterPopover.table][this.filterPopover.col] = val;
-            else delete ui.columnFilters[this.filterPopover.table][this.filterPopover.col];
-            Store.save();
-            hide();
-            this.renderPreview();
-        };
-        document.addEventListener('click', e => {
-            if(!this.filterPopover.open) return;
-            if(pop.contains(e.target)) return;
-            const th = e.target.closest && e.target.closest('.filterable-th');
-            if(th) return; // allow new popover open handler to manage
-            hide();
-        });
-        document.addEventListener('keydown', e => {
-            if(e.key === 'Escape' && this.filterPopover.open) hide();
-        });
-        const preview = $('previewArea');
-        if(preview) preview.addEventListener('scroll', () => { if(this.filterPopover.open) hide(); });
-        this.filterPopover.hide = hide;
-    },
 
-    promptColumnFilter(tableName, colName, anchorEl) {
-        if(this.filterPopover.open && this.filterPopover.hide) this.filterPopover.hide();
-        const pop = this.filterPopover.pop;
-        const input = this.filterPopover.input;
-        const title = this.filterPopover.title;
-        if(!pop || !input || !title) return;
-        const ui = Store.curr().ui;
-        const prev = ((ui.columnFilters && ui.columnFilters[tableName] && ui.columnFilters[tableName][colName]) || '').toString();
-        input.value = prev;
-        title.textContent = `${tableName}.${colName}`;
-        this.filterPopover.open = true;
-        this.filterPopover.table = tableName;
-        this.filterPopover.col = colName;
-        pop.classList.remove('hidden');
 
-        // Position near header
-        const rect = anchorEl.getBoundingClientRect();
-        const popRect = pop.getBoundingClientRect();
-        const top = Math.max(10, rect.bottom + 6);
-        let left = rect.left;
-        const maxLeft = window.innerWidth - popRect.width - 10;
-        if(left > maxLeft) left = maxLeft;
-        if(left < 10) left = 10;
-        pop.style.top = `${top}px`;
-        pop.style.left = `${left}px`;
-        input.focus();
-        input.select();
-    },
-
-    clearColumnFilter(tableName, colName) {
-        const ui = Store.curr().ui;
-        if(ui.columnFilters && ui.columnFilters[tableName]) {
-            delete ui.columnFilters[tableName][colName];
-        }
-        Store.save();
-        if(this.filterPopover.hide) this.filterPopover.hide();
-        this.renderPreview();
-    },
 
     clearTableFilters(tableName) {
-        const ui = Store.curr().ui;
-        if(ui.columnFilters) {
-            delete ui.columnFilters[tableName];
-            Store.save();
-            if(this.filterPopover.hide) this.filterPopover.hide();
-            this.renderPreview();
-        }
+        FilterController.clearTableFilters(tableName);
     },
 
-    toggleTableCollapse(tableName) {
-        const ui = Store.curr().ui;
-        if(!ui.collapsedTables) ui.collapsedTables = {};
-        ui.collapsedTables[tableName] = !ui.collapsedTables[tableName];
-        Store.save();
-        this.renderPreview();
-    },
+    toggleTableCollapse(tableName) { dispatch('preview:tableCollapse', { table: tableName }); },
 
-    setCellEdit(tableName, rowIdx, colIdx, value, record=true) {
-        const table = this.raw.find(item => item.name === tableName && !item.isView);
-        if(!table || !table.rows[rowIdx] || colIdx < 0 || colIdx >= table.headers.length) return false;
-        const previous = String(table.rows[rowIdx][colIdx] ?? '');
-        const next = String(value ?? '');
-        if(previous === next) return false;
-        const ui = Store.curr().ui;
-        if(!ui.cellEdits) ui.cellEdits = {};
-        const tableKey = `$${tableName}`;
-        if(!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
-        if(!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
-        ui.cellEdits[tableKey][rowIdx][colIdx] = next;
-        table.rows[rowIdx][colIdx] = next;
-        if(record) {
-            this.editHistory.push({ tableName, rowIdx, colIdx, previous, next });
-            if(this.editHistory.length > 100) this.editHistory.shift();
-            this.editRedo = [];
-        }
-        Store.save();
-        this.updateUndoButtons();
-        return true;
-    },
+    setCellEdit(a,b,c,d) { return CellEditController.apply(a,b,c,d); },
 
-    undoCellEdit() {
-        const edit = this.editHistory.pop();
-        if(!edit) return;
-        this.setCellEdit(edit.tableName, edit.rowIdx, edit.colIdx, edit.previous, false);
-        this.editRedo.push(edit);
-        this.updateUndoButtons();
-        this.renderPreview();
-    },
+    undoCellEdit() { CellEditController.undo(); },
 
-    redoCellEdit() {
-        const edit = this.editRedo.pop();
-        if(!edit) return;
-        this.setCellEdit(edit.tableName, edit.rowIdx, edit.colIdx, edit.next, false);
-        this.editHistory.push(edit);
-        this.updateUndoButtons();
-        this.renderPreview();
-    },
+    redoCellEdit() { CellEditController.redo(); },
 
-    updateUndoButtons() {
-        if($('undoEditBtn')) $('undoEditBtn').disabled = this.editHistory.length === 0;
-        if($('redoEditBtn')) $('redoEditBtn').disabled = this.editRedo.length === 0;
-    },
+    updateUndoButtons() { CellEditController._updateButtons(); },
 
-    setTablePage(tableName, page) {
-        const ui = Store.curr().ui;
-        if(!ui.tablePages) ui.tablePages = {};
-        ui.tablePages[tableName] = Math.max(1, Number(page) || 1);
-        Store.save();
-        this.renderPreview();
-    },
+    setTablePage(tableName, page) { dispatch('preview:tablePage', { table: tableName, page: page }); },
 
-    startCellEdit(td) {
-        if(this.activeEditor) this.finishCellEdit(true);
-        const tbl = td.closest('table');
-        const tableName = tbl.dataset.tableName;
-        const sourceRow = Number(td.dataset.sourceRow);
-        const sourceCol = Number(td.dataset.sourceCol);
-        if(!tableName || !Number.isInteger(sourceRow) || !Number.isInteger(sourceCol)) return Toast.show('JOIN 视图为只读，请编辑来源表', true);
-        const orig = td.textContent;
-        const origHeight = td.getBoundingClientRect().height;
-        td.style.height = `${origHeight}px`;
-        td.style.minHeight = `${origHeight}px`;
-        td.classList.add('editing');
+    startCellEdit(td) { CellEditController.begin(td); },
 
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.className = 'cell-editor';
-        input.value = orig;
-        td.innerHTML = '';
-        td.appendChild(input);
-        input.focus();
-        input.select();
-        let done = false;
-
-        const cancel = () => {
-            if(done) return;
-            done = true;
-            if(input.parentNode === td) td.removeChild(input);
-            td.textContent = orig;
-            td.style.height = '';
-            td.style.minHeight = '';
-            td.classList.remove('editing');
-            this.activeEditor = null;
-        };
-        const commit = () => {
-            if(done) return;
-            done = true;
-            const val = input.value;
-            if(input.parentNode === td) td.removeChild(input);
-            td.textContent = val;
-            if(String(val).length > 18) td.dataset.full = val; else td.removeAttribute('data-full');
-            this.setCellEdit(tableName, sourceRow, sourceCol, val, true);
-            td.style.height = '';
-            td.style.minHeight = '';
-            td.classList.remove('editing');
-            this.activeEditor = null;
-        };
-
-        const onKey = (e) => {
-            if(e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); commit(); }
-            else if(e.key === 'Escape') { e.preventDefault(); cancel(); }
-        };
-        input.addEventListener('keydown', onKey);
-        input.addEventListener('blur', commit, { once: true });
-        this.activeEditor = { td, input, orig, commit, cancel };
-    },
-
-    finishCellEdit(commit=true) {
-        if(!this.activeEditor) return;
-        const { commit: doCommit, cancel } = this.activeEditor;
-        if(commit) doCommit(); else cancel();
-        this.activeEditor = null;
-    },
+    finishCellEdit(commit) { CellEditController.finish(commit); },
 
     proc(t, ui) {
         const r = ui.rules[t.name] || {};
@@ -1630,88 +888,28 @@ validflag Time      Level   Message                 Code
         );
     },
 
-    closeModal() {
-        $('modalOverlay').classList.add('hidden');
-        if(this.modalReturnFocus && typeof this.modalReturnFocus.focus === 'function') this.modalReturnFocus.focus();
-        this.modalReturnFocus = null;
-    },
-    modal(title, html) {
-        this.modalReturnFocus = document.activeElement;
-        $('modalContent').innerHTML = `<div class="panel-header" style="border-radius:8px 8px 0 0;"><span id="modalTitle">${this.escapeHtml(title)}</span><button class="icon-btn" id="modalCloseBtn" type="button" aria-label="关闭">×</button></div><div class="modal-body">${html}</div>`;
-        $('modalOverlay').classList.remove('hidden');
-        $('modalCloseBtn').onclick = () => this.closeModal();
-        setTimeout(() => $('modalCloseBtn').focus(), 0);
-    },
+    closeModal() { ModalController.close(); },
+    modal(title, html) { ModalController.show(title, html); },
 
-    modTables() {
-        const ts = this.raw.map(t=>t.name);
-        const selSaved = Store.curr().ui.displayTables;
-        const sel = (selSaved===null || selSaved===undefined) ? ts : selSaved;
-        const h = ts.map(t => `<label class="checkbox-row"><input type="checkbox" value="${this.escapeHtml(t)}" ${sel.includes(t)?'checked':''}><span>${this.escapeHtml(t)}</span></label>`).join('');
-        this.modal('选择显示表', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
-        $('saveMod').onclick = () => {
-            const v = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c=>c.value);
-            // v.length===ts.length 但 ts 为空时，保持空数组代表“全不选”
-            const next = (v.length===ts.length && ts.length>0) ? null : v;
-            Store.updateUI('displayTables', next); $('modalOverlay').classList.add('hidden'); this.run();
-        };
-    },
-    modViews() {
-        const vs = Store.state.globalViews, sel = Store.curr().ui.enabledViews || [];
-        if(!vs.length) return alert('请先管理视图');
-        const h = vs.map(v => {
-            const name = v.view || '(未命名视图)';
-            const meta = (v.left && v.right) ? `<span style="font-size:11px; color:var(--text-tertiary); margin-left:6px;">${this.escapeHtml(v.left)} ⇔ ${this.escapeHtml(v.right)}</span>` : '';
-            return `<label class="checkbox-row"><input type="checkbox" value="${this.escapeHtml(name)}" ${sel.includes(name)?'checked':''}><span style="font-weight:600; color:var(--text-main);">${this.escapeHtml(name)}</span>${meta}</label>`;
-        }).join('');
-        this.modal('启用视图', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
-        $('saveMod').onclick = () => {
-            Store.updateUI('enabledViews', Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c=>c.value));
-            $('modalOverlay').classList.add('hidden'); this.run();
-        };
-    },
+    modTables() { ModalController.showTableSelector(this.raw.map(t => t.name), Store.curr().ui.displayTables); },
+    modViews() { ModalController.showViewSelector(Store.state.globalViews, Store.curr().ui.enabledViews || []); },
     
     modCols() {
-        const tName = $('targetTableSelect').value; if(!tName) return;
-        
+        const tName = $('targetTableSelect').value;
+        if (!tName) return;
         let all = [];
         const rawTable = this.raw.find(x => x.name === tName);
-        
-        if(rawTable) { all = rawTable.headers; } 
+        if (rawTable) { all = rawTable.headers; }
         else if (tName.startsWith('JOIN:')) {
             const vName = tName.replace('JOIN:', '');
             const vCfg = Store.state.globalViews.find(v => v.view === vName);
-            if(vCfg) { const res = Joiner.run(this.raw, vCfg, Store.state.globalViews); if(res) all = res.headers; }
+            if (vCfg) { const res = Joiner.run(this.raw, vCfg, Store.state.globalViews); if (res) all = res.headers; }
         }
-        if((!all || !all.length)) { const rt = this.rendered.find(x => x.name === tName); if(rt) all = rt.headers; }
-        if(!all || !all.length) return alert('无法获取列信息');
-
-        const rule = Store.curr().ui.rules[tName] || {};
-        const cur = (rule.focus && rule.focus.length > 0) ? rule.focus : all;
-        const isFocusActive = (rule.focus && rule.focus.length > 0);
-        
-        const html = `
-            <div style="margin-bottom:10px; display:flex; gap:8px;">
-                <input id="colSearch" placeholder="搜索列名..." style="flex:1;">
-                <button class="sm" id="colAll">全选</button>
-                <button class="sm" id="colNone">全不选</button>
-            </div>
-            <div id="colList" style="max-height:400px; overflow-y:auto; border:1px solid var(--border-light); padding:8px; border-radius:4px;">
-                ${all.map(c => `<label class="checkbox-row" data-val="${this.escapeHtml(c.toLowerCase())}"><input type="checkbox" value="${this.escapeHtml(c)}" ${!isFocusActive || cur.includes(c)?'checked':''}><span>${this.escapeHtml(c)}</span></label>`).join('')}
-            </div>
-            <div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">应用</button></div>
-        `;
-        this.modal(`选择列: ${tName}`, html);
-        const list = $('colList');
-        $('colSearch').oninput = e => { const v=e.target.value.toLowerCase(); Array.from(list.children).forEach(r => r.style.display = r.dataset.val.includes(v)?'flex':'none'); };
-        $('colAll').onclick = () => Array.from(list.children).forEach(r => { if(r.style.display!=='none') r.querySelector('input').checked=true; });
-        $('colNone').onclick = () => Array.from(list.children).forEach(r => { if(r.style.display!=='none') r.querySelector('input').checked=false; });
-        $('saveMod').onclick = () => {
-            const v = Array.from(list.querySelectorAll('input:checked')).map(c=>c.value);
-            Store.updateRule(tName, 'focus', v); $('focusColsInput').value=v.join(', ');
-            $('modalOverlay').classList.add('hidden'); this.renderPreview();
-        };
+        if (!all || !all.length) { const rt = this.rendered.find(x => x.name === tName); if (rt) all = rt.headers; }
+        if (!all || !all.length) { if (typeof alert === 'function') alert('无法获取列信息'); return; }
+        ModalController.showColumnSelector(tName, all, Store.curr().ui.rules[tName] || {});
     }
+
 };
 
 

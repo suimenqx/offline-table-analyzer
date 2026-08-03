@@ -14,6 +14,9 @@ const Store = {
     migratedFrom: null,
     saveTimer: null,
     loadFailed: false,
+    _listeners: null,  // Set of onChange callbacks; lazily initialised
+    _notifyQueue: null, // pending events queued for batched async delivery
+    _notifyTimer: null, // single batched async timer
     init() {
         let loaded = null;
         try {
@@ -296,7 +299,236 @@ const Store = {
         this.save();
     },
     toggleTheme() { this.state.theme = this.state.theme==='light'?'dark':'light'; this.applyTheme(); this.save(); },
-    applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); }
+    applyTheme() { document.documentElement.setAttribute('data-theme', this.state.theme); },
+
+    // ── Command / event protocol ──
+
+    /**
+     * Subscribe to state-change events.
+     * @param {(event: string, payload: any) => void} fn
+     * @returns {() => void} unsubscribe function
+     */
+    onChange(fn) {
+        if (!this._listeners) this._listeners = new Set();
+        this._listeners.add(fn);
+        return () => { if (this._listeners) this._listeners.delete(fn); };
+    },
+
+    /**
+     * Emit a state-change event to all listeners (batched async).
+     * Multiple calls within the same synchronous block are coalesced:
+     * all queued events are delivered together in one async tick.
+     *
+     * Falls back to synchronous delivery when setTimeout is unavailable.
+     */
+    _notify(event, payload) {
+        if (!this._listeners || this._listeners.size === 0) return;
+        if (!this._notifyQueue) this._notifyQueue = [];
+        this._notifyQueue.push({ event, payload });
+
+        if (typeof setTimeout === 'function') {
+            if (this._notifyTimer === null) {
+                this._notifyTimer = setTimeout(() => {
+                    this._notifyTimer = null;
+                    const queue = this._notifyQueue;
+                    this._notifyQueue = null;
+                    if (!queue || !this._listeners) return;
+                    queue.forEach(({ event: evt, payload: pl }) => {
+                        this._listeners.forEach(fn => {
+                            try { fn(evt, pl); } catch (e) { /* swallow */ }
+                        });
+                    });
+                }, 0);
+            }
+        } else {
+            // Synchronous fallback (Node tests without setTimeout)
+            const queue = this._notifyQueue;
+            this._notifyQueue = null;
+            if (!queue || !this._listeners) return;
+            queue.forEach(({ event: evt, payload: pl }) => {
+                this._listeners.forEach(fn => {
+                    try { fn(evt, pl); } catch (e) { /* swallow */ }
+                });
+            });
+        }
+    },
+
+    /**
+     * Execute a state transition. This is the canonical entry-point for all
+     * state-changing operations from the UI layer.
+     *
+     * Existing convenience methods (addDoc, updateUI, etc.) remain available
+     * and will gradually delegate here.
+     *
+     * @param {string} action  Command name (e.g. 'tab:create')
+     * @param {any}     payload Command-specific data
+     * @returns Result of the transition (varies by action)
+     */
+    transition(action, payload) {
+        switch (action) {
+            // ── Tabs ──
+            case 'tab:create': {
+                const doc = this.addDoc(payload || {});
+                this._notify('tab:created', { id: doc.id });
+                this._notify('state:changed', {});
+                return doc;
+            }
+            case 'tab:activate': {
+                const id = payload && payload.id;
+                if (!id) return false;
+                const prev = this.state.activeId;
+                if (prev === id && !(payload && payload.force)) return false;
+                if (!this.state.docs.some(d => d.id === id)) return false;
+                this.state.activeId = id;
+                this.save();
+                this._notify('tab:activated', { id, previousId: prev });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'tab:remove': {
+                const result = this.removeDoc(payload && payload.id);
+                if (result === true) {
+                    this._notify('tab:removed', { id: payload.id });
+                    this._notify('state:changed', {});
+                }
+                return result;
+            }
+            case 'tab:rename':
+            case 'tab:reorder':
+                // Use existing methods; they call save() internally
+                return null; // handled by existing methods directly for now
+
+            // ── Source ──
+            case 'source:changed': {
+                // Payload: { text }  — raw text was modified by user
+                const doc = this.curr();
+                doc.raw = payload && typeof payload.text === 'string' ? payload.text : '';
+                this._notify('source:textChanged', { text: doc.raw });
+                this._notify('state:changed', {});
+                this.scheduleSave();
+                return doc.raw;
+            }
+
+            // ── Parse ──
+            case 'parse:completed': {
+                // Emitted by App.run() after Parser.parse() succeeds.
+                // Payload: { tables, elapsed, diagnostics }
+                this._notify('parse:completed', payload || {});
+                this._notify('state:changed', {});
+                return true;
+            }
+
+            // ── Filters ──
+            case 'filter:global': {
+                const doc = this.curr();
+                doc.ui.globalFilter = payload && payload.value ? String(payload.value) : '';
+                this.scheduleSave();
+                this._notify('filter:changed', { scope: 'global', value: doc.ui.globalFilter });
+                this._notify('state:changed', {});
+                return doc.ui.globalFilter;
+            }
+            case 'filter:table': {
+                const tableName = payload && payload.table;
+                const field = payload && payload.field;
+                const value = payload && payload.value ? String(payload.value) : '';
+                if (!tableName || !field) return false;
+                this.updateRule(tableName, field, value);
+                this._notify('filter:changed', { scope: 'table', table: tableName, field, value });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'filter:column': {
+                // Payload: { table, column, value }
+                const ui = this.curr().ui;
+                if (!ui.columnFilters) ui.columnFilters = {};
+                if (!ui.columnFilters[payload.table]) ui.columnFilters[payload.table] = {};
+                const val = (payload.value || '').trim();
+                if (val) {
+                    ui.columnFilters[payload.table][payload.column] = val;
+                } else {
+                    delete ui.columnFilters[payload.table][payload.column];
+                }
+                this.save();
+                this._notify('filter:changed', { scope: 'column', table: payload.table, column: payload.column, value: val });
+                this._notify('state:changed', {});
+                return true;
+            }
+
+            // ── Cell editing ──
+            case 'cell:edit':
+                // Handled via App.setCellEdit — delegates to existing method
+                return null;
+
+            // ── Preview ──
+            case 'preview:renderRequested': {
+                // Lightweight trigger — App.onChange listens for this and re-renders
+                this._notify('preview:renderRequested', {});
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'preview:tableCollapse': {
+                const doc = this.curr();
+                if (!doc.ui.collapsedTables) doc.ui.collapsedTables = {};
+                doc.ui.collapsedTables[payload.table] = !doc.ui.collapsedTables[payload.table];
+                this.save();
+                this._notify('preview:changed', {});
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'preview:tablePage': {
+                const doc = this.curr();
+                if (!doc.ui.tablePages) doc.ui.tablePages = {};
+                doc.ui.tablePages[payload.table] = Math.max(1, Number(payload.page) || 1);
+                this.save();
+                this._notify('preview:changed', {});
+                this._notify('state:changed', {});
+                return true;
+            }
+
+            // ── UI settings ──
+            case 'ui:sidebarTab': {
+                this.updateUI('sidebarTab', payload && payload.tab || 'data');
+                this._notify('ui:sidebarChanged', { tab: payload && payload.tab });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'ui:copyFormat': {
+                this.setCopyFormat(payload && payload.format);
+                this._notify('ui:copyFormatChanged', { format: this.state.copyFormat });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'ui:theme': {
+                this.toggleTheme();
+                this._notify('ui:themeChanged', { theme: this.state.theme });
+                this._notify('state:changed', {});
+                return this.state.theme;
+            }
+            case 'ui:persistRaw': {
+                this.setPersistRaw(payload && payload.enabled !== false);
+                this._notify('ui:persistRawChanged', { enabled: this.state.persistRaw });
+                this._notify('state:changed', {});
+                return this.state.persistRaw;
+            }
+
+            // ── Workspace ──
+            case 'workspace:save': {
+                const ok = this.save();
+                if (ok) {
+                    this._notify('workspace:saved', { bytes: this.storageBytes, savedAt: this.state.lastSavedAt });
+                } else {
+                    this._notify('workspace:saveFailed', { error: this.lastSaveError });
+                }
+                return ok;
+            }
+
+            default:
+                if (typeof console !== 'undefined' && console.warn) {
+                    console.warn('[Store] unknown transition action: %s', action);
+                }
+                return null;
+        }
+    }
 };
 
     return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, Store };

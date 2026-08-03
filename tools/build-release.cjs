@@ -17,6 +17,7 @@ const MODULES = [
 
   // ── State ──
   ['state/store.js',              'workspace state and persistence'],
+  ['core/dispatch.js',            'command bus between UI and Store'],
 
   // ── Export ──
   ['export/exporter.js',          'file and XLSX exporter'],
@@ -52,6 +53,12 @@ const MODULES = [
   ['ui/table-builder.js',         'preview table DOM construction'],
   ['ui/selection.js',             'preview range selection'],
   ['ui/join-editor.js',           'JOIN editor UI'],
+  ['ui/source-controller.js',     'source editor and file import'],
+  ['ui/cell-edit-controller.js',  'inline cell editing with undo/redo'],
+  ['ui/filter-controller.js',     'column filter popover'],
+  ['ui/modal-controller.js',      'modal dialogs and selectors'],
+  ['ui/tab-controller.js',        'tab bar drag/drop/rename'],
+  ['ui/export-controller.js',     'file exports and workspace backup'],
   ['ui/app.js',                   'application orchestration and UI'],
 
   // ── Bootstrap ──
