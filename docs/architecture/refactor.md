@@ -42,11 +42,19 @@ HTML/CSS shell
       ↓
 runtime utilities / feedback
       ↓
-table normalization → header inference → parser adapters → ImportEngine
-      ↓                                      ↓
-Store / persistence                         Joiner
-      ↓                                      ↓
-Clipboard / Exporter / Selection → UI controllers → App bootstrap
+table normalization → FilterEngine (pure filtering)
+      ↓
+Store / persistence
+      ↓
+Clipboard / Exporter
+      ↓
+header inference → parser adapters → ImportEngine
+      ↓
+Joiner
+      ↓
+TableBuilder (DOM rendering) → Selection → JoinEditor
+      ↓
+App orchestrator → bootstrap
 ```
 
 规则如下：
@@ -121,7 +129,7 @@ DOM event
 
 ## 7. 迁移路线
 
-### 阶段 A：可复现边界（当前）
+### 阶段 A：可复现边界 ✅（已完成）
 
 - 建立新分支。
 - 提取 template、styles 和 20 个按依赖排序的源模块。
@@ -151,16 +159,17 @@ DOM event
 - 设计可取消、带进度的解析/规则消息协议。
 - 以迁移版本和事务方式引入 IndexedDB，保留 localStorage/单文件 fallback。
 
-## 8. 分支、worktree 和回退策略
+## 8. 分支与发布策略
 
-本次基于干净的 `codex/docs-sync-v20-1` 创建 `codex/refactor-modular-architecture` 分支，在当前工作区完成。原因是当前只有一个执行者，没有并行改动需求；新 worktree 会增加工作目录同步、生成产物和验收路径的管理成本。
+初始重构基于 `codex/refactor-modular-architecture` 分支完成；当前所有开发在 `main` 分支继续演进。
 
 后续规则：
 
-- 同一人连续演进：继续使用该分支，每个阶段一个可验证提交。
-- 需要并行 UI/领域开发：从该分支创建独立 `git worktree`，禁止两个工作区同时编辑生成的 `index.html`。
-- 回退优先使用 `git revert` 回退阶段提交；不要用 destructive reset 覆盖用户变更。
-- 发布前运行构建、完整测试和发布校验；只有生成产物与源一致时才允许合并。
+- 每个阶段一个可验证提交，合并到 `main` 后通过 GitHub Pages 自动发布。
+- 同一人连续演进：直接在 `main` 上提交，每个阶段保持独立可回退。
+- 需要并行开发：从 `main` 创建 feature 分支，禁止两个分支同时编辑生成的 `index.html`。
+- 回退优先使用 `git revert`；不要用 destructive reset 覆盖已发布变更。
+- 发布前运行 `npm run build:release` + `npm run validate:release` + 全量测试。
 
 ## 9. 架构风险与决策门槛
 
