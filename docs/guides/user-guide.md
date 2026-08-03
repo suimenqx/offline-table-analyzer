@@ -165,6 +165,13 @@ If no operator is present, the token is treated as a **contains** test across th
   ```
   Matches rows containing "error", "warning", or "critical" anywhere.
 
+- **NOT** — A bare `!` prefix negates a token.
+
+  ```
+  !debug
+  ```
+  Matches rows that do NOT contain "debug".
+
 ### 5.3 Regex
 
 Wrap a complete regular expression in `/` (forward slashes) to match across the entire row (all columns joined with a space):

@@ -148,8 +148,30 @@ const fullSandbox = {
 };
 const { OTA: procOTA } = loadBuiltModules(fullSandbox);
 const FilterHarness = procOTA.require('app').App;
+const FilterEngine = procOTA.require('filter-engine').FilterEngine;
 assert(typeof FilterHarness.proc === 'function', 'App.proc should be callable');
+assert(typeof FilterEngine.matchToken === 'function', 'FilterEngine.matchToken should be callable');
+
 const filterTable = { name:'Logs', headers:['level','message'], rows:[['WARN','memory'],['ERROR','timeout'],['INFO','ok']] };
 const regexRows = FilterHarness.proc(filterTable, { rules:{}, columnFilters:{}, globalFilter:'/ERROR|WARN/' }).rows;
 assert(regexRows.length === 2 && regexRows[0].d[0] === 'WARN' && regexRows[1].d[0] === 'ERROR', 'regex alternation must not be split as plain OR tokens');
-console.log('UI interaction tests passed: 66');
+
+// FilterEngine NOT prefix tests
+const hMap = FilterEngine.buildHeaderMap(['level', 'message']);
+// ! plain text
+assert(FilterEngine.matchToken('!ok', filterTable.rows[2], hMap) === false, 'NOT ok should reject row with ok');
+assert(FilterEngine.matchToken('!ok', filterTable.rows[1], hMap) === true, 'NOT ok should accept row without ok');
+// != is column-level negation (should still work)
+assert(FilterEngine.matchToken('level!=INFO', filterTable.rows[2], hMap) === false, 'level!=INFO on INFO row');
+assert(FilterEngine.matchToken('level!=INFO', filterTable.rows[0], hMap) === true, 'level!=INFO on WARN row');
+// ! regex
+assert(FilterEngine.matchToken('!/ERROR/', filterTable.rows[1], hMap) === false, 'NOT /ERROR/ on ERROR row');
+assert(FilterEngine.matchToken('!/ERROR/', filterTable.rows[2], hMap) === true, 'NOT /ERROR/ on INFO row');
+// ! operator
+assert(FilterEngine.matchToken('!level=INFO', filterTable.rows[2], hMap) === false, '!level=INFO on INFO row');
+assert(FilterEngine.matchToken('!level=INFO', filterTable.rows[0], hMap) === true, '!level=INFO on WARN row');
+// ! with OR pipe
+assert(FilterEngine.matchRule('!ok|memory', filterTable.rows[2], hMap) === false, '!ok|memory on ok row (both fail)');
+assert(FilterEngine.matchRule('!ok|memory', filterTable.rows[0], hMap) === true, '!ok|memory on memory row (memory passes OR)');
+
+console.log('UI interaction tests passed: 72');

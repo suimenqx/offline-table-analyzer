@@ -1118,6 +1118,11 @@ const FilterEngine = {
      * @returns {boolean}
      */
     matchToken(token, row, headerMap) {
+        // NOT prefix: negate the result of the inner token
+        if (token.startsWith('!') && token.length > 1) {
+            return !this.matchToken(token.slice(1), row, headerMap);
+        }
+
         // Operator-prefixed token:  key op value
         const opMatch = token.match(/^(.+?)(!=|>=|<=|=|>|<|:)(.+)$/);
         if (opMatch) {
