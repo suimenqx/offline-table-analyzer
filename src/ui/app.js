@@ -13,7 +13,8 @@ const App = {
         if(!id) return false;
         if(!Store.state.docs.some(d => d.id === id)) return false;
         if(!force && Store.state.activeId === id) return false;
-        this.persistCurrentDocFromInputs();
+        const input = $('rawInput');
+        if(input) Store.curr().raw = input.value;
         Store.state.activeId = id;
         Store.save();
         this.renderTabs();
@@ -571,7 +572,7 @@ validflag Time      Level   Message                 Code
             if(mod && e.key.toLowerCase() === 'enter') { e.preventDefault(); this.run(); return; }
             if(mod && e.key.toLowerCase() === 'n') { e.preventDefault(); this.createNewTab(e); return; }
             if(mod && e.key.toLowerCase() === 'o') { e.preventDefault(); $('sourceFileInput').click(); return; }
-            if(mod && e.key.toLowerCase() === 's') { e.preventDefault(); this.persistCurrentDocFromInputs(); Toast.show('工作区已保存'); return; }
+            if(mod && e.key.toLowerCase() === 's') { e.preventDefault(); const inp = $('rawInput'); if(inp) Store.curr().raw = inp.value; Store.save(); Toast.show('工作区已保存'); return; }
             if(mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); CellEditController.undo(); return; }
             if(mod && !typing && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); CellEditController.redo(); return; }
             if(e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeId); return; }
@@ -730,7 +731,7 @@ validflag Time      Level   Message                 Code
 
     buildRowHeaderTable(t, res, tIdx, colFilters={}) {
         return TableBuilder.buildRowHeaderTable(t, res, tIdx, colFilters,
-            (tableName, colName, anchorEl) => this.promptColumnFilter(tableName, colName, anchorEl)
+            (tableName, colName, anchorEl) => FilterController.show(tableName, colName, anchorEl)
         );
     },
 

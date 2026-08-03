@@ -1,19 +1,10 @@
 # Roadmap
 
-v21 delivered the first wave of architecture modularisation: domain logic extraction (`FilterEngine`, `TableBuilder`), a stable public filtering API, and build-manifest growth to 30 modules. Future work builds on that foundation.
+v21 delivered the first wave of architecture modularisation: domain logic extraction (`FilterEngine`, `TableBuilder`), a stable public filtering API, and build-manifest growth to 30 modules.
 
-The project continues to prioritise trustworthiness, offline integrity, and single-file delivery over feature quantity.
+v22 completes the controller extraction: a command/event protocol (`Store.transition` / `onChange` / `dispatch`) and 7 independently-testable UI controllers (`SourceController`, `CellEditController`, `FilterController`, `ModalController`, `TabController`, `ExportController`, plus the `dispatch` command bus). App.js shrank from 1,721 to 918 lines.
 
-## 21.x — maintainability and domain purity (current)
-
-- Extract remaining domain logic from `app.js` into pure modules (sorting, aggregation primitives).
-- Split Store into schema/defaults/migration/persistence layers.
-- Separate tab, preview, filter, export, and modal controllers from the App orchestrator.
-- Unified command/event refresh protocol between controllers.
-- Allow Node test suites to load domain modules directly instead of extracting from built HTML.
-- Performance fixtures for 1 MB, 5 MB, 20 MB, and 100,000-row sources.
-
-## 22 — reliability and browser coverage
+## 22.x — reliability and browser coverage (current)
 
 - Real browser E2E automation for paste → parse → filter → JOIN → copy → export.
 - Cross-browser clipboard and download matrix, including Safari.

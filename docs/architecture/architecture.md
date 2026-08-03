@@ -2,7 +2,7 @@
 
 ## 1. Delivery architecture
 
-The release application is `index.html`, generated from `src/templates/index.html`, `src/styles/styles.css`, and the ordered source modules under `src/` by `tools/build-release.js`. Modules are organized by layer into subdirectories (`core/`, `state/`, `parsing/`, `export/`, `transform/`, `ui/`), with dependency order declared in the build manifest. CSS, markup, parser adapters, state management, transformations, clipboard serialization, XLSX generation, and UI behavior remain self-contained in the generated file. Runtime dependencies and network resources are intentionally absent.
+The release application is `index.html`, generated from `src/templates/index.html`, `src/styles/styles.css`, and the ordered source modules under `src/` by `tools/build-release.cjs`. Modules are organized by layer into subdirectories (`core/`, `state/`, `parsing/`, `export/`, `transform/`, `ui/`), with dependency order declared in the build manifest. CSS, markup, parser adapters, state management, transformations, clipboard serialization, XLSX generation, and UI behavior remain self-contained in the generated file. Runtime dependencies and network resources are intentionally absent.
 
 The generated file is intentionally kept as the only end-user artifact, while source modules are the only hand-edited application source. Node scripts under `tools/` build and validate the artifact and are development-only.
 
@@ -16,6 +16,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `runtime` | DOM query helpers (`$`, `createEl`), `Tooltip`, `Toast` |
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
 | `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
+| `dispatch` (`src/core/dispatch.js`) | Thin command bus: `dispatch(action, payload)` delegates to `Store.transition`. |
 
 ### State (`src/state/`)
 
@@ -56,6 +57,12 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed rows from `FilterEngine` and renders filterable `<table>` elements. |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
+| `SourceController` | Source text input, file drag-and-drop import, fullscreen editor lifecycle, input resizer, format detection from file extension |
+| `CellEditController` | Inline cell editing with Enter/Tab/Escape/blur, non-destructive overlay persistence, 100-step undo/redo stacks |
+| `FilterController` | Per-column "contains" filter popover positioned near column headers, apply/clear/close actions |
+| `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
+| `TabController` | Tab bar rendering, inline rename (F2/dblclick), drag-and-drop reorder, keyboard navigation (arrows/Enter/Delete) |
+| `ExportController` | XLSX export (raw/full/preview), workspace JSON backup/restore, config JSON export/import with title-based matching, copy format selection |
 | `App` | UI orchestration, parsing, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading. Delegates filtering to `FilterEngine` and table DOM building to `TableBuilder`. |
 
 The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor.md); the complete acceptance checklist is in [Refactor requirements](../planning/refactor-requirements.md).

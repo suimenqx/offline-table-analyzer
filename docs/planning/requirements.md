@@ -1,6 +1,6 @@
 # v20 Requirements and Scope
 
-The workspace schema remains version `20`; the current application release is **21.0.0**.
+The workspace schema remains version `20`; the current application release is **22.0.0**.
 
 ## 1. Product definition
 
