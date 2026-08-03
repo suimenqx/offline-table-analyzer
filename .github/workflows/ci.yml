@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - run: node --test-reporter=spec --test "tests/**/*.test.js"
+      - run: node --test-reporter=spec --test $(find tests -name '*.test.js' | sort)
 
   validate-build:
     runs-on: ubuntu-latest
