@@ -1,4 +1,4 @@
-OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$}, {Store}, {Joiner}, {Exporter, Toast}) => {
+OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$, escapeHtml, formatBytes}, {Store}, {Joiner}, {Exporter, Toast}) => {
 const App = new Proxy({}, {
     get(_target, key) {
         const app = OTA.require('app').App;
@@ -15,6 +15,9 @@ const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '' },
     metaCache: {},
     dragIdx: null,
+    // Shared utilities (imported from runtime)
+    escapeHtml,
+    formatBytes,
 
     formatTime(ts) {
         if(!ts) return '';
@@ -22,36 +25,6 @@ const JoinEditor = {
         if(Number.isNaN(d.getTime())) return '';
         const pad = n => String(n).padStart(2, '0');
         return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    },
-    escapeHtml(str='') {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
-    formatBytes(bytes=0) {
-        if(bytes < 1024) return `${bytes} B`;
-        if(bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    },
-    updateStorageStatus(detail={}) {
-        const el = $('storageStatus');
-        if(!el) return;
-        const ok = detail.ok !== false && !Store.lastSaveError;
-        const bytes = Number(detail.bytes ?? Store.storageBytes) || 0;
-        const message = detail.message || (ok
-            ? (Store.state.persistRaw === false ? '临时数据模式 · 规则已保存' : `已保存 · ${this.formatBytes(bytes)}`)
-            : Store.lastSaveError || '保存失败');
-        el.textContent = message;
-        el.style.color = ok ? '' : 'var(--danger)';
-        const fill = $('storageMeterFill');
-        if(fill) {
-            const ratio = Math.min(100, bytes / (5 * 1024 * 1024) * 100);
-            fill.style.width = `${ratio}%`;
-            fill.style.background = ratio > 85 ? 'var(--danger)' : ratio > 65 ? 'var(--warning)' : 'var(--accent)';
-        }
     },
     updateWorkspaceSummary() {
         const title = $('workspaceTitle');

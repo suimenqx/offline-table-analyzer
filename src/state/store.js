@@ -232,7 +232,7 @@ const Store = {
         return doc;
     },
     removeDoc(id) {
-        if(this.state.docs.length<=1) return alert("至少保留一个页签");
+        if(this.state.docs.length<=1) return 'last_doc';
         const idx = this.state.docs.findIndex(d=>d.id===id);
         if(idx < 0) return false;
         this.state.docs.splice(idx,1);

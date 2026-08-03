@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
-const { MODULES, renderRelease } = require('./build-release');
+const { MODULES, renderRelease } = require('../tools/build-release');
 
 const root = path.join(__dirname, '..');
 const htmlPath = path.join(root, 'index.html');
-const template = fs.readFileSync(path.join(root, 'src', 'index.template.html'), 'utf8');
+const template = fs.readFileSync(path.join(root, 'src', 'templates', 'index.html'), 'utf8');
 const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');
 const expected = `${renderRelease().trimEnd()}\n`;
 
@@ -14,9 +14,9 @@ function assert(condition, message) {
 }
 
 assert(template.includes('{{STYLES}}') && template.includes('{{MODULES}}'), 'template placeholders are missing');
-assert(MODULES.length === 21, `unexpected module count: ${MODULES.length}`);
+assert(MODULES.length === 28, `unexpected module count: ${MODULES.length}`);
 assert(new Set(MODULES.map(([file]) => file)).size === MODULES.length, 'module manifest contains duplicates');
-assert(MODULES.every(([file]) => fs.existsSync(path.join(root, 'src', 'modules', file))), 'module manifest references a missing file');
+assert(MODULES.every(([file]) => fs.existsSync(path.join(root, 'src', file))), 'module manifest references a missing file');
 assert(html === expected, 'index.html is stale; run npm run build:release');
 assert(!html.includes('{{STYLES}}') && !html.includes('{{MODULES}}'), 'release placeholders leaked into index.html');
 assert((html.match(/\/\* @module /g) || []).length === MODULES.length, 'release module markers are incomplete');

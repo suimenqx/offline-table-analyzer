@@ -1,5 +1,5 @@
 OTA.define('table-utils', [], () => {
-/* Import Engine */
+/* Table utilities — normalization, headers, cell types */
 const TableUtils = {
     normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
     lines(text='') { return this.normalizeText(text).split('\n'); },
@@ -64,9 +64,20 @@ const TableUtils = {
         return /^[A-Za-z_\u4e00-\u9fa5][\w\s.()\-/\u4e00-\u9fa5]*$/.test(s);
     },
     stripHtml(text='') {
-        const div = document.createElement('div');
-        div.innerHTML = String(text || '');
-        return div.textContent || div.innerText || '';
+        // Pure regex-based HTML tag stripper — no DOM dependency.
+        const s = String(text || '');
+        // Remove script/style blocks entirely
+        const noBlocks = s.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+        // Remove remaining tags and decode common entities
+        return noBlocks
+            .replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&nbsp;/g, ' ')
+            .trim();
     }
 };
 

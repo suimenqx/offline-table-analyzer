@@ -2,30 +2,61 @@
 
 ## 1. Delivery architecture
 
-The release application is `index.html`, generated from `src/index.template.html`, `src/styles.css`, and the ordered source modules under `src/modules/` by `tools/build-release.js`. CSS, markup, parser adapters, state management, transformations, clipboard serialization, XLSX generation, and UI behavior remain self-contained in the generated file. Runtime dependencies and network resources are intentionally absent.
+The release application is `index.html`, generated from `src/templates/index.html`, `src/styles/styles.css`, and the ordered source modules under `src/` by `tools/build-release.js`. Modules are organized by layer into subdirectories (`core/`, `state/`, `parsing/`, `export/`, `transform/`, `ui/`), with dependency order declared in the build manifest. CSS, markup, parser adapters, state management, transformations, clipboard serialization, XLSX generation, and UI behavior remain self-contained in the generated file. Runtime dependencies and network resources are intentionally absent.
 
 The generated file is intentionally kept as the only end-user artifact, while source modules are the only hand-edited application source. Node scripts under `tools/` build and validate the artifact and are development-only.
 
 ## 2. Logical modules
 
+### Core (`src/core/`)
+
 | Module | Responsibility |
 | --- | --- |
-| `Tooltip`, `Toast` | Lightweight interaction feedback |
-| `Exporter` | Browser downloads and dependency-free XLSX ZIP/XML generation |
-| `Store` | Versioned workspace, migration, normalization, privacy preferences, safe local persistence |
+| `OTA` (module-loader) | Local module registry: `define`, `require`, `start` |
+| `runtime` | DOM query helpers (`$`, `createEl`), `Tooltip`, `Toast` |
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
-| `TextLayout` | Display-width tokenization, stable data-column starts, aligned header/data slicing |
-| `HeaderResolver` | Header inference and forced header modes |
-| `Delimited` | Quote-aware delimiter parsing and diagnostics |
-| Parser adapters | 12 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
-| `ImportEngine` | Manual/automatic adapter selection, candidates, normalized result and diagnostics |
-| `Joiner` | Equality JOIN execution, statistics, dependency safety, projection |
-| `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
+
+### State (`src/state/`)
+
+| Module | Responsibility |
+| --- | --- |
+| `Store` | Versioned workspace, migration, normalization, privacy preferences, safe local persistence |
+
+### Export (`src/export/`)
+
+| Module | Responsibility |
+| --- | --- |
+| `Exporter` | Browser downloads and dependency-free XLSX ZIP/XML generation |
 | `ClipboardFormatter` | TSV/CSV/Markdown/ASCII/Lua text serialization, format-specific HTML clipboard payloads, and spreadsheet formula-prefix protection |
+
+### Parsing (`src/parsing/`)
+
+| Module | Responsibility |
+| --- | --- |
+| `HeaderResolver` | Header inference and forced header modes |
+| `TextLayout` | Display-width tokenization, stable data-column starts, aligned header/data slicing |
+| `FormatSniffer` | Statistical fingerprint-based single-pass format detection |
+| `Delimited` | Quote-aware delimiter parsing and diagnostics |
+| `parser-helpers` | Shared utilities for text/aligned/CLI parsers |
+| Parser adapters (`src/parsing/parsers/`) | 12 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
+| `ImportEngine` | Manual/automatic adapter selection, candidates, normalized result and diagnostics |
+| `legacy-facade` | Historical backward-compatible `Parser` entry point |
+
+### Transform (`src/transform/`)
+
+| Module | Responsibility |
+| --- | --- |
+| `Joiner` | Equality JOIN execution, statistics, dependency safety, projection |
+
+### UI (`src/ui/`)
+
+| Module | Responsibility |
+| --- | --- |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
+| `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
 | `App` | UI orchestration, parsing, pagination, filtering, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading |
 
-The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor-architecture.md); the complete acceptance checklist is in [Refactor requirements](refactor-requirements.md).
+The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor.md); the complete acceptance checklist is in [Refactor requirements](../planning/refactor-requirements.md).
 
 ## 3. Core data model
 
@@ -139,7 +170,7 @@ Web Workers, IndexedDB document storage, streaming export, and virtual scrolling
 
 ## 8. Testing architecture
 
-All test scripts reside under `tools/`:
+All test scripts reside under `tests/`:
 
 - `run-parser-tests.js`: parser formats (all 12 adapters), malformed input, diagnostics, normalization, and aligned-table separator variants.
 - `run-build-tests.js`: source manifest completeness, deterministic release output, single-script packaging, and generated syntax.

@@ -69,8 +69,7 @@ const ClipboardFormatter = {
     },
     protectSpreadsheetFormula(value='') {
         const text = this.normalizeCell(value);
-        const enabled = typeof Store === 'undefined' || !Store.state || Store.state.spreadsheetSafe !== false;
-        if(!enabled) return text;
+        if(!Store.state || Store.state.spreadsheetSafe === false) return text;
         const dangerous = /^[=+@]/.test(text) || (/^-/.test(text) && !/^-\d+(?:\.\d+)?$/.test(text));
         return dangerous ? `'${text}` : text;
     },

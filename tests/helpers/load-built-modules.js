@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-const htmlPath = path.join(__dirname, '..', 'index.html');
+const htmlPath = path.join(__dirname, '..', '..', 'index.html');
 
 function readBuiltScript() {
   const html = fs.readFileSync(htmlPath, 'utf8').replace(/^\uFEFF/, '');

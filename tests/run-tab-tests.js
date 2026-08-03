@@ -1,4 +1,4 @@
-const { loadBuiltModules } = require('./load-built-modules');
+const { loadBuiltModules } = require('./helpers/load-built-modules');
 const storage = new Map();
 let quotaFail = false;
 const sandbox = {

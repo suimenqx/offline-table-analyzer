@@ -910,7 +910,7 @@
 </div>
 
 <script>
-/* @module 00-module-loader.js: runtime module registry */
+/* @module core/module-loader.js: runtime module registry */
 /* Runtime module loader */
 const OTA = (() => {
     const registry = new Map();
@@ -935,15 +935,22 @@ const OTA = (() => {
 })();
 if(typeof window !== 'undefined') window.OTA = OTA;
 
-/* @module 00-runtime.js: runtime and feedback */
+/* @module core/runtime.js: DOM utils, Tooltip, Toast */
 OTA.define('runtime', [], () => {
 /* --- Utils --- */
 const $ = (id) => document.getElementById(id);
 const createEl = (tag, cls) => { const e = document.createElement(tag); if(cls) e.className=cls; return e; };
+const escapeHtml = (str='') => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+const formatBytes = (bytes=0) => bytes < 1024 ? `${bytes} B` : bytes < 1024 * 1024 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 const Tooltip = {
-    el: $('tooltip'),
+    _initialized: false,
+    el: null,
     init() {
+        if(this._initialized || typeof document === 'undefined' || !document.body) return;
+        this.el = $('tooltip');
+        if(!this.el) return;
+        this._initialized = true;
         document.body.addEventListener('mouseenter', e => {
             if(e.target.classList.contains('help-icon')) this.show(e.target, e.target.dataset.tip);
         }, true);
@@ -952,245 +959,115 @@ const Tooltip = {
         }, true);
     },
     show(target, text) {
+        if(!this.el) { this.init(); if(!this.el) return; }
         this.el.innerText = text; this.el.classList.add('show');
         const r = target.getBoundingClientRect();
         this.el.style.top = (r.top - 40) + 'px'; this.el.style.left = (r.left - 20) + 'px';
     },
-    hide() { this.el.classList.remove('show'); }
+    hide() { if(this.el) this.el.classList.remove('show'); }
 };
-Tooltip.init();
 
 const Toast = {
     show(msg, isError=false) {
-        const el = $('toast'); el.textContent = msg; 
+        if(typeof document === 'undefined') return;
+        const el = $('toast'); if(!el) return;
+        el.textContent = msg; 
         el.className = isError ? 'show error' : 'show';
         setTimeout(()=>el.className='', 2000);
     }
 };
 
-    return { $, createEl, Tooltip, Toast };
+    return { $, createEl, escapeHtml, formatBytes, Tooltip, Toast };
 });
 
-/* @module 01-exporter.js: file and XLSX exporter */
-OTA.define('exporter', ["runtime"], ({Toast}) => {
-/* Exporter */
-const Exporter = {
-    escapeXml(str="") {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
-    getTimestamp() {
-        const now = new Date(); const pad = n => String(n).padStart(2,'0');
-        return `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    },
-    sanitizeFilePrefix(prefix='export') {
-        const safe = String(prefix || 'export')
-            .replace(/[\\/:*?"<>|]+/g, '_')
-            .replace(/\s+/g, '_')
-            .replace(/_+/g, '_')
-            .replace(/^_+|_+$/g, '')
-            .slice(0, 80);
-        return safe || 'export';
-    },
-    download(filename, content, type='text/plain') {
-        const blob = content instanceof Blob ? content : new Blob([content], {type});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a'); a.href = url; a.download = filename;
-        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
-    },
-    sanitizeSheetName(name, used) {
-        const maxLen = 31;
-        let safe = (name || 'Sheet').replace(/[\\\/:?*\[\]]/g, '_').trim();
-        if(!safe) safe = 'Sheet';
-        safe = safe.substring(0, maxLen);
-        let final = safe, i = 1;
-        while(used.has(final)) {
-            const suffix = `_${++i}`;
-            final = safe.substring(0, maxLen - suffix.length) + suffix;
+/* @module core/table-utils.js: table normalization */
+OTA.define('table-utils', [], () => {
+/* Table utilities — normalization, headers, cell types */
+const TableUtils = {
+    normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
+    lines(text='') { return this.normalizeText(text).split('\n'); },
+    isEmptyRow(row=[]) { return !row || row.every(v => String(v ?? '').trim() === ''); },
+    normalizeCellText(value='', options={}) {
+        const convertHtmlBreaks = options.convertHtmlBreaks !== false;
+        let text = String(value ?? '').replace(/\u00a0/g, ' ');
+        if(convertHtmlBreaks) {
+            text = text
+                .replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '\n')
+                .replace(/<\s*br\s*\/?\s*>/gi, '\n');
         }
+        return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    },
+    trimRow(row=[]) { return row.map(v => this.normalizeCellText(v).trim()); },
+    maxWidth(rows=[]) { return rows.reduce((m, r) => Math.max(m, (r || []).length), 0); },
+    generatedHeaders(width) { return Array.from({length: Math.max(0, width)}, (_, i) => `Column${i + 1}`); },
+    ensureUniqueHeaders(headers=[]) {
+        const seen = new Map();
+        return headers.map((h, idx) => {
+            let base = this.normalizeCellText(h).trim();
+            if(!base) base = `Column${idx + 1}`;
+            const key = base.toLowerCase();
+            const next = (seen.get(key) || 0) + 1;
+            seen.set(key, next);
+            return next === 1 ? base : `${base}_${next}`;
+        });
+    },
+    normalizeRows(rows=[], width=0, diagnostics=[], tableName='Table') {
+        const out = [];
+        rows.forEach((row, idx) => {
+            const r = this.trimRow(row || []);
+            if(this.isEmptyRow(r)) return;
+            if(width && r.length !== width) {
+                diagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', table:tableName, row:idx + 1, message:`${tableName} 第 ${idx + 1} 行列数为 ${r.length}，目标列数为 ${width}` });
+            }
+            while(r.length < width) r.push('');
+            out.push(r);
+        });
+        return out;
+    },
+    makeTableName(base, index, used) {
+        let name = (base || `Table ${index + 1}`).trim() || `Table ${index + 1}`;
+        if(['__proto__','prototype','constructor'].includes(name)) name = `Table ${index + 1}`;
+        let final = name, i = 2;
+        while(used.has(final)) final = `${name}_${i++}`;
         used.add(final);
         return final;
     },
-    normalizeTables(tables) {
-        const used = new Set();
-        return (tables || []).map((t, idx) => {
-            const name = this.sanitizeSheetName(t.name || `Sheet${idx+1}`, used);
-            const headers = Array.isArray(t.headers) ? t.headers : [];
-            const rows = (t.rows || []).map(r => Array.isArray(r) ? r : (r.data || r.d || []));
-            return { name, headers, rows };
-        });
+    cellType(v) {
+        const s = String(v ?? '').trim();
+        if(!s) return 'empty';
+        if(/^(true|false|yes|no|是|否)$/i.test(s)) return 'boolean';
+        if(/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(s)) return 'number';
+        if(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(s)) return 'date';
+        return 'string';
     },
-    buildSheetXml({headers=[], rows=[]}) {
-        const cell = (v) => {
-            if(v === null || v === undefined) v = '';
-            const trimmed = String(v).trim();
-            const numericLike = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed);
-            const hasLeadingZeros = /^-?0\d+/.test(trimmed) && !/^-?0\./.test(trimmed);
-            const significantDigits = trimmed
-                .replace(/^[+-]/, '')
-                .split(/[eE]/)[0]
-                .replace('.', '')
-                .replace(/^0+/, '').length;
-            const safeNumericText = numericLike && !hasLeadingZeros && significantDigits <= 15 && Number.isFinite(Number(trimmed));
-            const isNum = (typeof v === 'number' && Number.isFinite(v)) || safeNumericText;
-            if(isNum) return `<c t="n"><v>${trimmed}</v></c>`;
-            const text = this.escapeXml(String(v));
-            return `<c t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
-        };
-        const rowsXml = [];
-        let rowNo = 1;
-        if(headers.length) rowsXml.push(`<row r="${rowNo++}">${headers.map(cell).join('')}</row>`);
-        rows.forEach((r) => rowsXml.push(`<row r="${rowNo++}">${(r || []).map(cell).join('')}</row>`));
-        return `<?xml version="1.0" encoding="UTF-8"?>` +
-            `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-            `<sheetData>${rowsXml.join('')}</sheetData>` +
-            `</worksheet>`;
+    looksIdentifier(v) {
+        const s = String(v ?? '').trim();
+        if(!s) return false;
+        if(/^[-+]?\d+(?:\.\d+)?$/.test(s)) return false;
+        return /^[A-Za-z_\u4e00-\u9fa5][\w\s.()\-/\u4e00-\u9fa5]*$/.test(s);
     },
-    buildWorkbookXml(sheets) {
-        const sheetXml = sheets.map((s, i) => `<sheet name="${this.escapeXml(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('');
-        return `<?xml version="1.0" encoding="UTF-8"?>` +
-            `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
-            `<sheets>${sheetXml}</sheets></workbook>`;
-    },
-    buildWorkbookRels(count) {
-        const rels = Array.from({length: count}, (_, i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('');
-        return `<?xml version="1.0" encoding="UTF-8"?>` +
-            `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`;
-    },
-    buildContentTypes(count) {
-        const sheets = Array.from({length: count}, (_, i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
-        return `<?xml version="1.0" encoding="UTF-8"?>` +
-            `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
-            `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
-            `<Default Extension="xml" ContentType="application/xml"/>` +
-            `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
-            `${sheets}</Types>`;
-    },
-    buildRootRels() {
-        return `<?xml version="1.0" encoding="UTF-8"?>` +
-            `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
-            `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
-            `</Relationships>`;
-    },
-    makeZip(files) {
-        const encoder = new TextEncoder();
-        const toBytes = v => v instanceof Uint8Array ? v : encoder.encode(v);
-        const crcTable = (() => {
-            const t = new Uint32Array(256);
-            for(let n=0; n<256; n++) {
-                let c = n;
-                for(let k=0; k<8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
-                t[n] = c >>> 0;
-            }
-            return t;
-        })();
-        const crc32 = bytes => {
-            let c = 0xffffffff;
-            for(let i=0; i<bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-            return (c ^ 0xffffffff) >>> 0;
-        };
-        const dosDateTime = () => {
-            const d = new Date();
-            const time = (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
-            const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
-            return { time, date };
-        };
-        const { time, date } = dosDateTime();
-        const fileParts = [], centralParts = [];
-        let offset = 0;
-        files.forEach(f => {
-            const nameBytes = encoder.encode(f.name);
-            const data = toBytes(f.data);
-            const crc = crc32(data);
-            const size = data.length;
-            const local = new Uint8Array(30 + nameBytes.length);
-            const lv = new DataView(local.buffer);
-            lv.setUint32(0, 0x04034b50, true);
-            lv.setUint16(4, 20, true); // version needed
-            lv.setUint16(6, 0x0800, true); // UTF-8
-            lv.setUint16(8, 0, true); // store
-            lv.setUint16(10, time, true);
-            lv.setUint16(12, date, true);
-            lv.setUint32(14, crc, true);
-            lv.setUint32(18, size, true);
-            lv.setUint32(22, size, true);
-            lv.setUint16(26, nameBytes.length, true);
-            lv.setUint16(28, 0, true);
-            local.set(nameBytes, 30);
-            fileParts.push(local, data);
-
-            const central = new Uint8Array(46 + nameBytes.length);
-            const cv = new DataView(central.buffer);
-            cv.setUint32(0, 0x02014b50, true);
-            cv.setUint16(4, 20, true); // version made
-            cv.setUint16(6, 20, true); // version needed
-            cv.setUint16(8, 0x0800, true);
-            cv.setUint16(10, 0, true);
-            cv.setUint16(12, time, true);
-            cv.setUint16(14, date, true);
-            cv.setUint32(16, crc, true);
-            cv.setUint32(20, size, true);
-            cv.setUint32(24, size, true);
-            cv.setUint16(28, nameBytes.length, true);
-            cv.setUint16(30, 0, true); // extra
-            cv.setUint16(32, 0, true); // comment
-            cv.setUint16(34, 0, true); // disk start
-            cv.setUint16(36, 0, true); // internal attr
-            cv.setUint32(38, 0, true); // external attr
-            cv.setUint32(42, offset, true); // offset of local header
-            central.set(nameBytes, 46);
-            centralParts.push(central);
-            offset += local.length + size;
-        });
-        const centralSize = centralParts.reduce((s, p) => s + p.length, 0);
-        const end = new Uint8Array(22);
-        const ev = new DataView(end.buffer);
-        ev.setUint32(0, 0x06054b50, true);
-        ev.setUint16(4, 0, true); // disk number
-        ev.setUint16(6, 0, true); // start disk
-        ev.setUint16(8, files.length, true);
-        ev.setUint16(10, files.length, true);
-        ev.setUint32(12, centralSize, true);
-        ev.setUint32(16, offset, true);
-        ev.setUint16(20, 0, true); // comment length
-
-        const totalLen = fileParts.reduce((s, p) => s + p.length, 0) + centralSize + end.length;
-        const out = new Uint8Array(totalLen);
-        let pos = 0;
-        [...fileParts, ...centralParts, end].forEach(part => { out.set(part, pos); pos += part.length; });
-        return out;
-    },
-    toExcel(tables, prefix='export') {
-        if(!tables || !tables.length) return Toast.show('\u65e0\u6570\u636e\u53ef\u5bfc\u51fa', true);
-        try {
-            prefix = this.sanitizeFilePrefix(prefix);
-            const sheets = this.normalizeTables(tables);
-            const files = [
-                { name: '[Content_Types].xml', data: this.buildContentTypes(sheets.length) },
-                { name: '_rels/.rels', data: this.buildRootRels() },
-                { name: 'xl/workbook.xml', data: this.buildWorkbookXml(sheets) },
-                { name: 'xl/_rels/workbook.xml.rels', data: this.buildWorkbookRels(sheets.length) }
-            ];
-            sheets.forEach((s, i) => files.push({ name: `xl/worksheets/sheet${i+1}.xml`, data: this.buildSheetXml(s) }));
-            const zip = this.makeZip(files);
-            const blob = new Blob([zip], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-            this.download(`${prefix}_${this.getTimestamp()}.xlsx`, blob, blob.type);
-        } catch(e) {
-            console.error(e);
-            Toast.show('Excel \u5bfc\u51fa\u5931\u8d25', true);
-        }
-    },
-    toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
+    stripHtml(text='') {
+        // Pure regex-based HTML tag stripper — no DOM dependency.
+        const s = String(text || '');
+        // Remove script/style blocks entirely
+        const noBlocks = s.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+        // Remove remaining tags and decode common entities
+        return noBlocks
+            .replace(/<[^>]+>/g, '')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&nbsp;/g, ' ')
+            .trim();
+    }
 };
 
-    return { Exporter };
+    return { TableUtils };
 });
 
-/* @module 02-store.js: workspace state and persistence */
+/* @module state/store.js: workspace state and persistence */
 OTA.define('store', [], () => {
 /* Core */
 const APP_VERSION = '20.2.0';
@@ -1425,7 +1302,7 @@ const Store = {
         return doc;
     },
     removeDoc(id) {
-        if(this.state.docs.length<=1) return alert("至少保留一个页签");
+        if(this.state.docs.length<=1) return 'last_doc';
         const idx = this.state.docs.findIndex(d=>d.id===id);
         if(idx < 0) return false;
         this.state.docs.splice(idx,1);
@@ -1495,83 +1372,366 @@ const Store = {
     return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, Store };
 });
 
-/* @module 03-table-utils.js: table normalization */
-OTA.define('table-utils', [], () => {
-/* Import Engine */
-const TableUtils = {
-    normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
-    lines(text='') { return this.normalizeText(text).split('\n'); },
-    isEmptyRow(row=[]) { return !row || row.every(v => String(v ?? '').trim() === ''); },
-    normalizeCellText(value='', options={}) {
-        const convertHtmlBreaks = options.convertHtmlBreaks !== false;
-        let text = String(value ?? '').replace(/\u00a0/g, ' ');
-        if(convertHtmlBreaks) {
-            text = text
-                .replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '\n')
-                .replace(/<\s*br\s*\/?\s*>/gi, '\n');
+/* @module export/exporter.js: file and XLSX exporter */
+OTA.define('exporter', ["runtime"], ({Toast}) => {
+/* Exporter */
+const Exporter = {
+    escapeXml(str="") {
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+    getTimestamp() {
+        const now = new Date(); const pad = n => String(n).padStart(2,'0');
+        return `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    },
+    sanitizeFilePrefix(prefix='export') {
+        const safe = String(prefix || 'export')
+            .replace(/[\\/:*?"<>|]+/g, '_')
+            .replace(/\s+/g, '_')
+            .replace(/_+/g, '_')
+            .replace(/^_+|_+$/g, '')
+            .slice(0, 80);
+        return safe || 'export';
+    },
+    download(filename, content, type='text/plain') {
+        const blob = content instanceof Blob ? content : new Blob([content], {type});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+    },
+    sanitizeSheetName(name, used) {
+        const maxLen = 31;
+        let safe = (name || 'Sheet').replace(/[\\\/:?*\[\]]/g, '_').trim();
+        if(!safe) safe = 'Sheet';
+        safe = safe.substring(0, maxLen);
+        let final = safe, i = 1;
+        while(used.has(final)) {
+            const suffix = `_${++i}`;
+            final = safe.substring(0, maxLen - suffix.length) + suffix;
         }
-        return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    },
-    trimRow(row=[]) { return row.map(v => this.normalizeCellText(v).trim()); },
-    maxWidth(rows=[]) { return rows.reduce((m, r) => Math.max(m, (r || []).length), 0); },
-    generatedHeaders(width) { return Array.from({length: Math.max(0, width)}, (_, i) => `Column${i + 1}`); },
-    ensureUniqueHeaders(headers=[]) {
-        const seen = new Map();
-        return headers.map((h, idx) => {
-            let base = this.normalizeCellText(h).trim();
-            if(!base) base = `Column${idx + 1}`;
-            const key = base.toLowerCase();
-            const next = (seen.get(key) || 0) + 1;
-            seen.set(key, next);
-            return next === 1 ? base : `${base}_${next}`;
-        });
-    },
-    normalizeRows(rows=[], width=0, diagnostics=[], tableName='Table') {
-        const out = [];
-        rows.forEach((row, idx) => {
-            const r = this.trimRow(row || []);
-            if(this.isEmptyRow(r)) return;
-            if(width && r.length !== width) {
-                diagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', table:tableName, row:idx + 1, message:`${tableName} 第 ${idx + 1} 行列数为 ${r.length}，目标列数为 ${width}` });
-            }
-            while(r.length < width) r.push('');
-            out.push(r);
-        });
-        return out;
-    },
-    makeTableName(base, index, used) {
-        let name = (base || `Table ${index + 1}`).trim() || `Table ${index + 1}`;
-        if(['__proto__','prototype','constructor'].includes(name)) name = `Table ${index + 1}`;
-        let final = name, i = 2;
-        while(used.has(final)) final = `${name}_${i++}`;
         used.add(final);
         return final;
     },
-    cellType(v) {
-        const s = String(v ?? '').trim();
-        if(!s) return 'empty';
-        if(/^(true|false|yes|no|是|否)$/i.test(s)) return 'boolean';
-        if(/^-?\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(s)) return 'number';
-        if(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?$/.test(s)) return 'date';
-        return 'string';
+    normalizeTables(tables) {
+        const used = new Set();
+        return (tables || []).map((t, idx) => {
+            const name = this.sanitizeSheetName(t.name || `Sheet${idx+1}`, used);
+            const headers = Array.isArray(t.headers) ? t.headers : [];
+            const rows = (t.rows || []).map(r => Array.isArray(r) ? r : (r.data || r.d || []));
+            return { name, headers, rows };
+        });
     },
-    looksIdentifier(v) {
-        const s = String(v ?? '').trim();
-        if(!s) return false;
-        if(/^[-+]?\d+(?:\.\d+)?$/.test(s)) return false;
-        return /^[A-Za-z_\u4e00-\u9fa5][\w\s.()\-/\u4e00-\u9fa5]*$/.test(s);
+    buildSheetXml({headers=[], rows=[]}) {
+        const cell = (v) => {
+            if(v === null || v === undefined) v = '';
+            const trimmed = String(v).trim();
+            const numericLike = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed);
+            const hasLeadingZeros = /^-?0\d+/.test(trimmed) && !/^-?0\./.test(trimmed);
+            const significantDigits = trimmed
+                .replace(/^[+-]/, '')
+                .split(/[eE]/)[0]
+                .replace('.', '')
+                .replace(/^0+/, '').length;
+            const safeNumericText = numericLike && !hasLeadingZeros && significantDigits <= 15 && Number.isFinite(Number(trimmed));
+            const isNum = (typeof v === 'number' && Number.isFinite(v)) || safeNumericText;
+            if(isNum) return `<c t="n"><v>${trimmed}</v></c>`;
+            const text = this.escapeXml(String(v));
+            return `<c t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
+        };
+        const rowsXml = [];
+        let rowNo = 1;
+        if(headers.length) rowsXml.push(`<row r="${rowNo++}">${headers.map(cell).join('')}</row>`);
+        rows.forEach((r) => rowsXml.push(`<row r="${rowNo++}">${(r || []).map(cell).join('')}</row>`));
+        return `<?xml version="1.0" encoding="UTF-8"?>` +
+            `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+            `<sheetData>${rowsXml.join('')}</sheetData>` +
+            `</worksheet>`;
     },
-    stripHtml(text='') {
-        const div = document.createElement('div');
-        div.innerHTML = String(text || '');
-        return div.textContent || div.innerText || '';
+    buildWorkbookXml(sheets) {
+        const sheetXml = sheets.map((s, i) => `<sheet name="${this.escapeXml(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('');
+        return `<?xml version="1.0" encoding="UTF-8"?>` +
+            `<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">` +
+            `<sheets>${sheetXml}</sheets></workbook>`;
+    },
+    buildWorkbookRels(count) {
+        const rels = Array.from({length: count}, (_, i) => `<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('');
+        return `<?xml version="1.0" encoding="UTF-8"?>` +
+            `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels}</Relationships>`;
+    },
+    buildContentTypes(count) {
+        const sheets = Array.from({length: count}, (_, i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
+        return `<?xml version="1.0" encoding="UTF-8"?>` +
+            `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +
+            `<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>` +
+            `<Default Extension="xml" ContentType="application/xml"/>` +
+            `<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+            `${sheets}</Types>`;
+    },
+    buildRootRels() {
+        return `<?xml version="1.0" encoding="UTF-8"?>` +
+            `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+            `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>` +
+            `</Relationships>`;
+    },
+    makeZip(files) {
+        const encoder = new TextEncoder();
+        const toBytes = v => v instanceof Uint8Array ? v : encoder.encode(v);
+        const crcTable = (() => {
+            const t = new Uint32Array(256);
+            for(let n=0; n<256; n++) {
+                let c = n;
+                for(let k=0; k<8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+                t[n] = c >>> 0;
+            }
+            return t;
+        })();
+        const crc32 = bytes => {
+            let c = 0xffffffff;
+            for(let i=0; i<bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+            return (c ^ 0xffffffff) >>> 0;
+        };
+        const dosDateTime = () => {
+            const d = new Date();
+            const time = (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
+            const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+            return { time, date };
+        };
+        const { time, date } = dosDateTime();
+        const fileParts = [], centralParts = [];
+        let offset = 0;
+        files.forEach(f => {
+            const nameBytes = encoder.encode(f.name);
+            const data = toBytes(f.data);
+            const crc = crc32(data);
+            const size = data.length;
+            const local = new Uint8Array(30 + nameBytes.length);
+            const lv = new DataView(local.buffer);
+            lv.setUint32(0, 0x04034b50, true);
+            lv.setUint16(4, 20, true); // version needed
+            lv.setUint16(6, 0x0800, true); // UTF-8
+            lv.setUint16(8, 0, true); // store
+            lv.setUint16(10, time, true);
+            lv.setUint16(12, date, true);
+            lv.setUint32(14, crc, true);
+            lv.setUint32(18, size, true);
+            lv.setUint32(22, size, true);
+            lv.setUint16(26, nameBytes.length, true);
+            lv.setUint16(28, 0, true);
+            local.set(nameBytes, 30);
+            fileParts.push(local, data);
+
+            const central = new Uint8Array(46 + nameBytes.length);
+            const cv = new DataView(central.buffer);
+            cv.setUint32(0, 0x02014b50, true);
+            cv.setUint16(4, 20, true); // version made
+            cv.setUint16(6, 20, true); // version needed
+            cv.setUint16(8, 0x0800, true);
+            cv.setUint16(10, 0, true);
+            cv.setUint16(12, time, true);
+            cv.setUint16(14, date, true);
+            cv.setUint32(16, crc, true);
+            cv.setUint32(20, size, true);
+            cv.setUint32(24, size, true);
+            cv.setUint16(28, nameBytes.length, true);
+            cv.setUint16(30, 0, true); // extra
+            cv.setUint16(32, 0, true); // comment
+            cv.setUint16(34, 0, true); // disk start
+            cv.setUint16(36, 0, true); // internal attr
+            cv.setUint32(38, 0, true); // external attr
+            cv.setUint32(42, offset, true); // offset of local header
+            central.set(nameBytes, 46);
+            centralParts.push(central);
+            offset += local.length + size;
+        });
+        const centralSize = centralParts.reduce((s, p) => s + p.length, 0);
+        const end = new Uint8Array(22);
+        const ev = new DataView(end.buffer);
+        ev.setUint32(0, 0x06054b50, true);
+        ev.setUint16(4, 0, true); // disk number
+        ev.setUint16(6, 0, true); // start disk
+        ev.setUint16(8, files.length, true);
+        ev.setUint16(10, files.length, true);
+        ev.setUint32(12, centralSize, true);
+        ev.setUint32(16, offset, true);
+        ev.setUint16(20, 0, true); // comment length
+
+        const totalLen = fileParts.reduce((s, p) => s + p.length, 0) + centralSize + end.length;
+        const out = new Uint8Array(totalLen);
+        let pos = 0;
+        [...fileParts, ...centralParts, end].forEach(part => { out.set(part, pos); pos += part.length; });
+        return out;
+    },
+    toExcel(tables, prefix='export') {
+        if(!tables || !tables.length) return Toast.show('\u65e0\u6570\u636e\u53ef\u5bfc\u51fa', true);
+        try {
+            prefix = this.sanitizeFilePrefix(prefix);
+            const sheets = this.normalizeTables(tables);
+            const files = [
+                { name: '[Content_Types].xml', data: this.buildContentTypes(sheets.length) },
+                { name: '_rels/.rels', data: this.buildRootRels() },
+                { name: 'xl/workbook.xml', data: this.buildWorkbookXml(sheets) },
+                { name: 'xl/_rels/workbook.xml.rels', data: this.buildWorkbookRels(sheets.length) }
+            ];
+            sheets.forEach((s, i) => files.push({ name: `xl/worksheets/sheet${i+1}.xml`, data: this.buildSheetXml(s) }));
+            const zip = this.makeZip(files);
+            const blob = new Blob([zip], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            this.download(`${prefix}_${this.getTimestamp()}.xlsx`, blob, blob.type);
+        } catch(e) {
+            console.error(e);
+            Toast.show('Excel \u5bfc\u51fa\u5931\u8d25', true);
+        }
+    },
+    toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }
+};
+
+    return { Exporter };
+});
+
+/* @module export/clipboard.js: clipboard serialization */
+OTA.define('clipboard', ["store"], ({Store}) => {
+/* Clipboard Formatting */
+const ClipboardFormatter = {
+    escapeHtml(str='') {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    },
+    normalizeCell(value='') {
+        return String(value ?? '')
+            .replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '\n')
+            .replace(/<\s*br\s*\/?\s*>/gi, '\n')
+            .replace(/\r\n/g, '\n')
+            .replace(/\r/g, '\n');
+    },
+    escapeLuaString(value='') {
+        return String(value ?? '')
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+            .replace(/\r/g, '\\r')
+            .replace(/\n/g, '\\n')
+            .replace(/\t/g, '\\t');
+    },
+    formatLuaValue(value='') {
+        const raw = String(value ?? '');
+        const text = raw.trim();
+        if(raw === '') return '""';
+        if(/^0[xX][0-9a-fA-F]+$/.test(text)) {
+            return /^0+$/.test(text.slice(2)) ? '0' : text;
+        }
+        if(/^-?(?:0|[1-9]\d*)$/.test(text)) return text;
+        if(/^-?(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)$/.test(text)) return text;
+        if(text === 'true' || text === 'false') return text;
+        return `"${this.escapeLuaString(raw)}"`;
+    },
+    toLua(matrix, layout='inline') {
+        if(!matrix || matrix.length < 2) return '{}';
+        const headers = Array.isArray(matrix[0]) ? matrix[0] : [];
+        const rows = matrix.slice(1);
+        const fieldExpressions = row => headers.map((header, index) =>
+            `["${this.escapeLuaString(header)}"] = ${this.formatLuaValue(row && row[index] !== undefined ? row[index] : '')}`
+        );
+        if(layout === 'expanded') {
+            const lines = ['{'];
+            rows.forEach((row, rowIndex) => {
+                lines.push(`    [${rowIndex + 1}] = {`);
+                fieldExpressions(row).forEach(expression => lines.push(`        ${expression},`));
+                lines.push('    },');
+            });
+            lines.push('}');
+            return lines.join('\n');
+        }
+        const expressions = rows.map(fieldExpressions);
+        const widths = headers.map((_, index) => Math.max(0, ...expressions.map(row => String(row[index] || '').length)));
+        const lines = ['{'];
+        expressions.forEach((row, rowIndex) => {
+            const fields = row.map((expression, index) => {
+                if(index === row.length - 1) return expression;
+                const gap = ' '.repeat(Math.max(1, widths[index] - expression.length + 1));
+                return `${expression},${gap}`;
+            });
+            lines.push(`    [${rowIndex + 1}] = { ${fields.join('')} },`);
+        });
+        lines.push('}');
+        return lines.join('\n');
+    },
+    protectSpreadsheetFormula(value='') {
+        const text = this.normalizeCell(value);
+        if(!Store.state || Store.state.spreadsheetSafe === false) return text;
+        const dangerous = /^[=+@]/.test(text) || (/^-/.test(text) && !/^-\d+(?:\.\d+)?$/.test(text));
+        return dangerous ? `'${text}` : text;
+    },
+    toDelimited(matrix, delimiter='\t') {
+        const quoteFor = (value) => {
+            const text = this.protectSpreadsheetFormula(value);
+            const mustQuote = text.includes(delimiter) || /["\n\r]/.test(text);
+            const escaped = text.replace(/"/g, '""');
+            return mustQuote ? `"${escaped}"` : escaped;
+        };
+        return (matrix || []).map(row => (row || []).map(quoteFor).join(delimiter)).join('\n');
+    },
+    toMarkdown(matrix) {
+        if(!matrix || !matrix.length) return '';
+        const esc = value => this.normalizeCell(value).replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+        const widths = this.getWidths(matrix.map(row => row.map(esc)));
+        const line = row => `| ${row.map((cell, i) => esc(cell).padEnd(widths[i], ' ')).join(' | ')} |`;
+        const sep = `| ${widths.map(w => '-'.repeat(Math.max(3, w))).join(' | ')} |`;
+        const rows = [line(matrix[0]), sep];
+        matrix.slice(1).forEach(row => rows.push(line(row)));
+        return rows.join('\n');
+    },
+    toAscii(matrix) {
+        if(!matrix || !matrix.length) return '';
+        const clean = value => this.normalizeCell(value).replace(/\n/g, ' ');
+        const normalized = matrix.map(row => row.map(clean));
+        const widths = this.getWidths(normalized);
+        const border = '+' + widths.map(w => '-'.repeat(w + 2)).join('+') + '+';
+        const line = row => '| ' + row.map((cell, i) => String(cell).padEnd(widths[i], ' ')).join(' | ') + ' |';
+        const out = [border, line(normalized[0]), border];
+        normalized.slice(1).forEach(row => out.push(line(row)));
+        out.push(border);
+        return out.join('\n');
+    },
+    getWidths(matrix) {
+        const width = Math.max(0, ...(matrix || []).map(row => row.length));
+        return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
+    },
+    toHtml(matrix, format='default') {
+        if(format === 'lua-inline' || format === 'lua-expanded') {
+            const layout = format === 'lua-expanded' ? 'expanded' : 'inline';
+            return `<pre><code>${this.escapeHtml(this.toLua(matrix, layout))}</code></pre>`;
+        }
+        if(!matrix || !matrix.length) return '<table></table>';
+        const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
+        const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
+        return `<table border="1"><thead>${rowHtml(matrix[0], 'th')}</thead><tbody>${matrix.slice(1).map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
+    },
+    toText(matrix, format='default') {
+        switch(format) {
+            case 'csv': return this.toDelimited(matrix, ',');
+            case 'markdown': return this.toMarkdown(matrix);
+            case 'ascii': return this.toAscii(matrix);
+            case 'lua-inline': return this.toLua(matrix, 'inline');
+            case 'lua-expanded': return this.toLua(matrix, 'expanded');
+            case 'default':
+            default: return this.toDelimited(matrix, '\t');
+        }
+    },
+    label(format='default') {
+        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
     }
 };
 
-    return { TableUtils };
+    return { ClipboardFormatter };
 });
 
-/* @module 04-header-resolver.js: header inference */
+/* @module parsing/header-resolver.js: header inference */
 OTA.define('header-resolver', ["table-utils"], ({TableUtils}) => {
 const HeaderResolver = {
     infer(rows, options={}) {
@@ -1650,7 +1810,7 @@ const HeaderResolver = {
     return { HeaderResolver };
 });
 
-/* @module 04-text-layout.js: position-aware text layout inference */
+/* @module parsing/text-layout.js: position-aware text layout inference */
 OTA.define('text-layout', [], () => {
 /*
  * Position-aware layout inference for delimiter-free text.
@@ -1860,7 +2020,7 @@ function inferAligned(headerLine='', dataLines=[], options={}) {
     return { TextLayout:{ displayWidth, tokenize, starts, clusterStarts, slice, rangesFromStarts, rowByRanges, inferAligned } };
 });
 
-/* @module 05-format-sniffer.js: statistical fingerprint format detection */
+/* @module parsing/format-sniffer.js: statistical fingerprint format detection */
 OTA.define('format-sniffer', ["table-utils"], ({TableUtils}) => {
 /* FormatSniffer — 基于统计指纹的单次扫描格式检测
  *
@@ -2497,13 +2657,12 @@ const FormatSniffer = {
     return { FormatSniffer };
 });
 
-/* @module 05-delimited.js: quote-aware delimited parsing */
+/* @module parsing/delimited-utils.js: quote-aware delimited parsing */
 OTA.define('delimited', ["table-utils"], ({TableUtils}) => {
 const Delimited = {
-    lastDiagnostics: [],
     parse(text='', delimiter=',') {
         const input = TableUtils.normalizeText(text);
-        this.lastDiagnostics = [];
+        const diagnostics = [];
         const rows = [];
         let row = [], cell = '', inQuotes = false;
         for(let i=0; i<input.length; i++) {
@@ -2520,16 +2679,240 @@ const Delimited = {
             if(ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
             cell += ch;
         }
-        if(inQuotes) this.lastDiagnostics.push({ level:'warning', code:'UNCLOSED_QUOTE', message:'检测到未闭合的引号字段；已按当前内容继续解析' });
+        if(inQuotes) diagnostics.push({ level:'warning', code:'UNCLOSED_QUOTE', message:'检测到未闭合的引号字段；已按当前内容继续解析' });
         row.push(cell); rows.push(row);
-        return rows.filter(r => !TableUtils.isEmptyRow(r));
+        const filtered = rows.filter(r => !TableUtils.isEmptyRow(r));
+        return { rows: filtered, diagnostics };
     }
 };
 
     return { Delimited };
 });
 
-/* @module 06-html-parser.js: HTML clipboard parser */
+/* @module parsing/parser-helpers.js: shared parser helpers */
+OTA.define('parser-helpers', ["table-utils","header-resolver","text-layout"], ({TableUtils}, {HeaderResolver}, {TextLayout}) => {
+/* Shared parser helpers */
+
+function splitPipeCells(line='') {
+    const cells = [];
+    let cell = '', escaped = false;
+    for(const ch of String(line)) {
+        if(escaped) { cell += ch; escaped = false; continue; }
+        if(ch === '\\') { escaped = true; continue; }
+        if(ch === '|') { cells.push(cell.trim()); cell = ''; continue; }
+        cell += ch;
+    }
+    if(escaped) cell += '\\';
+    cells.push(cell.trim());
+    return cells;
+}
+
+function splitPipeRows(lines) {
+    return lines.map(l => {
+        let s = l.trim();
+        if(s.startsWith('|')) s = s.slice(1);
+        if(s.endsWith('|')) s = s.slice(0, -1);
+        return splitPipeCells(s);
+    }).filter(r => !TableUtils.isEmptyRow(r));
+}
+
+function sliceByDisplayColumns(line='', start=0, end=Infinity) {
+    return TextLayout.slice(line, start, end);
+}
+
+function isAlignedSeparator(line='') {
+    const value = String(line).trim();
+    return value.length >= 3 && /^[\s+-]+$/.test(value) && /-{3,}/.test(value);
+}
+
+function isAlignedColumnLine(line='') {
+    const words = TextLayout.tokenize(line);
+    return words.length >= 2 && words.slice(1).every(word => word.gap >= 2);
+}
+
+function alignedBlocks(source) {
+    const clean = TableUtils.lines(source.text || '').map(line => isAlignedSeparator(line) ? '' : line);
+    const blocks = [];
+    let current = [];
+    for(const line of clean) {
+        if(!line.trim()) {
+            if(current.length) { blocks.push(current); current = []; }
+        } else current.push(line);
+    }
+    if(current.length) blocks.push(current);
+    return blocks;
+}
+
+function inspectAlignedHeader(headerLine='', dataLines=[]) {
+    const layout = TextLayout.inferAligned(headerLine, dataLines);
+    if(layout.starts.length < 2 || !layout.rows.length || layout.headerCoverage < 1) return null;
+    const analysis = HeaderResolver.analyze([layout.headers, ...layout.rows]);
+    const structural = layout.score >= 0.72 && layout.dataSupport >= 0.7;
+    const headerLike = isAlignedColumnLine(headerLine);
+    const semantic = analysis.score >= 0.65;
+    if(!headerLike && !semantic) return null;
+    return {
+        layout,
+        analysis,
+        score:semantic ? Math.min(0.92, 0.82 + layout.score * 0.08) : (structural ? 0.80 : 0.76)
+    };
+}
+
+function isStrongAlignedHeader(headerLine='', dataLines=[]) {
+    return Boolean(inspectAlignedHeader(headerLine, dataLines));
+}
+
+/* CLI helpers */
+function isCliSeparator(line='', marker='=') {
+    const compact = String(line || '').replace(/\s/g, '');
+    if(compact.length < 10) return false;
+    const count = compact.split(marker).length - 1;
+    if(count < 10 || count / compact.length < 0.6) return false;
+    return marker === '=' ? /^[=|]+$/.test(compact) : /^[-|]+$/.test(compact);
+}
+
+function isCliBlockSeparator(line='') {
+    return isCliSeparator(line, '=');
+}
+
+function isCliDataSeparator(line='') {
+    return isCliSeparator(line, '-');
+}
+
+function collapseCliBlockSeparators(lines=[]) {
+    const indexes = [];
+    lines.forEach((line, index) => {
+        if(!isCliBlockSeparator(line)) return;
+        const previous = indexes[indexes.length - 1];
+        if(previous !== undefined && lines.slice(previous + 1, index).every(line => !line.trim())) return;
+        indexes.push(index);
+    });
+    return indexes;
+}
+
+function cleanCliTitle(line='') {
+    const title = String(line || '').trim().replace(/\s*:\s*$/, '');
+    return title || null;
+}
+
+function cliTitleBeforeMarker(lines, markerIndex, markerIndexes, ordinal, previousTitle, previousWidth) {
+    const start = ordinal > 0 ? markerIndexes[ordinal - 1] + 1 : 0;
+    const before = lines.slice(start, markerIndex);
+    if(ordinal === 0) {
+        for(let i = before.length - 1; i >= 0; i--) {
+            if(before[i].trim() && !isCliBlockSeparator(before[i]) && !isCliDataSeparator(before[i])) {
+                return cleanCliTitle(before[i]);
+            }
+        }
+        return null;
+    }
+    let lastBlank = -1;
+    before.forEach((line, index) => { if(!line.trim()) lastBlank = index; });
+    if(lastBlank < 0) {
+        for(let i = before.length - 1; i >= 0; i--) {
+            if(!before[i].trim() || isCliBlockSeparator(before[i]) || isCliDataSeparator(before[i])) continue;
+            if(previousWidth && cliWhitespaceParts(before[i]).length === previousWidth) return previousTitle || null;
+            return cleanCliTitle(before[i]);
+        }
+        return previousTitle || null;
+    }
+    for(let i = before.length - 1; i > lastBlank; i--) {
+        if(before[i].trim() && !isCliBlockSeparator(before[i]) && !isCliDataSeparator(before[i])) {
+            return cleanCliTitle(before[i]);
+        }
+    }
+    return previousTitle || null;
+}
+
+function cliBlockParts(lines, markerIndex, nextMarkerIndex) {
+    const chunk = lines.slice(markerIndex + 1, nextMarkerIndex === undefined ? lines.length : nextMarkerIndex);
+    const separatorIndex = chunk.findIndex(isCliDataSeparator);
+    if(separatorIndex < 0) return { headerLine:null, extraHeaderLines:[], dataLines:[], hasSeparator:false };
+    const headerLines = chunk.slice(0, separatorIndex).filter(line =>
+        line.trim() && !isCliBlockSeparator(line) && !isCliDataSeparator(line)
+    );
+    if(!headerLines.length) return { headerLine:null, extraHeaderLines:[], dataLines:[], hasSeparator:true };
+    const rawDataLines = [...headerLines.slice(1), ...chunk.slice(separatorIndex + 1)];
+    const dataLines = [];
+    for(const line of rawDataLines) {
+        if(!line.trim()) break;
+        if(isCliBlockSeparator(line) || isCliDataSeparator(line)) continue;
+        dataLines.push(line);
+    }
+    return { headerLine:headerLines[0], extraHeaderLines:headerLines.slice(1), dataLines, hasSeparator:true };
+}
+
+function cliDisplayTokens(line='') {
+    return TextLayout.tokenize(line);
+}
+
+function cliDisplayTokenStarts(line='') {
+    return cliDisplayTokens(line).map(token => token.start);
+}
+
+function cliDisplayStartSupport(start, dataLines=[]) {
+    return dataLines.reduce((count, line) => cliDisplayTokenStarts(line).includes(start) ? count + 1 : count, 0);
+}
+
+function cliDisplayRanges(headerLine='', dataLines=[]) {
+    const tokens = cliDisplayTokens(headerLine);
+    const ranges = [];
+    const supportThreshold = Math.max(1, Math.ceil(dataLines.length * 0.6));
+    tokens.forEach((token, index) => {
+        const previous = tokens[index - 1];
+        const gap = previous ? token.start - previous.end : Infinity;
+        const alignedDataStart = dataLines.length > 0 && cliDisplayStartSupport(token.start, dataLines) >= supportThreshold;
+        if(!previous || gap >= 2 || alignedDataStart) {
+            ranges.push({ s:token.start });
+        }
+    });
+    if(ranges.length && ranges[0].s > 0) ranges.unshift({ s:0, generated:true });
+    for(let i = 0; i < ranges.length; i++) ranges[i].e = i + 1 < ranges.length ? ranges[i + 1].s : Infinity;
+    return ranges;
+}
+
+function cliWhitespaceParts(line='') {
+    return String(line).trim().split(/\s{2,}/).map(value => value.trim()).filter((value, index, values) => values.length === 1 || value !== '' || index < values.length - 1);
+}
+
+function inspectCliMultiBlock(source) {
+    const lines = TableUtils.lines(source.text || '');
+    const markerIndexes = collapseCliBlockSeparators(lines);
+    let validBlocks = 0;
+    let consistent = true;
+    for(let i = 0; i < markerIndexes.length; i++) {
+        const parts = cliBlockParts(lines, markerIndexes[i], markerIndexes[i + 1]);
+        if(!parts.headerLine || !parts.dataLines.length) continue;
+        const ranges = cliDisplayRanges(parts.headerLine, parts.dataLines);
+        const width = ranges.length;
+        if(!width) continue;
+        validBlocks++;
+        parts.dataLines.forEach(line => {
+            const fallbackWidth = cliWhitespaceParts(line).length;
+            const positioned = ranges.every(range => cliDisplayTokenStarts(line).includes(range.s));
+            if(fallbackWidth >= width ? fallbackWidth !== width : !positioned) consistent = false;
+        });
+    }
+    if(!validBlocks) return { markerIndexes, validBlocks, score:0, consistent:false };
+    let score = 0.75;
+    if(markerIndexes.length > 1) score += 0.10;
+    if(consistent) score += 0.05;
+    return { markerIndexes, validBlocks, score:Math.min(0.95, score), consistent };
+}
+
+return {
+    splitPipeCells, splitPipeRows, sliceByDisplayColumns,
+    isAlignedSeparator, isAlignedColumnLine, alignedBlocks,
+    inspectAlignedHeader, isStrongAlignedHeader,
+    isCliSeparator, isCliBlockSeparator, isCliDataSeparator,
+    collapseCliBlockSeparators, cleanCliTitle, cliTitleBeforeMarker,
+    cliBlockParts, cliDisplayTokens, cliDisplayTokenStarts,
+    cliDisplayStartSupport, cliDisplayRanges, cliWhitespaceParts,
+    inspectCliMultiBlock
+};
+});
+
+/* @module parsing/parsers/html-parser.js: HTML clipboard parser */
 OTA.define('html-parser', ["table-utils","header-resolver"], ({TableUtils}, {HeaderResolver}) => {
 const HtmlTableParser = {
     id:'html-table', label:'HTML 网页表格',
@@ -2605,7 +2988,7 @@ const HtmlTableParser = {
     return { HtmlTableParser };
 });
 
-/* @module 07-delimited-parsers.js: CSV, TSV, and parser factories */
+/* @module parsing/parsers/delimited-parsers.js: CSV, TSV, and parser factories */
 OTA.define('delimited-parsers', ["table-utils","header-resolver","delimited"], ({TableUtils}, {HeaderResolver}, {Delimited}) => {
 function buildSingleTableResult(rows, name, sourceType, options={}, meta={}, forcedHeader) {
     const resolved = HeaderResolver.infer(rows, { ...options, hasHeader: forcedHeader === undefined ? options.hasHeader : forcedHeader, tableName:name });
@@ -2619,10 +3002,10 @@ function createDelimitedParser({ id, label, delimiter, tableName }) {
     return {
         id, label, delimiter,
         parse(source, options={}) {
-            const matrix = Delimited.parse(source.text || '', delimiter);
+            const { rows: matrix, diagnostics: delimDiag } = Delimited.parse(source.text || '', delimiter);
             const result = buildSingleTableResult(matrix, tableName, id, options, { delimiter });
-            if(Delimited.lastDiagnostics.length) {
-                result.diagnostics.push(...Delimited.lastDiagnostics);
+            if(delimDiag.length) {
+                result.diagnostics.push(...delimDiag);
             }
             return result;
         }
@@ -2644,7 +3027,7 @@ const ExcelPasteParser = createDelimitedParser({
     return { buildSingleTableResult, CsvParser, SemicolonCsvParser, ExcelPasteParser };
 });
 
-/* @module 08-data-block-parser.js: data-block structured text parser */
+/* @module parsing/parsers/data-block-parser.js: data-block structured text parser */
 OTA.define('data-block-parser', ["table-utils"], ({TableUtils}) => {
 const IDENTIFIER_START = /[A-Za-z0-9_]/;
 const IDENTIFIER_PART = /[A-Za-z0-9_$]/;
@@ -2980,8 +3363,9 @@ const DataBlockParser = {
     return { DataBlockParser };
 });
 
-/* @module 08-text-parsers.js: pipe, ASCII, fixed-width, aligned, plain, and CLI parsers */
-OTA.define('text-parsers', ["table-utils","header-resolver","text-layout","delimited","delimited-parsers"], ({TableUtils}, {HeaderResolver}, {TextLayout}, {Delimited}, {buildSingleTableResult}) => {
+/* @module parsing/parsers/pipe-table-parser.js: pipe/Markdown table parser */
+OTA.define('pipe-table-parser', ["table-utils","parser-helpers","delimited-parsers"], ({TableUtils}, {splitPipeCells}, {buildSingleTableResult}) => {
+/* Pipe/Markdown table parser */
 const PipeTableParser = {
     id:'pipe-table', label:'竖线/网页表格文本', delimiter:'|',
     parse(source, options={}) {
@@ -2998,30 +3382,12 @@ const PipeTableParser = {
         return buildSingleTableResult(rows, 'Pipe Table 1', this.id, options, { delimiter:'|' }, hasMdSep || options.hasHeader);
     }
 };
+return PipeTableParser;
+});
 
-function splitPipeCells(line='') {
-    const cells = [];
-    let cell = '', escaped = false;
-    for(const ch of String(line)) {
-        if(escaped) { cell += ch; escaped = false; continue; }
-        if(ch === '\\') { escaped = true; continue; }
-        if(ch === '|') { cells.push(cell.trim()); cell = ''; continue; }
-        cell += ch;
-    }
-    if(escaped) cell += '\\';
-    cells.push(cell.trim());
-    return cells;
-}
-
-function splitPipeRows(lines) {
-    return lines.map(l => {
-        let s = l.trim();
-        if(s.startsWith('|')) s = s.slice(1);
-        if(s.endsWith('|')) s = s.slice(0, -1);
-        return splitPipeCells(s);
-    }).filter(r => !TableUtils.isEmptyRow(r));
-}
-
+/* @module parsing/parsers/ascii-table-parser.js: ASCII/terminal table parser */
+OTA.define('ascii-table-parser', ["table-utils","parser-helpers","delimited-parsers"], ({TableUtils}, {splitPipeRows}, {buildSingleTableResult}) => {
+/* ASCII/terminal table parser */
 const AsciiTableParser = {
     id:'ascii-table', label:'ASCII/终端表格',
     parse(source, options={}) {
@@ -3032,7 +3398,12 @@ const AsciiTableParser = {
         return buildSingleTableResult(splitPipeRows(lines), 'ASCII Table 1', this.id, options);
     }
 };
+return AsciiTableParser;
+});
 
+/* @module parsing/parsers/fixed-width-parser.js: fixed-width table parser */
+OTA.define('fixed-width-parser', ["table-utils","delimited-parsers"], ({TableUtils}, {buildSingleTableResult}) => {
+/* Fixed-width / multi-space table parser */
 const FixedWidthParser = {
     id:'fixed-width', label:'固定宽度/多空格表格',
     parse(source, options={}) {
@@ -3040,149 +3411,17 @@ const FixedWidthParser = {
         return buildSingleTableResult(rows, 'Fixed Width Table 1', this.id, options);
     }
 };
+return FixedWidthParser;
+});
 
-function isCliSeparator(line='', marker='=') {
-    const compact = String(line || '').replace(/\s/g, '');
-    if(compact.length < 10) return false;
-    const count = compact.split(marker).length - 1;
-    if(count < 10 || count / compact.length < 0.6) return false;
-    return marker === '=' ? /^[=|]+$/.test(compact) : /^[-|]+$/.test(compact);
-}
-
-function isCliBlockSeparator(line='') {
-    return isCliSeparator(line, '=');
-}
-
-function isCliDataSeparator(line='') {
-    return isCliSeparator(line, '-');
-}
-
-function collapseCliBlockSeparators(lines=[]) {
-    const indexes = [];
-    lines.forEach((line, index) => {
-        if(!isCliBlockSeparator(line)) return;
-        const previous = indexes[indexes.length - 1];
-        if(previous !== undefined && lines.slice(previous + 1, index).every(line => !line.trim())) return;
-        indexes.push(index);
-    });
-    return indexes;
-}
-
-function cleanCliTitle(line='') {
-    const title = String(line || '').trim().replace(/\s*:\s*$/, '');
-    return title || null;
-}
-
-function cliTitleBeforeMarker(lines, markerIndex, markerIndexes, ordinal, previousTitle, previousWidth) {
-    const start = ordinal > 0 ? markerIndexes[ordinal - 1] + 1 : 0;
-    const before = lines.slice(start, markerIndex);
-    if(ordinal === 0) {
-        for(let i = before.length - 1; i >= 0; i--) {
-            if(before[i].trim() && !isCliBlockSeparator(before[i]) && !isCliDataSeparator(before[i])) {
-                return cleanCliTitle(before[i]);
-            }
-        }
-        return null;
-    }
-    let lastBlank = -1;
-    before.forEach((line, index) => { if(!line.trim()) lastBlank = index; });
-    if(lastBlank < 0) {
-        for(let i = before.length - 1; i >= 0; i--) {
-            if(!before[i].trim() || isCliBlockSeparator(before[i]) || isCliDataSeparator(before[i])) continue;
-            if(previousWidth && cliWhitespaceParts(before[i]).length === previousWidth) return previousTitle || null;
-            return cleanCliTitle(before[i]);
-        }
-        return previousTitle || null;
-    }
-    for(let i = before.length - 1; i > lastBlank; i--) {
-        if(before[i].trim() && !isCliBlockSeparator(before[i]) && !isCliDataSeparator(before[i])) {
-            return cleanCliTitle(before[i]);
-        }
-    }
-    return previousTitle || null;
-}
-
-function cliBlockParts(lines, markerIndex, nextMarkerIndex) {
-    const chunk = lines.slice(markerIndex + 1, nextMarkerIndex === undefined ? lines.length : nextMarkerIndex);
-    const separatorIndex = chunk.findIndex(isCliDataSeparator);
-    if(separatorIndex < 0) return { headerLine:null, extraHeaderLines:[], dataLines:[], hasSeparator:false };
-    const headerLines = chunk.slice(0, separatorIndex).filter(line =>
-        line.trim() && !isCliBlockSeparator(line) && !isCliDataSeparator(line)
-    );
-    if(!headerLines.length) return { headerLine:null, extraHeaderLines:[], dataLines:[], hasSeparator:true };
-    const rawDataLines = [...headerLines.slice(1), ...chunk.slice(separatorIndex + 1)];
-    const dataLines = [];
-    for(const line of rawDataLines) {
-        if(!line.trim()) break;
-        if(isCliBlockSeparator(line) || isCliDataSeparator(line)) continue;
-        dataLines.push(line);
-    }
-    return { headerLine:headerLines[0], extraHeaderLines:headerLines.slice(1), dataLines, hasSeparator:true };
-}
-
-function cliDisplayTokens(line='') {
-    return TextLayout.tokenize(line);
-}
-
-function cliDisplayTokenStarts(line='') {
-    return cliDisplayTokens(line).map(token => token.start);
-}
-
-function cliDisplayStartSupport(start, dataLines=[]) {
-    return dataLines.reduce((count, line) => cliDisplayTokenStarts(line).includes(start) ? count + 1 : count, 0);
-}
-
-function cliDisplayRanges(headerLine='', dataLines=[]) {
-    const tokens = cliDisplayTokens(headerLine);
-    const ranges = [];
-    const supportThreshold = Math.max(1, Math.ceil(dataLines.length * 0.6));
-    tokens.forEach((token, index) => {
-        const previous = tokens[index - 1];
-        const gap = previous ? token.start - previous.end : Infinity;
-        const alignedDataStart = dataLines.length > 0 && cliDisplayStartSupport(token.start, dataLines) >= supportThreshold;
-        if(!previous || gap >= 2 || alignedDataStart) {
-            ranges.push({ s:token.start });
-        }
-    });
-    if(ranges.length && ranges[0].s > 0) ranges.unshift({ s:0, generated:true });
-    for(let i = 0; i < ranges.length; i++) ranges[i].e = i + 1 < ranges.length ? ranges[i + 1].s : Infinity;
-    return ranges;
-}
-
-function cliWhitespaceParts(line='') {
-    return String(line).trim().split(/\s{2,}/).map(value => value.trim()).filter((value, index, values) => values.length === 1 || value !== '' || index < values.length - 1);
-}
-
-function inspectCliMultiBlock(source) {
-    const lines = TableUtils.lines(source.text || '');
-    const markerIndexes = collapseCliBlockSeparators(lines);
-    let validBlocks = 0;
-    let consistent = true;
-    for(let i = 0; i < markerIndexes.length; i++) {
-        const parts = cliBlockParts(lines, markerIndexes[i], markerIndexes[i + 1]);
-        if(!parts.headerLine || !parts.dataLines.length) continue;
-        const ranges = cliDisplayRanges(parts.headerLine, parts.dataLines);
-        const width = ranges.length;
-        if(!width) continue;
-        validBlocks++;
-        parts.dataLines.forEach(line => {
-            const fallbackWidth = cliWhitespaceParts(line).length;
-            const positioned = ranges.every(range => cliDisplayTokenStarts(line).includes(range.s));
-            if(fallbackWidth >= width ? fallbackWidth !== width : !positioned) consistent = false;
-        });
-    }
-    if(!validBlocks) return { markerIndexes, validBlocks, score:0, consistent:false };
-    let score = 0.75;
-    if(markerIndexes.length > 1) score += 0.10;
-    if(consistent) score += 0.05;
-    return { markerIndexes, validBlocks, score:Math.min(0.95, score), consistent };
-}
-
+/* @module parsing/parsers/cli-multi-block-parser.js: CLI multi-block parser */
+OTA.define('cli-multi-block-parser', ["table-utils","header-resolver","text-layout","parser-helpers"], ({TableUtils}, {HeaderResolver}, {TextLayout}, H) => {
+/* CLI multi-block fixed-width table parser */
 const CliMultiBlockParser = {
     id:'cli-multi-block', label:'CLI 多块定宽表',
     parse(source, options={}) {
         const lines = TableUtils.lines(source.text || '');
-        const inspected = inspectCliMultiBlock(source);
+        const inspected = H.inspectCliMultiBlock(source);
         const markerIndexes = inspected.markerIndexes;
         const tables = [];
         const diagnostics = [];
@@ -3194,9 +3433,9 @@ const CliMultiBlockParser = {
 
         for(let i = 0; i < markerIndexes.length; i++) {
             const markerIndex = markerIndexes[i];
-            const title = cliTitleBeforeMarker(lines, markerIndex, markerIndexes, i, previousTitle, previousWidth);
+            const title = H.cliTitleBeforeMarker(lines, markerIndex, markerIndexes, i, previousTitle, previousWidth);
             if(title) previousTitle = title;
-            const parts = cliBlockParts(lines, markerIndex, markerIndexes[i + 1]);
+            const parts = H.cliBlockParts(lines, markerIndex, markerIndexes[i + 1]);
             if(!parts.hasSeparator) {
                 addDiagnostic({ code:'MISSING_SEPARATOR', block:i + 1, message:`CLI 块 ${i + 1} 缺少 ---- 表头/数据分隔线` });
                 continue;
@@ -3209,22 +3448,22 @@ const CliMultiBlockParser = {
                 addDiagnostic({ code:'EMPTY_TABLE_BLOCK', block:i + 1, message:`CLI 块 ${i + 1} 的 ---- 分隔线后没有数据行` });
                 continue;
             }
-            const ranges = cliDisplayRanges(parts.headerLine, parts.dataLines);
+            const ranges = H.cliDisplayRanges(parts.headerLine, parts.dataLines);
             if(!ranges.length) {
                 addDiagnostic({ code:'MISSING_HEADER', block:i + 1, message:`CLI 块 ${i + 1} 缺少有效表头列` });
                 continue;
             }
             previousWidth = ranges.length;
-            const rawHeaders = ranges.map(range => sliceByDisplayColumns(parts.headerLine, range.s, range.e));
+            const rawHeaders = ranges.map(range => H.sliceByDisplayColumns(parts.headerLine, range.s, range.e));
             const blockDiagnostics = [];
             if(ranges[0].generated) {
                 blockDiagnostics.push({ level:'warning', code:'MISSING_FIRST_HEADER', row:1, message:'CLI 表格首列无表头，已生成 Column1' });
             }
             const rows = [];
             parts.dataLines.forEach((line, rowIndex) => {
-                const sliced = ranges.map(range => sliceByDisplayColumns(line, range.s, range.e));
-                const fallback = cliWhitespaceParts(line);
-                const positioned = ranges.every(range => cliDisplayTokenStarts(line).includes(range.s));
+                const sliced = ranges.map(range => H.sliceByDisplayColumns(line, range.s, range.e));
+                const fallback = H.cliWhitespaceParts(line);
+                const positioned = ranges.every(range => H.cliDisplayTokenStarts(line).includes(range.s));
                 const widthMismatch = fallback.length > ranges.length || (fallback.length < ranges.length && !positioned);
                 if(widthMismatch) {
                     blockDiagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', row:rowIndex + 1, message:`CLI 数据行 ${rowIndex + 1} 列数为 ${fallback.length}，目标列数为 ${ranges.length}` });
@@ -3274,79 +3513,32 @@ const CliMultiBlockParser = {
         };
     }
 };
+return CliMultiBlockParser;
+});
 
-function isAlignedSeparator(line='') {
-    const value = String(line).trim();
-    // Require a real horizontal run so values such as "--" remain data cells.
-    return value.length >= 3 && /^[\s+-]+$/.test(value) && /-{3,}/.test(value);
-}
-
-function isAlignedColumnLine(line='') {
-    const words = TextLayout.tokenize(line);
-    return words.length >= 2 && words.slice(1).every(word => word.gap >= 2);
-}
-
-function sliceByDisplayColumns(line='', start=0, end=Infinity) {
-    return TextLayout.slice(line, start, end);
-}
-
-function alignedBlocks(source) {
-    const clean = TableUtils.lines(source.text || '').map(line => isAlignedSeparator(line) ? '' : line);
-    const blocks = [];
-    let current = [];
-    for(const line of clean) {
-        if(!line.trim()) {
-            if(current.length) { blocks.push(current); current = []; }
-        } else current.push(line);
-    }
-    if(current.length) blocks.push(current);
-    return blocks;
-}
-
-function inspectAlignedHeader(headerLine='', dataLines=[]) {
-    const layout = TextLayout.inferAligned(headerLine, dataLines);
-    if(layout.starts.length < 2 || !layout.rows.length || layout.headerCoverage < 1) return null;
-    const analysis = HeaderResolver.analyze([layout.headers, ...layout.rows]);
-    const structural = layout.score >= 0.72 && layout.dataSupport >= 0.7;
-    const headerLike = isAlignedColumnLine(headerLine);
-    const semantic = analysis.score >= 0.65;
-    if(!headerLike && !semantic) return null;
-    return {
-        layout,
-        analysis,
-        score:semantic ? Math.min(0.92, 0.82 + layout.score * 0.08) : (structural ? 0.80 : 0.76)
-    };
-}
-
-function isStrongAlignedHeader(headerLine='', dataLines=[]) {
-    return Boolean(inspectAlignedHeader(headerLine, dataLines));
-}
-
+/* @module parsing/parsers/aligned-table-parser.js: aligned fixed-width parser */
+OTA.define('aligned-table-parser', ["table-utils","header-resolver","text-layout","parser-helpers"], ({TableUtils}, {HeaderResolver}, {TextLayout}, H) => {
+/* Aligned fixed-width table parser (delimiter-free reports with separator lines) */
 const AlignedTableParser = {
     id:'aligned-table', label:'定宽对齐表格',
     parse(source, options={}) {
-        // 1) 去掉定宽表分隔线（替换为空行，保留表间边界）
-        const blocks = alignedBlocks(source);
-        // 2) 合并被 --- 隔开的列头 block 与数据 block。
-        //    旧规则只看表头自身的多空格；现在优先验证数据行的稳定列起点，
-        //    因此 "Physical dascacsa" 这类多词表头仍然可以作为一列。
+        const blocks = H.alignedBlocks(source);
         const merged = [];
         for(let i = 0; i < blocks.length; i++) {
             const b = blocks[i];
             const nextBlock = blocks[i + 1];
             const nextOwnHeader = nextBlock && nextBlock.length >= 2
-                ? inspectAlignedHeader(nextBlock[0], nextBlock.slice(1))
+                ? H.inspectAlignedHeader(nextBlock[0], nextBlock.slice(1))
                 : null;
             const nextContainsHeader = Boolean(nextOwnHeader && nextOwnHeader.analysis.score >= 0.65);
             if(b.length === 1 && nextBlock &&
-                (isAlignedColumnLine(b[0]) || (isStrongAlignedHeader(b[0], nextBlock) && !nextContainsHeader))) {
+                (H.isAlignedColumnLine(b[0]) || (H.isStrongAlignedHeader(b[0], nextBlock) && !nextContainsHeader))) {
                 merged.push([b[0], ...blocks[i + 1]]);
                 i++;
             } else {
                 merged.push(b);
             }
         }
-        // 4) 逐 block：首行 → 列头定位（复用 CLI FIXED 模式），后续行 → 位置截取
         const tables = []; const used = new Set(); let pendingName = null;
         for(const block of merged) {
             if(block.length < 2) {
@@ -3370,11 +3562,6 @@ const AlignedTableParser = {
                 const alignedStartMatch = layout.starts.length
                     ? layout.starts.filter(start => TextLayout.starts(block[i]).some(actual => Math.abs(actual - start) <= 1)).length / layout.starts.length
                     : 0;
-                // A wide/CJK header can legitimately be longer than the
-                // values below it. Only report a position mismatch when the
-                // row still follows most of the header's physical starts;
-                // that keeps overflow warnings while avoiding false alarms
-                // for a valid fallback split caused by long header labels.
                 const shouldDiagnoseMismatch = positionMismatch && (
                     layout.source !== 'header' || alignedStartMatch >= 0.6
                 );
@@ -3414,7 +3601,12 @@ const AlignedTableParser = {
         return { tables, diagnostics:tables.flatMap(table => table.diagnostics || []) };
     }
 };
+return AlignedTableParser;
+});
 
+/* @module parsing/parsers/plain-text-parser.js: whitespace-separated text parser */
+OTA.define('plain-text-parser', ["table-utils","delimited-parsers"], ({TableUtils}, {buildSingleTableResult}) => {
+/* Whitespace-separated plain text table parser */
 const PlainTextTableParser = {
     id:'plain-text', label:'空白分隔文本',
     parse(source, options={}) {
@@ -3422,7 +3614,12 @@ const PlainTextTableParser = {
         return buildSingleTableResult(rows, 'Text Table 1', this.id, options);
     }
 };
+return PlainTextTableParser;
+});
 
+/* @module parsing/parsers/cli-table-data-parser.js: CLI table-data legacy parser */
+OTA.define('cli-table-data-parser', ["table-utils","delimited","parser-helpers"], ({TableUtils}, {Delimited}, {splitPipeCells}) => {
+/* CLI table-data legacy format parser */
 const CliTableDataParser = {
     id:'cli-table-data', label:'CLI table-data',
     tableNameFromLine(line, index, used) {
@@ -3461,8 +3658,8 @@ const CliTableDataParser = {
             const wsParts = trim.split(/\s+/);
             if(wsParts.length === cur.headers.length) return wsParts;
             if(cur.mode === 'FIXED') return ranges.map(r => (r.s >= line.length) ? '' : line.substring(r.s, Math.min(r.e, line.length)).trim());
-            if(cur.mode === 'TAB') return Delimited.parse(trim, '\t')[0] || [];
-            if(cur.mode === 'CSV') return Delimited.parse(trim, ',')[0] || [];
+            if(cur.mode === 'TAB') return (Delimited.parse(trim, '\t').rows[0]) || [];
+            if(cur.mode === 'CSV') return (Delimited.parse(trim, ',').rows[0]) || [];
             if(cur.mode === 'PIPE') return splitPipeCells(trim.replace(/^\||\|$/g, ''));
             return wsParts;
         };
@@ -3475,7 +3672,7 @@ const CliTableDataParser = {
             }
             if(line.includes(',') && !line.includes('  ')) {
                 cur.mode = 'CSV';
-                cur.headers = TableUtils.ensureUniqueHeaders(Delimited.parse(trim, ',')[0] || []);
+                cur.headers = TableUtils.ensureUniqueHeaders(Delimited.parse(trim, ',').rows[0] || []);
                 return;
             }
             if((line.match(/\|/g) || []).length >= 2) {
@@ -3514,12 +3711,11 @@ const CliTableDataParser = {
         return { tables, diagnostics:tables.flatMap(table => table.diagnostics || []) };
     }
 };
-
-    return { PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, CliMultiBlockParser };
+return CliTableDataParser;
 });
 
-/* @module 09-import-engine.js: parser selection and diagnostics */
-OTA.define('import-engine', ["table-utils","format-sniffer","html-parser","delimited-parsers","text-parsers","data-block-parser"], ({TableUtils}, {FormatSniffer}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, {PipeTableParser, AsciiTableParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, CliMultiBlockParser}, {DataBlockParser}) => {
+/* @module parsing/import-engine.js: parser selection and diagnostics */
+OTA.define('import-engine', ["table-utils","format-sniffer","html-parser","delimited-parsers","pipe-table-parser","ascii-table-parser","fixed-width-parser","cli-multi-block-parser","aligned-table-parser","plain-text-parser","cli-table-data-parser","data-block-parser"], ({TableUtils}, {FormatSniffer}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, PipeTableParser, AsciiTableParser, FixedWidthParser, CliMultiBlockParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, {DataBlockParser}) => {
 const ImportEngine = {
     parsers: [CliTableDataParser, DataBlockParser, HtmlTableParser, CliMultiBlockParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
@@ -3650,7 +3846,7 @@ const ImportEngine = {
     return { ImportEngine };
 });
 
-/* @module 10-parser-facade.js: legacy parser facade */
+/* @module parsing/legacy-facade.js: legacy parser facade */
 OTA.define('parser-facade', ["import-engine","runtime"], ({ImportEngine}, {Toast}) => {
 /* Parser */
 const Parser = {
@@ -3672,7 +3868,7 @@ const Parser = {
     return { Parser };
 });
 
-/* @module 11-joiner.js: JOIN execution and dependency safety */
+/* @module transform/joiner.js: JOIN execution and dependency safety */
 OTA.define('joiner', ["table-utils"], ({TableUtils}) => {
 /* Joiner */
 const Joiner = {
@@ -3820,8 +4016,214 @@ const Joiner = {
     return { Joiner };
 });
 
-/* @module 12-join-editor.js: JOIN editor UI */
-OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$}, {Store}, {Joiner}, {Exporter, Toast}) => {
+/* @module ui/selection.js: preview range selection */
+OTA.define('selection', ["runtime","store","clipboard"], ({$ , Toast}, {Store}, {ClipboardFormatter}) => {
+/* Selection Logic */
+const Select = {
+    start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
+    init() {
+        const p = $('previewArea');
+        p.addEventListener('mousedown', e => {
+            const td = e.target.closest('td');
+            if(!td || td.classList.contains('row-header-cell') || td.classList.contains('editing')) { this.clear(); return; }
+            if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+            this.active = true;
+            this.tableEl = td.closest('table');
+            // Keep the custom range-selection behavior while moving keyboard
+            // focus away from the source textarea. Without an explicit focus
+            // transfer, preventDefault() below leaves rawInput as activeElement
+            // and Ctrl/Cmd+A is handled by the browser as text selection.
+            if(this.tableEl) {
+                if(!this.tableEl.hasAttribute('tabindex')) this.tableEl.tabIndex = -1;
+                this.tableEl.focus({ preventScroll:true });
+            }
+            this.lastPointer = { x:e.clientX, y:e.clientY };
+            this.start = this.end = this.getCoord(td);
+            this.draw();
+            this.startAutoScroll();
+            e.preventDefault();
+        });
+        document.addEventListener('mousemove', e => {
+            if(!this.active) return;
+            this.lastPointer = { x:e.clientX, y:e.clientY };
+            const el = document.elementFromPoint(e.clientX, e.clientY);
+            const td = el && el.closest ? el.closest('td') : null;
+            if(td && this.tableEl && td.closest('table') === this.tableEl && !td.classList.contains('row-header-cell')) {
+                const next = this.getCoord(td);
+                if(next.idx === this.start.idx) { this.end = next; this.draw(); }
+            }
+        });
+        document.addEventListener('mouseup', () => {
+            this.active=false;
+            this.stopAutoScroll();
+        });
+        document.addEventListener('copy', e => { if(this.start && this.end) { e.preventDefault(); this.copy(e); } });
+        document.addEventListener('keydown', e => {
+            if(!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'a') return;
+            const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
+            if(['input','textarea','select'].includes(tag) || (document.activeElement && document.activeElement.isContentEditable)) return;
+            const table = this.tableEl || (this.start ? document.querySelector(`table[data-idx="${this.start.idx}"]`) : null);
+            if(!table) return;
+            e.preventDefault();
+            this.selectAll(table);
+        });
+    },
+    getCoord(td) {
+        return {
+            idx: +td.closest('table').dataset.idx,
+            r: +(td.dataset.vr ?? td.dataset.r),
+            c: +(td.dataset.vc ?? td.dataset.c)
+        };
+    },
+    findVisualCell(tbl, r, c) { return tbl.querySelector(`td[data-vr="${r}"][data-vc="${c}"]`); },
+    getBounds(tbl) {
+        const cells = Array.from(tbl.querySelectorAll('tbody td:not(.row-header-cell)'));
+        if(!cells.length) return null;
+        const coords = cells.map(td => this.getCoord(td));
+        return {
+            minR: Math.min(...coords.map(c => c.r)),
+            maxR: Math.max(...coords.map(c => c.r)),
+            minC: Math.min(...coords.map(c => c.c)),
+            maxC: Math.max(...coords.map(c => c.c)),
+            idx: +(tbl.dataset.idx || 0)
+        };
+    },
+    selectAll(tbl=this.tableEl) {
+        const bounds = tbl && this.getBounds(tbl);
+        if(!bounds) return false;
+        this.tableEl = tbl;
+        this.start = { idx: bounds.idx, r: bounds.minR, c: bounds.minC };
+        this.end = { idx: bounds.idx, r: bounds.maxR, c: bounds.maxC };
+        this.draw();
+        return true;
+    },
+    draw() {
+        document.querySelectorAll('.selected-cell').forEach(e=>e.classList.remove('selected-cell'));
+        if(!this.start) return;
+        const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`); if(!tbl) return;
+        const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
+        const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
+        for(let r=minR; r<=maxR; r++) {
+            for(let c=minC; c<=maxC; c++) {
+                const td = this.findVisualCell(tbl, r, c);
+                if(td) td.classList.add('selected-cell');
+            }
+        }
+    },
+    clear() { this.start=null; this.end=null; this.tableEl=null; this.stopAutoScroll(); this.draw(); },
+    startAutoScroll() {
+        if(this.autoScrollRaf) return;
+        const tick = () => {
+            if(!this.active || !this.tableEl || !this.lastPointer) { this.autoScrollRaf = null; return; }
+            const pointer = this.lastPointer;
+            const table = this.tableEl;
+            const scrollBox = table.closest('.table-scroll') || table;
+            const tr = scrollBox.getBoundingClientRect();
+            const edge = 36;
+            let dx = 0;
+            if(pointer.x > tr.right - edge) dx = Math.min(34, Math.ceil((pointer.x - (tr.right - edge)) / 2));
+            else if(pointer.x < tr.left + edge) dx = -Math.min(34, Math.ceil(((tr.left + edge) - pointer.x) / 2));
+            if(dx) scrollBox.scrollLeft += dx;
+
+            const preview = $('previewArea');
+            if(preview) {
+                const pr = preview.getBoundingClientRect();
+                let dy = 0;
+                if(pointer.y > pr.bottom - edge) dy = Math.min(28, Math.ceil((pointer.y - (pr.bottom - edge)) / 2));
+                else if(pointer.y < pr.top + edge) dy = -Math.min(28, Math.ceil(((pr.top + edge) - pointer.y) / 2));
+                if(dy) preview.scrollTop += dy;
+            }
+            this.autoScrollRaf = requestAnimationFrame(tick);
+        };
+        this.autoScrollRaf = requestAnimationFrame(tick);
+    },
+    stopAutoScroll() {
+        if(this.autoScrollRaf) cancelAnimationFrame(this.autoScrollRaf);
+        this.autoScrollRaf = null;
+    },
+    getColumnHeaderText(tbl, c) {
+        const ths = tbl.querySelectorAll('thead th');
+        return ths[c] ? ths[c].textContent : '';
+    },
+    getRowHeaderColumnText(tbl, c) {
+        const ths = tbl.querySelectorAll('thead th');
+        return ths[c + 1] ? ths[c + 1].textContent : `Row ${c + 1}`;
+    },
+    getRowHeaderText(tbl, r) {
+        const direct = tbl.querySelectorAll('tbody tr')[r];
+        const cell = direct && direct.querySelector('.row-header-cell');
+        return cell ? cell.textContent : `字段 ${r + 1}`;
+    },
+    buildClipboardMatrix(tbl, minR, maxR, minC, maxC) {
+        const mode = tbl.dataset.viewMode || 'column-header';
+        if(mode === 'row-header') {
+            const header = ['字段'];
+            for(let c=minC; c<=maxC; c++) header.push(this.getRowHeaderColumnText(tbl, c));
+            const matrix = [header];
+            for(let r=minR; r<=maxR; r++) {
+                const row = [this.getRowHeaderText(tbl, r)];
+                for(let c=minC; c<=maxC; c++) {
+                    const td = this.findVisualCell(tbl, r, c);
+                    row.push(td ? td.textContent : '');
+                }
+                matrix.push(row);
+            }
+            return matrix;
+        }
+        const header = [];
+        for(let c=minC; c<=maxC; c++) header.push(this.getColumnHeaderText(tbl, c));
+        const matrix = [header];
+        for(let r=minR; r<=maxR; r++) {
+            const row = [];
+            for(let c=minC; c<=maxC; c++) {
+                const td = this.findVisualCell(tbl, r, c);
+                row.push(td ? td.textContent : '');
+            }
+            matrix.push(row);
+        }
+        return matrix;
+    },
+    buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC) {
+        const mode = tbl.dataset.viewMode || 'column-header';
+        if(mode !== 'row-header') return this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
+
+        // Row-header previews display the original matrix transposed. For Lua,
+        // restore the selected rectangle to field headers plus record rows so
+        // each original record remains one Lua child table.
+        const headers = [];
+        for(let r=minR; r<=maxR; r++) headers.push(this.getRowHeaderText(tbl, r));
+        const matrix = [headers];
+        for(let c=minC; c<=maxC; c++) {
+            const row = [];
+            for(let r=minR; r<=maxR; r++) {
+                const td = this.findVisualCell(tbl, r, c);
+                row.push(td ? td.textContent : '');
+            }
+            matrix.push(row);
+        }
+        return matrix;
+    },
+    copy(e) {
+        const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`);
+        if(!tbl) return;
+        const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
+        const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
+        const format = Store.state.copyFormat || 'default';
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        const matrix = isLua
+            ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
+            : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
+        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format));
+        e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format));
+        Toast.show(`已复制 ${Math.max(0, matrix.length - 1)} 行 · ${ClipboardFormatter.label(format)}`);
+    }
+};
+
+    return { Select };
+});
+
+/* @module ui/join-editor.js: JOIN editor UI */
+OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$, escapeHtml, formatBytes}, {Store}, {Joiner}, {Exporter, Toast}) => {
 const App = new Proxy({}, {
     get(_target, key) {
         const app = OTA.require('app').App;
@@ -3838,6 +4240,9 @@ const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '' },
     metaCache: {},
     dragIdx: null,
+    // Shared utilities (imported from runtime)
+    escapeHtml,
+    formatBytes,
 
     formatTime(ts) {
         if(!ts) return '';
@@ -3845,36 +4250,6 @@ const JoinEditor = {
         if(Number.isNaN(d.getTime())) return '';
         const pad = n => String(n).padStart(2, '0');
         return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    },
-    escapeHtml(str='') {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
-    formatBytes(bytes=0) {
-        if(bytes < 1024) return `${bytes} B`;
-        if(bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    },
-    updateStorageStatus(detail={}) {
-        const el = $('storageStatus');
-        if(!el) return;
-        const ok = detail.ok !== false && !Store.lastSaveError;
-        const bytes = Number(detail.bytes ?? Store.storageBytes) || 0;
-        const message = detail.message || (ok
-            ? (Store.state.persistRaw === false ? '临时数据模式 · 规则已保存' : `已保存 · ${this.formatBytes(bytes)}`)
-            : Store.lastSaveError || '保存失败');
-        el.textContent = message;
-        el.style.color = ok ? '' : 'var(--danger)';
-        const fill = $('storageMeterFill');
-        if(fill) {
-            const ratio = Math.min(100, bytes / (5 * 1024 * 1024) * 100);
-            fill.style.width = `${ratio}%`;
-            fill.style.background = ratio > 85 ? 'var(--danger)' : ratio > 65 ? 'var(--warning)' : 'var(--accent)';
-        }
     },
     updateWorkspaceSummary() {
         const title = $('workspaceTitle');
@@ -4917,355 +5292,8 @@ const JoinEditor = {
     return { JoinEditor };
 });
 
-/* @module 13-clipboard.js: clipboard serialization */
-OTA.define('clipboard', ["store"], ({Store}) => {
-/* Clipboard Formatting */
-const ClipboardFormatter = {
-    escapeHtml(str='') {
-        return String(str ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
-    normalizeCell(value='') {
-        return String(value ?? '')
-            .replace(/&lt;\s*br\s*\/?\s*&gt;/gi, '\n')
-            .replace(/<\s*br\s*\/?\s*>/gi, '\n')
-            .replace(/\r\n/g, '\n')
-            .replace(/\r/g, '\n');
-    },
-    escapeLuaString(value='') {
-        return String(value ?? '')
-            .replace(/\\/g, '\\\\')
-            .replace(/"/g, '\\"')
-            .replace(/\r/g, '\\r')
-            .replace(/\n/g, '\\n')
-            .replace(/\t/g, '\\t');
-    },
-    formatLuaValue(value='') {
-        const raw = String(value ?? '');
-        const text = raw.trim();
-        if(raw === '') return '""';
-        if(/^0[xX][0-9a-fA-F]+$/.test(text)) {
-            return /^0+$/.test(text.slice(2)) ? '0' : text;
-        }
-        if(/^-?(?:0|[1-9]\d*)$/.test(text)) return text;
-        if(/^-?(?:(?:\d+\.\d*|\.\d+)(?:[eE][+-]?\d+)?|\d+[eE][+-]?\d+)$/.test(text)) return text;
-        if(text === 'true' || text === 'false') return text;
-        return `"${this.escapeLuaString(raw)}"`;
-    },
-    toLua(matrix, layout='inline') {
-        if(!matrix || matrix.length < 2) return '{}';
-        const headers = Array.isArray(matrix[0]) ? matrix[0] : [];
-        const rows = matrix.slice(1);
-        const fieldExpressions = row => headers.map((header, index) =>
-            `["${this.escapeLuaString(header)}"] = ${this.formatLuaValue(row && row[index] !== undefined ? row[index] : '')}`
-        );
-        if(layout === 'expanded') {
-            const lines = ['{'];
-            rows.forEach((row, rowIndex) => {
-                lines.push(`    [${rowIndex + 1}] = {`);
-                fieldExpressions(row).forEach(expression => lines.push(`        ${expression},`));
-                lines.push('    },');
-            });
-            lines.push('}');
-            return lines.join('\n');
-        }
-        const expressions = rows.map(fieldExpressions);
-        const widths = headers.map((_, index) => Math.max(0, ...expressions.map(row => String(row[index] || '').length)));
-        const lines = ['{'];
-        expressions.forEach((row, rowIndex) => {
-            const fields = row.map((expression, index) => {
-                if(index === row.length - 1) return expression;
-                const gap = ' '.repeat(Math.max(1, widths[index] - expression.length + 1));
-                return `${expression},${gap}`;
-            });
-            lines.push(`    [${rowIndex + 1}] = { ${fields.join('')} },`);
-        });
-        lines.push('}');
-        return lines.join('\n');
-    },
-    protectSpreadsheetFormula(value='') {
-        const text = this.normalizeCell(value);
-        const enabled = typeof Store === 'undefined' || !Store.state || Store.state.spreadsheetSafe !== false;
-        if(!enabled) return text;
-        const dangerous = /^[=+@]/.test(text) || (/^-/.test(text) && !/^-\d+(?:\.\d+)?$/.test(text));
-        return dangerous ? `'${text}` : text;
-    },
-    toDelimited(matrix, delimiter='\t') {
-        const quoteFor = (value) => {
-            const text = this.protectSpreadsheetFormula(value);
-            const mustQuote = text.includes(delimiter) || /["\n\r]/.test(text);
-            const escaped = text.replace(/"/g, '""');
-            return mustQuote ? `"${escaped}"` : escaped;
-        };
-        return (matrix || []).map(row => (row || []).map(quoteFor).join(delimiter)).join('\n');
-    },
-    toMarkdown(matrix) {
-        if(!matrix || !matrix.length) return '';
-        const esc = value => this.normalizeCell(value).replace(/\|/g, '\\|').replace(/\n/g, '<br>');
-        const widths = this.getWidths(matrix.map(row => row.map(esc)));
-        const line = row => `| ${row.map((cell, i) => esc(cell).padEnd(widths[i], ' ')).join(' | ')} |`;
-        const sep = `| ${widths.map(w => '-'.repeat(Math.max(3, w))).join(' | ')} |`;
-        const rows = [line(matrix[0]), sep];
-        matrix.slice(1).forEach(row => rows.push(line(row)));
-        return rows.join('\n');
-    },
-    toAscii(matrix) {
-        if(!matrix || !matrix.length) return '';
-        const clean = value => this.normalizeCell(value).replace(/\n/g, ' ');
-        const normalized = matrix.map(row => row.map(clean));
-        const widths = this.getWidths(normalized);
-        const border = '+' + widths.map(w => '-'.repeat(w + 2)).join('+') + '+';
-        const line = row => '| ' + row.map((cell, i) => String(cell).padEnd(widths[i], ' ')).join(' | ') + ' |';
-        const out = [border, line(normalized[0]), border];
-        normalized.slice(1).forEach(row => out.push(line(row)));
-        out.push(border);
-        return out.join('\n');
-    },
-    getWidths(matrix) {
-        const width = Math.max(0, ...(matrix || []).map(row => row.length));
-        return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
-    },
-    toHtml(matrix, format='default') {
-        if(format === 'lua-inline' || format === 'lua-expanded') {
-            const layout = format === 'lua-expanded' ? 'expanded' : 'inline';
-            return `<pre><code>${this.escapeHtml(this.toLua(matrix, layout))}</code></pre>`;
-        }
-        if(!matrix || !matrix.length) return '<table></table>';
-        const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
-        const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
-        return `<table border="1"><thead>${rowHtml(matrix[0], 'th')}</thead><tbody>${matrix.slice(1).map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
-    },
-    toText(matrix, format='default') {
-        switch(format) {
-            case 'csv': return this.toDelimited(matrix, ',');
-            case 'markdown': return this.toMarkdown(matrix);
-            case 'ascii': return this.toAscii(matrix);
-            case 'lua-inline': return this.toLua(matrix, 'inline');
-            case 'lua-expanded': return this.toLua(matrix, 'expanded');
-            case 'default':
-            default: return this.toDelimited(matrix, '\t');
-        }
-    },
-    label(format='default') {
-        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
-    }
-};
-
-    return { ClipboardFormatter };
-});
-
-/* @module 14-selection.js: preview range selection */
-OTA.define('selection', ["runtime","store","clipboard"], ({$ , Toast}, {Store}, {ClipboardFormatter}) => {
-/* Selection Logic */
-const Select = {
-    start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
-    init() {
-        const p = $('previewArea');
-        p.addEventListener('mousedown', e => {
-            const td = e.target.closest('td');
-            if(!td || td.classList.contains('row-header-cell') || td.classList.contains('editing')) { this.clear(); return; }
-            if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
-            this.active = true;
-            this.tableEl = td.closest('table');
-            // Keep the custom range-selection behavior while moving keyboard
-            // focus away from the source textarea. Without an explicit focus
-            // transfer, preventDefault() below leaves rawInput as activeElement
-            // and Ctrl/Cmd+A is handled by the browser as text selection.
-            if(this.tableEl) {
-                if(!this.tableEl.hasAttribute('tabindex')) this.tableEl.tabIndex = -1;
-                this.tableEl.focus({ preventScroll:true });
-            }
-            this.lastPointer = { x:e.clientX, y:e.clientY };
-            this.start = this.end = this.getCoord(td);
-            this.draw();
-            this.startAutoScroll();
-            e.preventDefault();
-        });
-        document.addEventListener('mousemove', e => {
-            if(!this.active) return;
-            this.lastPointer = { x:e.clientX, y:e.clientY };
-            const el = document.elementFromPoint(e.clientX, e.clientY);
-            const td = el && el.closest ? el.closest('td') : null;
-            if(td && this.tableEl && td.closest('table') === this.tableEl && !td.classList.contains('row-header-cell')) {
-                const next = this.getCoord(td);
-                if(next.idx === this.start.idx) { this.end = next; this.draw(); }
-            }
-        });
-        document.addEventListener('mouseup', () => {
-            this.active=false;
-            this.stopAutoScroll();
-        });
-        document.addEventListener('copy', e => { if(this.start && this.end) { e.preventDefault(); this.copy(e); } });
-        document.addEventListener('keydown', e => {
-            if(!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'a') return;
-            const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();
-            if(['input','textarea','select'].includes(tag) || (document.activeElement && document.activeElement.isContentEditable)) return;
-            const table = this.tableEl || (this.start ? document.querySelector(`table[data-idx="${this.start.idx}"]`) : null);
-            if(!table) return;
-            e.preventDefault();
-            this.selectAll(table);
-        });
-    },
-    getCoord(td) {
-        return {
-            idx: +td.closest('table').dataset.idx,
-            r: +(td.dataset.vr ?? td.dataset.r),
-            c: +(td.dataset.vc ?? td.dataset.c)
-        };
-    },
-    findVisualCell(tbl, r, c) { return tbl.querySelector(`td[data-vr="${r}"][data-vc="${c}"]`); },
-    getBounds(tbl) {
-        const cells = Array.from(tbl.querySelectorAll('tbody td:not(.row-header-cell)'));
-        if(!cells.length) return null;
-        const coords = cells.map(td => this.getCoord(td));
-        return {
-            minR: Math.min(...coords.map(c => c.r)),
-            maxR: Math.max(...coords.map(c => c.r)),
-            minC: Math.min(...coords.map(c => c.c)),
-            maxC: Math.max(...coords.map(c => c.c)),
-            idx: +(tbl.dataset.idx || 0)
-        };
-    },
-    selectAll(tbl=this.tableEl) {
-        const bounds = tbl && this.getBounds(tbl);
-        if(!bounds) return false;
-        this.tableEl = tbl;
-        this.start = { idx: bounds.idx, r: bounds.minR, c: bounds.minC };
-        this.end = { idx: bounds.idx, r: bounds.maxR, c: bounds.maxC };
-        this.draw();
-        return true;
-    },
-    draw() {
-        document.querySelectorAll('.selected-cell').forEach(e=>e.classList.remove('selected-cell'));
-        if(!this.start) return;
-        const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`); if(!tbl) return;
-        const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
-        const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
-        for(let r=minR; r<=maxR; r++) {
-            for(let c=minC; c<=maxC; c++) {
-                const td = this.findVisualCell(tbl, r, c);
-                if(td) td.classList.add('selected-cell');
-            }
-        }
-    },
-    clear() { this.start=null; this.end=null; this.tableEl=null; this.stopAutoScroll(); this.draw(); },
-    startAutoScroll() {
-        if(this.autoScrollRaf) return;
-        const tick = () => {
-            if(!this.active || !this.tableEl || !this.lastPointer) { this.autoScrollRaf = null; return; }
-            const pointer = this.lastPointer;
-            const table = this.tableEl;
-            const scrollBox = table.closest('.table-scroll') || table;
-            const tr = scrollBox.getBoundingClientRect();
-            const edge = 36;
-            let dx = 0;
-            if(pointer.x > tr.right - edge) dx = Math.min(34, Math.ceil((pointer.x - (tr.right - edge)) / 2));
-            else if(pointer.x < tr.left + edge) dx = -Math.min(34, Math.ceil(((tr.left + edge) - pointer.x) / 2));
-            if(dx) scrollBox.scrollLeft += dx;
-
-            const preview = $('previewArea');
-            if(preview) {
-                const pr = preview.getBoundingClientRect();
-                let dy = 0;
-                if(pointer.y > pr.bottom - edge) dy = Math.min(28, Math.ceil((pointer.y - (pr.bottom - edge)) / 2));
-                else if(pointer.y < pr.top + edge) dy = -Math.min(28, Math.ceil(((pr.top + edge) - pointer.y) / 2));
-                if(dy) preview.scrollTop += dy;
-            }
-            this.autoScrollRaf = requestAnimationFrame(tick);
-        };
-        this.autoScrollRaf = requestAnimationFrame(tick);
-    },
-    stopAutoScroll() {
-        if(this.autoScrollRaf) cancelAnimationFrame(this.autoScrollRaf);
-        this.autoScrollRaf = null;
-    },
-    getColumnHeaderText(tbl, c) {
-        const ths = tbl.querySelectorAll('thead th');
-        return ths[c] ? ths[c].textContent : '';
-    },
-    getRowHeaderColumnText(tbl, c) {
-        const ths = tbl.querySelectorAll('thead th');
-        return ths[c + 1] ? ths[c + 1].textContent : `Row ${c + 1}`;
-    },
-    getRowHeaderText(tbl, r) {
-        const direct = tbl.querySelectorAll('tbody tr')[r];
-        const cell = direct && direct.querySelector('.row-header-cell');
-        return cell ? cell.textContent : `字段 ${r + 1}`;
-    },
-    buildClipboardMatrix(tbl, minR, maxR, minC, maxC) {
-        const mode = tbl.dataset.viewMode || 'column-header';
-        if(mode === 'row-header') {
-            const header = ['字段'];
-            for(let c=minC; c<=maxC; c++) header.push(this.getRowHeaderColumnText(tbl, c));
-            const matrix = [header];
-            for(let r=minR; r<=maxR; r++) {
-                const row = [this.getRowHeaderText(tbl, r)];
-                for(let c=minC; c<=maxC; c++) {
-                    const td = this.findVisualCell(tbl, r, c);
-                    row.push(td ? td.textContent : '');
-                }
-                matrix.push(row);
-            }
-            return matrix;
-        }
-        const header = [];
-        for(let c=minC; c<=maxC; c++) header.push(this.getColumnHeaderText(tbl, c));
-        const matrix = [header];
-        for(let r=minR; r<=maxR; r++) {
-            const row = [];
-            for(let c=minC; c<=maxC; c++) {
-                const td = this.findVisualCell(tbl, r, c);
-                row.push(td ? td.textContent : '');
-            }
-            matrix.push(row);
-        }
-        return matrix;
-    },
-    buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC) {
-        const mode = tbl.dataset.viewMode || 'column-header';
-        if(mode !== 'row-header') return this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
-
-        // Row-header previews display the original matrix transposed. For Lua,
-        // restore the selected rectangle to field headers plus record rows so
-        // each original record remains one Lua child table.
-        const headers = [];
-        for(let r=minR; r<=maxR; r++) headers.push(this.getRowHeaderText(tbl, r));
-        const matrix = [headers];
-        for(let c=minC; c<=maxC; c++) {
-            const row = [];
-            for(let r=minR; r<=maxR; r++) {
-                const td = this.findVisualCell(tbl, r, c);
-                row.push(td ? td.textContent : '');
-            }
-            matrix.push(row);
-        }
-        return matrix;
-    },
-    copy(e) {
-        const tbl = document.querySelector(`table[data-idx="${this.start.idx}"]`);
-        if(!tbl) return;
-        const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
-        const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
-        const format = Store.state.copyFormat || 'default';
-        const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        const matrix = isLua
-            ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
-            : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
-        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format));
-        e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format));
-        Toast.show(`已复制 ${Math.max(0, matrix.length - 1)} 行 · ${ClipboardFormatter.label(format)}`);
-    }
-};
-
-    return { Select };
-});
-
-/* @module 15-app.js: application orchestration and UI */
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
+/* @module ui/app.js: application orchestration and UI */
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -5280,19 +5308,9 @@ const App = {
     editHistory: [],
     editRedo: [],
     lastPaste: null,
-    escapeHtml(str='') {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
-    formatBytes(bytes=0) {
-        if(bytes < 1024) return `${bytes} B`;
-        if(bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    },
+    // Shared utilities (imported from runtime)
+    escapeHtml,
+    formatBytes,
     sourceFileFormat(file) {
         const name = String(file && file.name || '').toLowerCase();
         if(/\.csv$/.test(name)) return 'csv';
@@ -5967,8 +5985,11 @@ validflag Time      Level   Message                 Code
             if(e.target.classList.contains('doc-tab-close')) {
                 e.stopPropagation();
                 const t = e.target.closest('.doc-tab');
-                if(t && Store.removeDoc(t.dataset.id)) {
+                const removed = t && Store.removeDoc(t.dataset.id);
+                if(removed === true) {
                     App.renderTabs(); App.loadDoc();
+                } else if(removed === 'last_doc') {
+                    Toast.show('至少保留一个页签', true);
                 }
                 return;
             }
@@ -7170,7 +7191,7 @@ validflag Time      Level   Message                 Code
     return { App };
 });
 
-/* @module 16-bootstrap.js: application bootstrap */
+/* @module bootstrap.js: application bootstrap */
 /* Application bootstrap */
 window.OTA.start('app');
 </script>

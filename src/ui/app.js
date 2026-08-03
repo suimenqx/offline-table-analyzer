@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -13,19 +13,9 @@ const App = {
     editHistory: [],
     editRedo: [],
     lastPaste: null,
-    escapeHtml(str='') {
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-    },
-    formatBytes(bytes=0) {
-        if(bytes < 1024) return `${bytes} B`;
-        if(bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-        return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-    },
+    // Shared utilities (imported from runtime)
+    escapeHtml,
+    formatBytes,
     sourceFileFormat(file) {
         const name = String(file && file.name || '').toLowerCase();
         if(/\.csv$/.test(name)) return 'csv';
@@ -700,8 +690,11 @@ validflag Time      Level   Message                 Code
             if(e.target.classList.contains('doc-tab-close')) {
                 e.stopPropagation();
                 const t = e.target.closest('.doc-tab');
-                if(t && Store.removeDoc(t.dataset.id)) {
+                const removed = t && Store.removeDoc(t.dataset.id);
+                if(removed === true) {
                     App.renderTabs(); App.loadDoc();
+                } else if(removed === 'last_doc') {
+                    Toast.show('至少保留一个页签', true);
                 }
                 return;
             }

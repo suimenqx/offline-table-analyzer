@@ -101,7 +101,7 @@ All parsing, filtering, JOIN processing, copying, and Excel generation happen in
 
 By default, the current workspace is stored in browser `localStorage` under the key `ota_v20_workspace` so it can survive a refresh. Disable **Save raw data on this device** to keep source text only in the current page session. The **Clear local data** button removes all stored workspace data. A storage usage meter in the status bar helps monitor quota consumption. When saving fails (e.g., quota exceeded), the status bar reports the failure and the in-memory data remains available for backup.
 
-Read [PRIVACY.md](PRIVACY.md) before using the tool with sensitive data.
+Read [PRIVACY_POLICY.md](PRIVACY_POLICY.md) before using the tool with sensitive data.
 
 ## Recommended limits
 
@@ -141,12 +141,12 @@ The test suite covers parser formats, copy serialization, state/storage behavior
 
 ## Documentation
 
-- [User guide](docs/user-guide.md)
-- [Requirements and scope](docs/requirements.md)
-- [Architecture](docs/architecture.md)
-- [Refactor requirements](docs/refactor-requirements.md)
-- [Refactor architecture](docs/refactor-architecture.md)
-- [Roadmap](docs/roadmap.md)
+- [User guide](docs/guides/user-guide.md)
+- [Requirements and scope](docs/planning/requirements.md)
+- [Architecture](docs/architecture/architecture.md)
+- [Refactor requirements](docs/planning/refactor-requirements.md)
+- [Refactor architecture](docs/architecture/refactor.md)
+- [Roadmap](docs/planning/roadmap.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)

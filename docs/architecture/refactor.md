@@ -25,9 +25,9 @@
 
 重构采用“开发源模块、发布时内联”的双层结构：
 
-- `src/index.template.html`：只保存稳定 HTML 壳和发布元数据。
-- `src/styles.css`：集中保存设计令牌、布局、响应式和无障碍样式。
-- `src/modules/*.js`：按职责和依赖顺序保存业务模块；首个模块提供本地 registry，最后一个模块启动应用。
+- `src/templates/index.html`：只保存稳定 HTML 壳和发布元数据。
+- `src/styles/styles.css`：集中保存设计令牌、布局、响应式和无障碍样式。
+- `src/core/`、`src/state/`、`src/parsing/`、`src/export/`、`src/transform/`、`src/ui/`：按分层职责保存业务模块；首个模块提供本地 registry，最后一个模块启动应用。
 - `tools/build-release.js`：读取固定 manifest，将样式和模块确定性内联到根目录 `index.html`。
 - `index.html`：生成产物，不再手工修改；用户仍然只接触这个文件。
 
@@ -60,24 +60,38 @@ Clipboard / Exporter / Selection → UI controllers → App bootstrap
 
 ## 5. 已落地模块地图
 
-当前发布构建包含 20 个源模块：
+当前发布构建包含 28 个源模块，按目录分层：
 
-| 源文件 | 职责 | 主要公开对象 |
-| --- | --- | --- |
-| `00-module-loader.js` | 无依赖的本地模块 registry | `OTA.define`, `OTA.require`, `OTA.start` |
-| `00-runtime.js` | DOM 查询、Tooltip、Toast | `$`, `createEl`, `Tooltip`, `Toast` |
-| `01-exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
-| `02-store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
-| `03-table-utils.js` | 文本、单元格、行宽、表头工具 | `TableUtils` |
-| `04-header-resolver.js` | 自动/强制表头推断 | `HeaderResolver` |
-| `04-text-layout.js` | 定宽文本的显示宽度、稳定列起点和表头/数据切片 | `TextLayout` |
-| `05-delimited.js` | 引号感知 CSV/TSV 解析 | `Delimited` |
-| `06-html-parser.js` | HTML 表格及跨度展开 | `HtmlTableParser` |
-| `07-delimited-parsers.js` | CSV、分号 CSV、TSV 适配器 | `CsvParser`, `SemicolonCsvParser`, `ExcelPasteParser` |
-| `08-data-block-parser.js` | `data <表名> [...]` 多表块解析 | `DataBlockParser` |
-| `08-text-parsers.js` | pipe、ASCII、固定宽度、对齐文本、CLI | 其余解析器 |
-| `09-import-engine.js` | 格式选择、候选和诊断 | `ImportEngine` |
-| `10-parser-facade.js` | 历史兼容入口 | `Parser` |
+| 目录 | 文件 | 职责 | 主要公开对象 |
+| --- | --- | --- | --- |
+| `core/` | `module-loader.js` | 无依赖的本地模块 registry | `OTA.define`, `OTA.require`, `OTA.start` |
+| | `runtime.js` | DOM 查询、Tooltip、Toast | `$`, `createEl`, `Tooltip`, `Toast` |
+| | `table-utils.js` | 文本、单元格、行宽、表头工具 | `TableUtils` |
+| `state/` | `store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
+| `export/` | `exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
+| | `clipboard.js` | 剪贴板序列化 | `ClipboardFormatter` |
+| `parsing/` | `header-resolver.js` | 自动/强制表头推断 | `HeaderResolver` |
+| | `text-layout.js` | 定宽文本的显示宽度、稳定列起点 | `TextLayout` |
+| | `format-sniffer.js` | 统计指纹格式检测 | `FormatSniffer` |
+| | `delimited-utils.js` | 引号感知 CSV/TSV 解析 | `Delimited` |
+| | `parser-helpers.js` | 解析器共享工具 | 各类 helper |
+| | `import-engine.js` | 格式选择、候选和诊断 | `ImportEngine` |
+| | `legacy-facade.js` | 历史兼容入口 | `Parser` |
+| `parsing/parsers/` | `html-parser.js` | HTML 表格及跨度展开 | `HtmlTableParser` |
+| | `delimited-parsers.js` | CSV、分号 CSV、TSV | `CsvParser`, `SemicolonCsvParser`, `ExcelPasteParser` |
+| | `data-block-parser.js` | data-block 多表块解析 | `DataBlockParser` |
+| | `pipe-table-parser.js` | Markdown/竖线表格 | `PipeTableParser` |
+| | `ascii-table-parser.js` | ASCII/终端表格 | `AsciiTableParser` |
+| | `fixed-width-parser.js` | 固定宽度表格 | `FixedWidthParser` |
+| | `cli-multi-block-parser.js` | CLI 多块定宽表 | `CliMultiBlockParser` |
+| | `aligned-table-parser.js` | 定宽对齐表格 | `AlignedTableParser` |
+| | `plain-text-parser.js` | 空白分隔文本 | `PlainTextTableParser` |
+| | `cli-table-data-parser.js` | CLI table-data 历史格式 | `CliTableDataParser` |
+| `transform/` | `joiner.js` | JOIN 执行和依赖安全 | `Joiner` |
+| `ui/` | `selection.js` | 预览区域范围选择 | `Select` |
+| | `join-editor.js` | JOIN 编辑器 UI | `JoinEditor` |
+| | `app.js` | 应用编排和 UI | `App` |
+| （根） | `bootstrap.js` | 应用启动 | — |
 | `11-joiner.js` | JOIN、复合键、依赖检测 | `Joiner` |
 | `12-join-editor.js` | JOIN 设计交互 | `JoinEditor` |
 | `13-clipboard.js` | TSV/CSV/Markdown/ASCII/Lua 文本及按格式区分的 HTML 剪贴板内容 | `ClipboardFormatter` |

@@ -101,7 +101,7 @@ Offline Table Analyzer 是一个隐私优先、完全离线的表格整理与分
 
 默认情况下，当前工作区以键名 `ota_v20_workspace` 存储在浏览器 `localStorage` 中，刷新页面后可恢复。关闭**在此设备保存原始数据**后，源文本仅保留在当前页面会话中。**清除本地数据**按钮可移除所有已存储的工作区数据。状态栏中的存储用量条帮助你监控配额消耗。当保存失败（如配额耗尽）时，状态栏会报告错误，内存中的数据仍可用于备份。
 
-使用敏感数据前请阅读 [PRIVACY.md](PRIVACY.md)。
+使用敏感数据前请阅读 [PRIVACY_POLICY.md](PRIVACY_POLICY.md)。
 
 ## 建议规模与边界
 
@@ -141,12 +141,12 @@ npm run validate:release  # 发布就绪检查
 
 ## 更多文档
 
-- [用户指南](docs/user-guide.md)
-- [需求与范围](docs/requirements.md)
-- [架构说明](docs/architecture.md)
-- [重构需求清单](docs/refactor-requirements.md)
-- [重构架构设计](docs/refactor-architecture.md)
-- [路线图](docs/roadmap.md)
+- [用户指南](docs/guides/user-guide.md)
+- [需求与范围](docs/planning/requirements.md)
+- [架构说明](docs/architecture/architecture.md)
+- [重构需求清单](docs/planning/refactor-requirements.md)
+- [重构架构设计](docs/architecture/refactor.md)
+- [路线图](docs/planning/roadmap.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)
 - [更新日志](CHANGELOG.md)

@@ -1,6 +1,6 @@
-const { loadBuiltModules } = require('./load-built-modules');
+const { loadBuiltModules } = require('./helpers/load-built-modules');
 
-if(process.argv.includes('--clean-production')) require('./validate-release').cleanProductionHooks();
+if(process.argv.includes('--clean-production')) require('../tools/validate-release').cleanProductionHooks();
 
 const sandbox = {
   console,

@@ -1,4 +1,4 @@
-const { loadBuiltModules } = require('./load-built-modules');
+const { loadBuiltModules } = require('./helpers/load-built-modules');
 const { OTA } = loadBuiltModules({ window: {}, console });
 const F = OTA.require('clipboard').ClipboardFormatter;
 const E = OTA.require('exporter').Exporter;

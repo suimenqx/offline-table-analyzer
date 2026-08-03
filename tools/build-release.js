@@ -3,32 +3,57 @@ const path = require('path');
 
 const root = path.join(__dirname, '..');
 const sourceDir = path.join(root, 'src');
-const moduleDir = path.join(sourceDir, 'modules');
-const templatePath = path.join(sourceDir, 'index.template.html');
+const templatePath = path.join(sourceDir, 'templates', 'index.html');
 const outputPath = path.join(root, 'index.html');
 
+// Module load order: each entry is [path-relative-to-src/, description]
+// Dependencies flow top→bottom; modules in the same directory are at the same layer.
 const MODULES = [
-  ['00-module-loader.js', 'runtime module registry'],
-  ['00-runtime.js', 'runtime and feedback'],
-  ['01-exporter.js', 'file and XLSX exporter'],
-  ['02-store.js', 'workspace state and persistence'],
-  ['03-table-utils.js', 'table normalization'],
-  ['04-header-resolver.js', 'header inference'],
-  ['04-text-layout.js', 'position-aware text layout inference'],
-  ['05-format-sniffer.js', 'statistical fingerprint format detection'],
-  ['05-delimited.js', 'quote-aware delimited parsing'],
-  ['06-html-parser.js', 'HTML clipboard parser'],
-  ['07-delimited-parsers.js', 'CSV, TSV, and parser factories'],
-  ['08-data-block-parser.js', 'data-block structured text parser'],
-  ['08-text-parsers.js', 'pipe, ASCII, fixed-width, aligned, plain, and CLI parsers'],
-  ['09-import-engine.js', 'parser selection and diagnostics'],
-  ['10-parser-facade.js', 'legacy parser facade'],
-  ['11-joiner.js', 'JOIN execution and dependency safety'],
-  ['12-join-editor.js', 'JOIN editor UI'],
-  ['13-clipboard.js', 'clipboard serialization'],
-  ['14-selection.js', 'preview range selection'],
-  ['15-app.js', 'application orchestration and UI'],
-  ['16-bootstrap.js', 'application bootstrap']
+  // ── Core infrastructure ──
+  ['core/module-loader.js',      'runtime module registry'],
+  ['core/runtime.js',             'DOM utils, Tooltip, Toast'],
+  ['core/table-utils.js',         'table normalization'],
+
+  // ── State ──
+  ['state/store.js',              'workspace state and persistence'],
+
+  // ── Export ──
+  ['export/exporter.js',          'file and XLSX exporter'],
+  ['export/clipboard.js',         'clipboard serialization'],
+
+  // ── Parsing infrastructure ──
+  ['parsing/header-resolver.js',  'header inference'],
+  ['parsing/text-layout.js',      'position-aware text layout inference'],
+  ['parsing/format-sniffer.js',   'statistical fingerprint format detection'],
+  ['parsing/delimited-utils.js',  'quote-aware delimited parsing'],
+  ['parsing/parser-helpers.js',   'shared parser helpers'],
+
+  // ── Format-specific parsers ──
+  ['parsing/parsers/html-parser.js',              'HTML clipboard parser'],
+  ['parsing/parsers/delimited-parsers.js',        'CSV, TSV, and parser factories'],
+  ['parsing/parsers/data-block-parser.js',        'data-block structured text parser'],
+  ['parsing/parsers/pipe-table-parser.js',        'pipe/Markdown table parser'],
+  ['parsing/parsers/ascii-table-parser.js',       'ASCII/terminal table parser'],
+  ['parsing/parsers/fixed-width-parser.js',       'fixed-width table parser'],
+  ['parsing/parsers/cli-multi-block-parser.js',   'CLI multi-block parser'],
+  ['parsing/parsers/aligned-table-parser.js',     'aligned fixed-width parser'],
+  ['parsing/parsers/plain-text-parser.js',        'whitespace-separated text parser'],
+  ['parsing/parsers/cli-table-data-parser.js',    'CLI table-data legacy parser'],
+
+  // ── Import orchestration ──
+  ['parsing/import-engine.js',    'parser selection and diagnostics'],
+  ['parsing/legacy-facade.js',    'legacy parser facade'],
+
+  // ── Data transform ──
+  ['transform/joiner.js',         'JOIN execution and dependency safety'],
+
+  // ── UI layer ──
+  ['ui/selection.js',             'preview range selection'],
+  ['ui/join-editor.js',           'JOIN editor UI'],
+  ['ui/app.js',                   'application orchestration and UI'],
+
+  // ── Bootstrap ──
+  ['bootstrap.js',                'application bootstrap']
 ];
 
 function readUtf8(file) {
@@ -37,10 +62,11 @@ function readUtf8(file) {
 
 function renderRelease() {
   const template = readUtf8(templatePath);
-  const styles = readUtf8(path.join(sourceDir, 'styles.css')).trim();
-  const modules = MODULES.map(([filename, label]) => {
-    const source = readUtf8(path.join(moduleDir, filename)).trim();
-    return `/* @module ${filename}: ${label} */\n${source}`;
+  const styles = readUtf8(path.join(sourceDir, 'styles', 'styles.css')).trim();
+  const modules = MODULES.map(([relPath, label]) => {
+    const source = readUtf8(path.join(sourceDir, relPath)).trim();
+    const filename = path.basename(relPath);
+    return `/* @module ${relPath}: ${label} */\n${source}`;
   }).join('\n\n');
 
   if (!template.includes('{{STYLES}}') || !template.includes('{{MODULES}}')) {

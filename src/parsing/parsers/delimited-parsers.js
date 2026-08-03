@@ -11,10 +11,10 @@ function createDelimitedParser({ id, label, delimiter, tableName }) {
     return {
         id, label, delimiter,
         parse(source, options={}) {
-            const matrix = Delimited.parse(source.text || '', delimiter);
+            const { rows: matrix, diagnostics: delimDiag } = Delimited.parse(source.text || '', delimiter);
             const result = buildSingleTableResult(matrix, tableName, id, options, { delimiter });
-            if(Delimited.lastDiagnostics.length) {
-                result.diagnostics.push(...Delimited.lastDiagnostics);
+            if(delimDiag.length) {
+                result.diagnostics.push(...delimDiag);
             }
             return result;
         }

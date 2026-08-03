@@ -6,7 +6,7 @@
   "license": "MIT",
   "scripts": {
     "build:release": "node tools/build-release.js",
-    "test": "node tools/build-release.js && node tools/run-parser-tests.js --all",
+    "test": "node tools/build-release.js && node tests/run-parser-tests.js --all",
     "validate:release": "node tools/build-release.js && node tools/validate-release.js"
   },
   "engines": {
