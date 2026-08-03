@@ -221,6 +221,47 @@ describe('FilterEngine.processTable', () => {
     assert.equal(result.rows[0].d[0], 'WARN');
   });
 
+  it('applies column-level regex filter', () => {
+    const ui2 = { columnFilters: { Logs: { level: '/WARN|ERROR/' } } };
+    const result = FilterEngine.processTable(table, {}, ui2, '', true, false);
+    assert.equal(result.rows.length, 2);
+  });
+
+  it('applies column-level regex filter (case-insensitive)', () => {
+    const ui2 = { columnFilters: { Logs: { level: '/error/' } } };
+    const result = FilterEngine.processTable(table, {}, ui2, '', true, false);
+    assert.equal(result.rows.length, 1);
+    assert.equal(result.rows[0].d[0], 'ERROR');
+  });
+
+  it('rejects column-level regex over 200 chars', () => {
+    const long = '/' + 'x'.repeat(201) + '/';
+    const ui2 = { columnFilters: { Logs: { level: long } } };
+    const result = FilterEngine.processTable(table, {}, ui2, '', true, false);
+    assert.equal(result.rows.length, 0);
+  });
+
+  it('handles invalid column-level regex gracefully', () => {
+    const ui2 = { columnFilters: { Logs: { level: '/[invalid/' } } };
+    const result = FilterEngine.processTable(table, {}, ui2, '', true, false);
+    assert.equal(result.rows.length, 0);
+  });
+
+  it('combines multiple column-level filters with regex and contains', () => {
+    const ui2 = { columnFilters: { Logs: { level: '/WARN|INFO/', message: 'oo' } } };
+    const result = FilterEngine.processTable(table, {}, ui2, '', true, false);
+    assert.equal(result.rows.length, 0);
+  });
+
+  it('col filter: substring does not cross-match as regex', () => {
+    // A plain string that happens to start with / should not be treated as regex
+    // column filter values without trailing / are treated as plain contains
+    const ui2 = { columnFilters: { Logs: { message: '/time' } } };
+    const result = FilterEngine.processTable(table, {}, ui2, '', true, false);
+    // '/time' does not end with '/', so it's plain substring: 'timeout' contains '/time'? No.
+    assert.equal(result.rows.length, 0);
+  });
+
   it('marks highlighted rows', () => {
     const result = FilterEngine.processTable(table, { hl: 'ERROR' }, ui, '', true, false);
     assert.equal(result.rows.some(r => r._hl), true);

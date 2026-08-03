@@ -244,12 +244,12 @@
         #toast { position: fixed; bottom: 24px; right: 24px; background: #10b981; color: white; padding: 11px 16px; border-radius: 10px; font-weight: 700; z-index: 9999; transform: translateY(100px); transition: transform 0.3s; box-shadow: var(--shadow-md); }
         #toast.show { transform: translateY(0); }
         #toast.error { background: #ef4444; }
-        .filter-popover { position: fixed; z-index: var(--z-modal); background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-md); border-radius: 7px; width: 150px; padding: 4px; display: flex; flex-direction: column; gap: 3px; font-size: 10px; }
-        .filter-popover .fp-header { display: flex; align-items: center; justify-content: space-between; font-weight: 800; color: var(--text-strong); font-size: 10px; line-height: 1.1; }
-        .filter-popover .fp-header button { border: none; background: transparent; cursor: pointer; font-size: 12px; color: var(--text-tertiary); line-height: 1; }
-        .filter-popover input { width: 100%; height: 20px; border: 1px solid var(--border); border-radius: 5px; padding: 2px 4px; font-size: 10px; background: var(--bg-input); color: var(--text-main); }
-        .filter-popover .fp-actions { display: flex; justify-content: flex-end; gap: 3px; }
-        .filter-popover .fp-actions .sm, .filter-popover .fp-actions .primary.sm { padding: 2px 6px; font-size: 10px; height: 20px; }
+        .filter-popover { position: fixed; z-index: var(--z-modal); background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-md); border-radius: 7px; width: 240px; padding: 6px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+        .filter-popover .fp-header { display: flex; align-items: center; justify-content: space-between; font-weight: 800; color: var(--text-strong); font-size: 12px; line-height: 1.1; }
+        .filter-popover .fp-header button { border: none; background: transparent; cursor: pointer; font-size: 14px; color: var(--text-tertiary); line-height: 1; }
+        .filter-popover input { width: 100%; height: 28px; border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font-size: 12px; background: var(--bg-input); color: var(--text-main); }
+        .filter-popover .fp-actions { display: flex; justify-content: flex-end; gap: 4px; }
+        .filter-popover .fp-actions .sm, .filter-popover .fp-actions .primary.sm { padding: 2px 8px; font-size: 11px; height: 26px; }
         td.editing { position: relative; }
         .cell-editor { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); box-sizing: border-box; border: 1px solid var(--primary); border-radius: 4px; padding: 2px 4px; font-family: var(--font-table); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; font-size: 12px; background: var(--bg-card); color: var(--text-main); }
 

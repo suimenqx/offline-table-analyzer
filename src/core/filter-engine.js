@@ -184,13 +184,25 @@ const FilterEngine = {
             if (gF && !this.matchRule(gF, row, headerMap)) return;
             // Table-level filter
             if (tF && !this.matchRule(tF, row, headerMap)) return;
-            // Column-level filters (contains, case-insensitive)
+            // Column-level filters (contains / regex, case-insensitive)
             if (activeColFilters.length) {
                 const pass = activeColFilters.every(([col, val]) => {
                     const idx = table.headers.indexOf(col);
                     if (idx === -1) return true;
-                    return (row[idx] ?? '').toString().toLowerCase()
-                        .includes(val.toString().toLowerCase());
+                    const cellVal = (row[idx] ?? '').toString();
+                    const filterVal = val.toString().trim();
+                    // Regex token: /pattern/
+                    if (filterVal.startsWith('/') && filterVal.endsWith('/')) {
+                        const pattern = filterVal.slice(1, -1);
+                        if (pattern.length > 200) return false;
+                        try {
+                            return new RegExp(pattern, 'i').test(cellVal);
+                        } catch (e) {
+                            return false;
+                        }
+                    }
+                    // Default: contains (case-insensitive)
+                    return cellVal.toLowerCase().includes(filterVal.toLowerCase());
                 });
                 if (!pass) return;
             }
