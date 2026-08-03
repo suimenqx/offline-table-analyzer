@@ -293,6 +293,7 @@ const SourceController = {
 
         const modal = $('sourceEditorModal');
         if (modal) {
+            modal.classList.remove('hidden');
             modal.classList.add('active');
             modal.setAttribute('aria-hidden', 'false');
         }
@@ -306,6 +307,7 @@ const SourceController = {
         const modal = $('sourceEditorModal');
         if (modal) {
             modal.classList.remove('active');
+            modal.classList.add('hidden');
             modal.setAttribute('aria-hidden', 'true');
         }
         document.body.classList.remove('source-editor-open');
