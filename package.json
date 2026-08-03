@@ -2,12 +2,15 @@
   "name": "offline-table-analyzer",
   "version": "21.0.0",
   "private": true,
+  "type": "module",
   "description": "A dependency-free, privacy-first offline table analysis workbench in one HTML file.",
   "license": "MIT",
   "scripts": {
-    "build:release": "node tools/build-release.js",
-    "test": "node tools/build-release.js && node tests/run-parser-tests.js --all",
-    "validate:release": "node tools/build-release.js && node tools/validate-release.js"
+    "build:release": "node tools/build-release.cjs",
+    "test": "node tools/build-release.cjs && node --test-reporter=spec --test \"tests/**/*.test.js\"",
+    "test:watch": "node --test --watch tests/",
+    "test:coverage": "node --experimental-test-coverage --test-reporter=spec --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test tests/",
+    "validate:release": "node tools/build-release.cjs && node tools/validate-release.cjs"
   },
   "engines": {
     "node": ">=20"
