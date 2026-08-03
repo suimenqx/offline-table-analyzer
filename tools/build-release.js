@@ -13,6 +13,7 @@ const MODULES = [
   ['core/module-loader.js',      'runtime module registry'],
   ['core/runtime.js',             'DOM utils, Tooltip, Toast'],
   ['core/table-utils.js',         'table normalization'],
+  ['core/filter-engine.js',       'pure filtering / highlighting logic'],
 
   // ── State ──
   ['state/store.js',              'workspace state and persistence'],
@@ -48,6 +49,7 @@ const MODULES = [
   ['transform/joiner.js',         'JOIN execution and dependency safety'],
 
   // ── UI layer ──
+  ['ui/table-builder.js',         'preview table DOM construction'],
   ['ui/selection.js',             'preview range selection'],
   ['ui/join-editor.js',           'JOIN editor UI'],
   ['ui/app.js',                   'application orchestration and UI'],

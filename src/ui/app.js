@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -209,10 +209,7 @@ const App = {
     },
 
     shouldUseSingleTableView(tables=[]) {
-        const tableCount = tables.length;
-        const totalRows = tables.reduce((sum, table) => sum + (table.rows || []).length, 0);
-        const totalCells = tables.reduce((sum, table) => sum + (table.rows || []).length * (table.headers || []).length, 0);
-        return tableCount >= 8 || totalRows >= 1000 || totalCells >= 30000;
+        return TableBuilder.shouldUseSingleTableView(tables);
     },
 
     syncPreviewTablePicker(tables=[], singleTableView=false) {
@@ -1252,118 +1249,16 @@ validflag Time      Level   Message                 Code
     },
 
     buildColumnHeaderTable(t, res, tIdx, colFilters={}) {
-        const tbl = createEl('table');
-        // Selection focuses the table after a cell click so keyboard shortcuts
-        // apply to the preview rather than the source editor.
-        tbl.tabIndex = -1;
-        tbl.dataset.idx = tIdx;
-        tbl.dataset.tableName = t.name;
-        tbl.dataset.viewMode = 'column-header';
-        tbl.setAttribute('aria-label', `${t.name} 列表头预览`);
-        const thRow = createEl('tr');
-        res.headers.forEach((h, hIdx) => {
-            const th=createEl('th');
-            th.classList.add('filterable-th');
-            th.tabIndex = 0;
-            th.setAttribute('role', 'button');
-            const hasFilter = colFilters[h] && colFilters[h].toString().trim();
-            th.title= hasFilter ? `已过滤：${colFilters[h]}` : '点击过滤该列（包含匹配，忽略大小写）';
-            if(hasFilter) th.style.color = 'var(--primary)';
-            const label = createEl('span','th-label');
-            label.textContent = h;
-            if(hasFilter) {
-                const dot = createEl('span','th-filter-dot');
-                label.appendChild(dot);
-                const clearBtn = createEl('span','th-filter-clear');
-                clearBtn.textContent = '×';
-                clearBtn.title = '清除该列过滤';
-                clearBtn.onclick = (ev) => { ev.stopPropagation(); this.clearColumnFilter(t.name, h); };
-                th.appendChild(clearBtn);
-            }
-            th.appendChild(label);
-            th.onclick = (ev) => { ev.stopPropagation(); this.promptColumnFilter(t.name, h, th); };
-            th.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.promptColumnFilter(t.name, h, th); } };
-            th.dataset.vc = hIdx;
-            thRow.appendChild(th);
-        });
-        const thead = createEl('thead'); thead.appendChild(thRow); tbl.appendChild(thead);
-        const tbody = createEl('tbody');
-        res.rows.forEach((r, rIdx) => {
-            const tr = createEl('tr');
-            if(r._hl) tr.className = 'highlight-row';
-            r.d.forEach((c, cIdx) => {
-                const td=createEl('td');
-                const v = c===undefined||c===null?'':c;
-                td.textContent=v;
-                if(String(v).length > 18) td.dataset.full=v;
-                td.dataset.r=rIdx; td.dataset.c=cIdx;
-                td.dataset.vr=rIdx; td.dataset.vc=cIdx;
-                td.dataset.resultRow = r._resultIndex ?? rIdx;
-                if(!r._readOnly) {
-                    td.dataset.sourceRow = r._sourceRow;
-                    td.dataset.sourceCol = r._sourceCols[cIdx];
-                    td.title = '双击编辑；修改会作为当前页签的修订保存';
-                }
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        });
-        tbl.appendChild(tbody);
-        return tbl;
+        return TableBuilder.buildColumnHeaderTable(t, res, tIdx, colFilters,
+            (tableName, colName, anchorEl) => this.promptColumnFilter(tableName, colName, anchorEl),
+            (tableName, colName) => this.clearColumnFilter(tableName, colName)
+        );
     },
 
     buildRowHeaderTable(t, res, tIdx, colFilters={}) {
-        const tbl = createEl('table');
-        tbl.tabIndex = -1;
-        tbl.dataset.idx = tIdx;
-        tbl.dataset.tableName = t.name;
-        tbl.dataset.viewMode = 'row-header';
-        tbl.setAttribute('aria-label', `${t.name} 行表头预览`);
-        const thead = createEl('thead');
-        const htr = createEl('tr');
-        const corner = createEl('th', 'row-header-th');
-        corner.textContent = '字段';
-        htr.appendChild(corner);
-        res.rows.forEach((row, rIdx) => {
-            const th = createEl('th');
-            th.textContent = `Row ${(row._resultIndex ?? rIdx) + 1}`;
-            th.dataset.vc = rIdx + 1;
-            htr.appendChild(th);
-        });
-        thead.appendChild(htr);
-        tbl.appendChild(thead);
-        const tbody = createEl('tbody');
-        res.headers.forEach((h, cIdx) => {
-            const tr = createEl('tr');
-            const hCell = createEl('td', 'row-header-cell filterable-th');
-            hCell.tabIndex = 0;
-            hCell.setAttribute('role', 'button');
-            const hasFilter = colFilters[h] && colFilters[h].toString().trim();
-            hCell.textContent = h;
-            hCell.title = hasFilter ? `已过滤：${colFilters[h]}` : '点击过滤该字段';
-            if(hasFilter) hCell.style.color = 'var(--primary)';
-            hCell.onclick = ev => { ev.stopPropagation(); this.promptColumnFilter(t.name, h, hCell); };
-            hCell.onkeydown = ev => { if(ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); this.promptColumnFilter(t.name, h, hCell); } };
-            tr.appendChild(hCell);
-            res.rows.forEach((r, rIdx) => {
-                const td = createEl('td');
-                const v = r.d[cIdx] === undefined || r.d[cIdx] === null ? '' : r.d[cIdx];
-                td.textContent = v;
-                if(String(v).length > 18) td.dataset.full = v;
-                td.dataset.r = rIdx; td.dataset.c = cIdx;
-                td.dataset.vr = cIdx; td.dataset.vc = rIdx;
-                td.dataset.resultRow = r._resultIndex ?? rIdx;
-                if(!r._readOnly) {
-                    td.dataset.sourceRow = r._sourceRow;
-                    td.dataset.sourceCol = r._sourceCols[cIdx];
-                    td.title = '双击编辑；修改会作为当前页签的修订保存';
-                }
-                tr.appendChild(td);
-            });
-            tbody.appendChild(tr);
-        });
-        tbl.appendChild(tbody);
-        return tbl;
+        return TableBuilder.buildRowHeaderTable(t, res, tIdx, colFilters,
+            (tableName, colName, anchorEl) => this.promptColumnFilter(tableName, colName, anchorEl)
+        );
     },
 
     renderPreview() {
@@ -1714,97 +1609,11 @@ validflag Time      Level   Message                 Code
 
     proc(t, ui) {
         const r = ui.rules[t.name] || {};
-        let head = t.headers, idxs = t.headers.map((_,i)=>i);
-        if(r.focus && r.focus.length) {
-            head=[]; idxs=[];
-            r.focus.forEach(c => { const i=t.headers.indexOf(c); if(i>-1){ head.push(c); idxs.push(i); } });
-            if(!head.length) { head=t.headers; idxs=t.headers.map((_,i)=>i); }
-        }
-
-        const hMap = new Map(t.headers.map((h, i) => [h.toLowerCase(), i]));
-        const colFilterMap = (ui.columnFilters && ui.columnFilters[t.name]) || {};
-        const activeColFilters = Object.entries(colFilterMap).filter(([,v]) => (v ?? '').toString().trim());
-
-        // --- SMART FILTER LOGIC ---
-        const checkToken = (token, row) => {
-            const opMatch = token.match(/^(.+?)(!=|>=|<=|=|>|<|:)(.+)$/);
-            if (opMatch) {
-                const key = opMatch[1].toLowerCase();
-                const op = opMatch[2];
-                const rawVal = opMatch[3].trim();
-                const unquoted = ((rawVal.startsWith('"') && rawVal.endsWith('"')) || (rawVal.startsWith("'") && rawVal.endsWith("'"))) ? rawVal.slice(1, -1) : rawVal;
-                const val = unquoted.toLowerCase();
-                const idx = hMap.get(key);
-                if (idx === undefined) return false;
-                
-                let cellVal = (row[idx] || "").toLowerCase();
-                const numC = parseFloat(cellVal);
-                const numV = parseFloat(val);
-                const isNum = !isNaN(numC) && !isNaN(numV);
-
-                switch(op) {
-                    case '=': return cellVal === val; 
-                    case ':': return cellVal.includes(val); 
-                    case '!=': return cellVal !== val;
-                    case '>': return isNum && numC > numV;
-                    case '>=': return isNum && numC >= numV;
-                    case '<': return isNum && numC < numV;
-                    case '<=': return isNum && numC <= numV;
-                }
-            }
-            if (token.startsWith('/') && token.endsWith('/')) {
-                const pattern = token.slice(1, -1);
-                if(pattern.length > 200) return false;
-                try { return new RegExp(pattern, 'i').test(row.join(' ')); } catch (e) { return false; }
-            }
-            return row.join(' ').toLowerCase().includes(token.toLowerCase());
-        };
-
-        const checkRule = (ruleStr, row) => {
-            if (!ruleStr) return true;
-            const tokens = [];
-            let token = '', quote = '';
-            for(const ch of ruleStr.trim()) {
-                if(quote) {
-                    token += ch;
-                    if(ch === quote) quote = '';
-                } else if(ch === '"' || ch === "'") {
-                    quote = ch; token += ch;
-                } else if(/\s/.test(ch)) {
-                    if(token) { tokens.push(token); token = ''; }
-                } else token += ch;
-            }
-            if(token) tokens.push(token);
-            return tokens.every(t => {
-                if(t.startsWith('/') && t.endsWith('/')) return checkToken(t, row);
-                if (t.includes('|')) return t.split('|').some(st => checkToken(st, row));
-                return checkToken(t, row);
-            });
-        };
-
-        const gF = (ui.globalFilter||'');
-        const tF = (r.filter||'');
-        const hlF = (r.hl||'');
-
-        const rows = [];
-        t.rows.forEach((row, sourceRow) => {
-            if(gF && !checkRule(gF, row)) return;
-            if(tF && !checkRule(tF, row)) return;
-            if(activeColFilters.length) {
-                const pass = activeColFilters.every(([col, val]) => {
-                    const idx = t.headers.indexOf(col);
-                    if(idx===-1) return true;
-                    const cell = row[idx];
-                    return (cell ?? '').toString().toLowerCase().includes(val.toString().toLowerCase());
-                });
-                if(!pass) return;
-            }
-            let hl = false;
-            if(ui.enableHighlight!==false && hlF && checkRule(hlF, row)) hl = true;
-            if(ui.onlyHighlighted && !hl) return;
-            rows.push({ d: idxs.map(i=>row[i]), _hl: hl, _sourceRow:sourceRow, _sourceCols:idxs.slice(), _readOnly:!!t.isView });
-        });
-        return { headers: head, rows };
+        return FilterEngine.processTable(t, r, ui,
+            ui.globalFilter || '',
+            ui.enableHighlight !== false,
+            ui.onlyHighlighted || false
+        );
     },
 
     closeModal() {

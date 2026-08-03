@@ -106,13 +106,50 @@ assert(script.includes("if(e.key === 'Escape') { e.preventDefault(); this.closeS
 assert(script.includes("new vm.Script") === false, 'production script should not contain the Node test harness');
 assert(html.includes('prefers-reduced-motion'), 'reduced motion support should be present');
 assert(html.includes('role="tablist"') && html.includes('aria-live="polite"'), 'core accessibility semantics should be present');
-const procStart = script.lastIndexOf('    proc(t, ui) {');
-const procEnd = script.indexOf('\n    closeModal()', procStart);
-assert(procStart >= 0 && procEnd > procStart, 'filter processor markers should exist');
-const procSandbox = { window:{} };
-vm.createContext(procSandbox);
-vm.runInContext(`const FilterHarness = {${script.slice(procStart, procEnd).trim().replace(/,$/, '')}}; window.FilterHarness = FilterHarness;`, procSandbox);
+// Hook: test proc() via the OTA module system so FilterEngine dependency is resolved.
+// We use the same comprehensive sandbox approach as the startup test.
+const { loadBuiltModules } = require('./helpers/load-built-modules');
+const storage = new Map();
+const fullSandbox = {
+    console,
+    document: {
+        title: '',
+        body: { addEventListener() {}, appendChild() {}, removeChild() {} },
+        documentElement: { setAttribute() {} },
+        getElementById() {
+            return {
+                value: '', checked: false, className: '', classList: { add() {}, remove() {}, contains() { return false; }, toggle() {} },
+                style: {}, dataset: {},
+                addEventListener() {}, removeEventListener() {},
+                querySelector() { return null; }, querySelectorAll() { return []; },
+                closest() { return null; },
+                getBoundingClientRect() { return { top: 0, left: 0, width: 0, height: 0 }; },
+                appendChild(c) { return c; },
+                focus() {}, select() {}
+            };
+        },
+        createElement() { return this.getElementById(); },
+        querySelector() { return null; },
+        querySelectorAll() { return []; },
+        addEventListener() {}
+    },
+    window: { matchMedia() { return { matches: false }; }, addEventListener() {}, OTA: undefined },
+    localStorage: {
+        getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+        setItem(key, value) { storage.set(key, String(value)); },
+        removeItem(key) { storage.delete(key); }
+    },
+    alert() {},
+    confirm() { return true; },
+    setTimeout: setTimeout,
+    clearTimeout: clearTimeout,
+    performance: { now() { return Date.now(); } },
+    Option: function(text, value) { return { text, value }; }
+};
+const { OTA: procOTA } = loadBuiltModules(fullSandbox);
+const FilterHarness = procOTA.require('app').App;
+assert(typeof FilterHarness.proc === 'function', 'App.proc should be callable');
 const filterTable = { name:'Logs', headers:['level','message'], rows:[['WARN','memory'],['ERROR','timeout'],['INFO','ok']] };
-const regexRows = procSandbox.window.FilterHarness.proc(filterTable, { rules:{}, columnFilters:{}, globalFilter:'/ERROR|WARN/' }).rows;
+const regexRows = FilterHarness.proc(filterTable, { rules:{}, columnFilters:{}, globalFilter:'/ERROR|WARN/' }).rows;
 assert(regexRows.length === 2 && regexRows[0].d[0] === 'WARN' && regexRows[1].d[0] === 'ERROR', 'regex alternation must not be split as plain OR tokens');
 console.log('UI interaction tests passed: 66');
