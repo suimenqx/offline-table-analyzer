@@ -1045,7 +1045,7 @@ const TableUtils = {
             const r = this.trimRow(row || []);
             if(this.isEmptyRow(r)) return;
             if(width && r.length !== width) {
-                diagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', table:tableName, row:idx + 1, message:`${tableName} 第 ${idx + 1} 行列数为 ${r.length}，目标列数为 ${width}` });
+                diagnostics.push({ severity:'warning', code:'ROW_WIDTH_MISMATCH', table:tableName, row:idx + 1, message:`${tableName} 第 ${idx + 1} 行列数为 ${r.length}，目标列数为 ${width}` });
             }
             while(r.length < width) r.push('');
             out.push(r);
@@ -1343,6 +1343,7 @@ const Store = {
     migratedFrom: null,
     saveTimer: null,
     loadFailed: false,
+    lastSuccessfulFormat: null,  // session-only: last format that parsed successfully
     _listeners: null,  // Set of onChange callbacks; lazily initialised
     _notifyQueue: null, // pending events queued for batched async delivery
     _notifyTimer: null, // single batched async timer
@@ -1572,6 +1573,19 @@ const Store = {
         this.save();
         return true;
     },
+    duplicateDoc(id) {
+        const source = this.state.docs.find(d => d.id === id);
+        if(!source) return null;
+        const copy = JSON.parse(JSON.stringify(source));
+        copy.id = this.generateDocId();
+        copy.title = this.makeUniqueTitle(`${source.title || 'Analysis'} (副本)`, copy.id);
+        // Clear cell edits — they reference row indices that may not apply to the new context
+        if(copy.ui && copy.ui.cellEdits) copy.ui.cellEdits = {};
+        this.state.docs.push(copy);
+        this.state.activeId = copy.id;
+        this.save();
+        return copy;
+    },
     renameDoc(id, title) {
         const doc = this.state.docs.find(d => d.id === id);
         if(!doc) return false;
@@ -1721,6 +1735,16 @@ const Store = {
                     this._notify('state:changed', {});
                 }
                 return result;
+            }
+            case 'tab:duplicate': {
+                const id = payload && payload.id;
+                if (!id) return null;
+                const copy = this.duplicateDoc(id);
+                if (copy) {
+                    this._notify('tab:duplicated', { id: copy.id, sourceId: id });
+                    this._notify('state:changed', {});
+                }
+                return copy;
             }
             case 'tab:rename': {
                 const id = payload && payload.id;
@@ -3267,7 +3291,7 @@ const Delimited = {
             if(ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
             cell += ch;
         }
-        if(inQuotes) diagnostics.push({ level:'warning', code:'UNCLOSED_QUOTE', message:'检测到未闭合的引号字段；已按当前内容继续解析' });
+        if(inQuotes) diagnostics.push({ severity:'warning', code:'UNCLOSED_QUOTE', message:'检测到未闭合的引号字段；已按当前内容继续解析' });
         row.push(cell); rows.push(row);
         const filtered = rows.filter(r => !TableUtils.isEmptyRow(r));
         return { rows: filtered, diagnostics };
@@ -3740,7 +3764,7 @@ function parseQuotedValue(text, index, diagnostics, tableName, rowNumber) {
         cursor++;
     }
     diagnostics.push({
-        level:'warning',
+        severity:'warning',
         code:'UNCLOSED_QUOTE',
         table:tableName,
         row:rowNumber,
@@ -3756,7 +3780,7 @@ function parseRecord(body, tableName, rowNumber) {
     let cursor = 0;
 
     const addMissingColon = (fragment) => diagnostics.push({
-        level:'warning',
+        severity:'warning',
         code:'MISSING_COLON',
         table:tableName,
         row:rowNumber,
@@ -3836,7 +3860,7 @@ function parseRecords(body, tableName) {
             const parsed = parseRecord(body.slice(cursor + 1, partialEnd), tableName, recordNumber);
             if(parsed.fields.length) records.push(parsed);
             diagnostics.push({
-                level:'warning',
+                severity:'warning',
                 code:'UNMATCHED_BRACE',
                 table:tableName,
                 row:recordNumber,
@@ -3910,7 +3934,7 @@ const DataBlockParser = {
             const tableDiagnostics = [...parsed.diagnostics];
             if(!block.complete) {
                 tableDiagnostics.push({
-                    level:'error',
+                    severity:'error',
                     code:'UNCLOSED_DATA_BLOCK',
                     table:name,
                     message:`数据表 ${name} 缺少结束方括号`
@@ -3918,7 +3942,7 @@ const DataBlockParser = {
             }
             if(!rows.length && body.trim()) {
                 tableDiagnostics.push({
-                    level:'warning',
+                    severity:'warning',
                     code:'NO_DATA_RECORDS',
                     table:name,
                     message:`数据表 ${name} 未找到有效记录`
@@ -3943,7 +3967,7 @@ const DataBlockParser = {
             diagnostics.push(...tableDiagnostics);
         });
 
-        if(!blocks.length) diagnostics.push({ level:'info', code:'NO_DATA_BLOCK', message:'未找到有效 data 数据块' });
+        if(!blocks.length) diagnostics.push({ severity:'info', code:'NO_DATA_BLOCK', message:'未找到有效 data 数据块' });
         return { tables, diagnostics };
     }
 };
@@ -4017,7 +4041,7 @@ const CliMultiBlockParser = {
         const titleCounts = new Map();
         let previousTitle = null;
         let previousWidth = 0;
-        const addDiagnostic = (item) => diagnostics.push({ level:'warning', ...item });
+        const addDiagnostic = (item) => diagnostics.push({ severity:'warning', ...item });
 
         for(let i = 0; i < markerIndexes.length; i++) {
             const markerIndex = markerIndexes[i];
@@ -4045,7 +4069,7 @@ const CliMultiBlockParser = {
             const rawHeaders = ranges.map(range => H.sliceByDisplayColumns(parts.headerLine, range.s, range.e));
             const blockDiagnostics = [];
             if(ranges[0].generated) {
-                blockDiagnostics.push({ level:'warning', code:'MISSING_FIRST_HEADER', row:1, message:'CLI 表格首列无表头，已生成 Column1' });
+                blockDiagnostics.push({ severity:'warning', code:'MISSING_FIRST_HEADER', row:1, message:'CLI 表格首列无表头，已生成 Column1' });
             }
             const rows = [];
             parts.dataLines.forEach((line, rowIndex) => {
@@ -4054,14 +4078,14 @@ const CliMultiBlockParser = {
                 const positioned = ranges.every(range => H.cliDisplayTokenStarts(line).includes(range.s));
                 const widthMismatch = fallback.length > ranges.length || (fallback.length < ranges.length && !positioned);
                 if(widthMismatch) {
-                    blockDiagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', row:rowIndex + 1, message:`CLI 数据行 ${rowIndex + 1} 列数为 ${fallback.length}，目标列数为 ${ranges.length}` });
+                    blockDiagnostics.push({ severity:'warning', code:'ROW_WIDTH_MISMATCH', row:rowIndex + 1, message:`CLI 数据行 ${rowIndex + 1} 列数为 ${fallback.length}，目标列数为 ${ranges.length}` });
                 }
                 const positionMismatch = fallback.length >= ranges.length && (
                     fallback.length !== ranges.length || fallback.some((value, index) => value !== sliced[index])
                 );
                 const values = positionMismatch ? fallback : sliced;
                 if(positionMismatch) {
-                    blockDiagnostics.push({ level:'warning', code:'POSITION_MISMATCH', row:rowIndex + 1, message:`CLI 定宽数据行 ${rowIndex + 1} 的位置截取与空白分割不一致，已按空白分割保留值` });
+                    blockDiagnostics.push({ severity:'warning', code:'POSITION_MISMATCH', row:rowIndex + 1, message:`CLI 定宽数据行 ${rowIndex + 1} 的位置截取与空白分割不一致，已按空白分割保留值` });
                 }
                 if(!TableUtils.isEmptyRow(values)) rows.push(values);
             });
@@ -4155,7 +4179,7 @@ const AlignedTableParser = {
                 );
                 if(shouldDiagnoseMismatch) {
                     blockDiagnostics.push({
-                        level:'warning',
+                        severity:'warning',
                         code:'ALIGNED_POSITION_MISMATCH',
                         table:'',
                         row:i,
@@ -4184,7 +4208,7 @@ const AlignedTableParser = {
             tables.push(resolved);
         }
         if(!tables.length && options.format === this.id) {
-            return { tables:[], diagnostics:[{ level:'warning', code:'NO_ALIGNED_TABLE', message:'未检测到定宽对齐表格' }] };
+            return { tables:[], diagnostics:[{ severity:'warning', code:'NO_ALIGNED_TABLE', message:'未检测到定宽对齐表格' }] };
         }
         return { tables, diagnostics:tables.flatMap(table => table.diagnostics || []) };
     }
@@ -4323,7 +4347,7 @@ const ImportEngine = {
             if(item.code === 'UNCLOSED_QUOTE') quality -= 0.3;
             else if(item.code === 'ROW_WIDTH_MISMATCH') quality -= 0.04;
             else if(item.code === 'ALIGNED_POSITION_MISMATCH') alignedMismatchCount++;
-            else if(item.level === 'error') quality -= 0.35;
+            else if((item.severity || item.level) === 'error') quality -= 0.35;
         });
         if(alignedMismatchCount) quality -= Math.min(0.16, 0.08 + (alignedMismatchCount - 1) * 0.01);
         return Math.max(0.15, Math.min(1, quality));
@@ -4350,7 +4374,26 @@ const ImportEngine = {
                 if (chosen) scored = [{ parser: chosen, score: 1 }];
             }
 
-            // ── 1. FormatSniffer：特征指纹匹配 ──
+            // ── 1. 记忆格式优先试探 ──
+            if (!chosen && !selectedType) {
+                const lastFmt = (typeof Store !== 'undefined' && Store.lastSuccessfulFormat) || null;
+                if (lastFmt && lastFmt !== 'html-table') {
+                    const cachedParser = this.getParser(lastFmt);
+                    if (cachedParser && cachedParser.id !== 'plain-text') {
+                        try {
+                            const probeResult = cachedParser.parse(source, options);
+                            const quality = this.parseQuality(probeResult);
+                            if (quality > 0.6) {
+                                chosen = cachedParser;
+                                parsed = probeResult;
+                                scored = [{ parser: cachedParser, score: quality }];
+                            }
+                        } catch (e) { /* 记忆格式不兼容，回退到 sniff */ }
+                    }
+                }
+            }
+
+            // ── 2. FormatSniffer：特征指纹匹配 ──
             if (!chosen) {
                 const sniff = getSniff();
                 const sniffCandidates = sniff.candidates || [];
@@ -4447,7 +4490,7 @@ const Parser = {
         } catch(e) {
             console.error(e);
             Toast.show('解析出错: ' + e.message, true);
-            this.lastResult = { tables:[], format:'error', label:'解析错误', diagnostics:[{ level:'error', code:'PARSE_ERROR', message:e.message || String(e) }], candidates:[] };
+            this.lastResult = { tables:[], format:'error', label:'解析错误', diagnostics:[{ severity:'error', code:'PARSE_ERROR', message:e.message || String(e) }], candidates:[] };
             return [];
         }
     }
@@ -7500,6 +7543,87 @@ const TabController = {
     return { TabController };
 });
 
+/* @module ui/keyboard-controller.js: global keyboard shortcuts */
+OTA.define('keyboard-controller', ["runtime", "store", "source-controller", "cell-edit-controller", "tab-controller", "join-editor", "modal-controller"], ({$, Toast}, {Store}, {SourceController}, {CellEditController}, {TabController}, {JoinEditor}, {ModalController}) => {
+/* KeyboardController — global keyboard shortcut handler.
+
+   Extracted from App.bind() to keep the orchestrator lean.
+   App calls KeyboardController.init(app) once during bootstrap.
+*/
+
+const KeyboardController = {
+    _app: null,
+
+    /**
+     * Register global keydown listener. Called once from App.init().
+     * @param {Object} app — App instance (for run / createNewTab / showHelp / closeModal)
+     */
+    init(app) {
+        this._app = app;
+        if (typeof document !== 'undefined' && document.addEventListener) {
+            document.addEventListener('keydown', this._onKeydown.bind(this));
+        }
+    },
+
+    _onKeydown(e) {
+        const app = this._app;
+        if (!app) return;
+
+        // ── Fullscreen source editor: Escape closes ──
+        const sourceModal = $('sourceEditorModal');
+        if (sourceModal && !sourceModal.classList.contains('hidden')) {
+            if (e.key === 'Escape') { e.preventDefault(); SourceController.close(); }
+            return;
+        }
+
+        // ── Generic modal: Escape closes ──
+        const modalOverlay = $('modalOverlay');
+        if (modalOverlay && !modalOverlay.classList.contains('hidden')) {
+            if (e.key === 'Escape') { e.preventDefault(); app.closeModal(); }
+            return;
+        }
+
+        const mod = e.ctrlKey || e.metaKey;
+        const tag = document.activeElement && document.activeElement.tagName || '';
+        const typing = /INPUT|TEXTAREA|SELECT/.test(tag);
+
+        // ── Workbench shortcuts ──
+        if (mod && e.key.toLowerCase() === 'enter') { e.preventDefault(); app.run(); return; }
+        if (mod && e.key.toLowerCase() === 'n')     { e.preventDefault(); app.createNewTab(e); return; }
+        if (mod && e.key.toLowerCase() === 'o')     { e.preventDefault(); $('sourceFileInput').click(); return; }
+        if (mod && e.key.toLowerCase() === 's')     {
+            e.preventDefault();
+            const inp = $('rawInput');
+            if (inp) Store.curr().raw = inp.value;
+            Store.save();
+            Toast.show('工作区已保存');
+            return;
+        }
+        if (mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); CellEditController.undo(); return; }
+        if (mod && !typing && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); CellEditController.redo(); return; }
+        if (e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeId); return; }
+        if (e.key === '?' && !typing)  { e.preventDefault(); app.showHelp(); return; }
+
+        // ── JOIN editor shortcuts (only when JOIN modal is open) ──
+        const joinModal = $('joinModal');
+        if (!joinModal || joinModal.classList.contains('hidden')) return;
+        if (modalOverlay && !modalOverlay.classList.contains('hidden')) return;
+
+        if (e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); return; }
+        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+            e.preventDefault();
+            const idx = JoinEditor.state.selectedOrderIdx;
+            if (idx >= 0) JoinEditor.moveOrder(idx, e.key === 'ArrowUp' ? -1 : 1);
+            return;
+        }
+        if (e.key === '/' && !typing) { e.preventDefault(); $('jeLSearch').focus(); return; }
+        if (e.key === 'Enter' && !e.shiftKey && !typing) { e.preventDefault(); JoinEditor.save(); return; }
+    }
+};
+
+    return { KeyboardController };
+});
+
 /* @module ui/export-controller.js: file exports and workspace backup */
 OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry"], ({$, Toast}, {Store, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}) => {
 /* ExportController — file exports, workspace/config backup, copy format.
@@ -7751,7 +7875,7 @@ const ExportController = {
 });
 
 /* @module ui/app.js: application orchestration and UI */
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -8299,39 +8423,8 @@ validflag Time      Level   Message                 Code
         const jm = $('joinModal');
         if(jm) jm.addEventListener('click', e => { if(e.target === jm) closeJoin(); });
 
-        document.addEventListener('keydown', e => {
-            const sourceModal = $('sourceEditorModal');
-            if(sourceModal && !sourceModal.classList.contains('hidden')) {
-                if(e.key === 'Escape') { e.preventDefault(); SourceController.close(); }
-                return;
-            }
-            const modalOverlay = $('modalOverlay');
-            if(modalOverlay && !modalOverlay.classList.contains('hidden')) {
-                if(e.key === 'Escape') { e.preventDefault(); this.closeModal(); }
-                return;
-            }
-            const mod = e.ctrlKey || e.metaKey;
-            const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName || '');
-            if(mod && e.key.toLowerCase() === 'enter') { e.preventDefault(); this.run(); return; }
-            if(mod && e.key.toLowerCase() === 'n') { e.preventDefault(); this.createNewTab(e); return; }
-            if(mod && e.key.toLowerCase() === 'o') { e.preventDefault(); $('sourceFileInput').click(); return; }
-            if(mod && e.key.toLowerCase() === 's') { e.preventDefault(); const inp = $('rawInput'); if(inp) Store.curr().raw = inp.value; Store.save(); Toast.show('工作区已保存'); return; }
-            if(mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); CellEditController.undo(); return; }
-            if(mod && !typing && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); CellEditController.redo(); return; }
-            if(e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeId); return; }
-            if(e.key === '?' && !typing) { e.preventDefault(); this.showHelp(); return; }
-            if($('joinModal').classList.contains('hidden')) return;
-            if(!$('modalOverlay').classList.contains('hidden')) return;
-            if(e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); return; }
-            if(e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-                e.preventDefault();
-                const idx = JoinEditor.state.selectedOrderIdx;
-                if(idx >= 0) JoinEditor.moveOrder(idx, e.key === 'ArrowUp' ? -1 : 1);
-                return;
-            }
-            if(e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('jeLSearch').focus(); return; }
-            if(e.key === 'Enter' && !e.shiftKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); JoinEditor.save(); return; }
-        });
+        // Keyboard shortcuts — delegated to KeyboardController
+        KeyboardController.init(this);
 
     },
 
@@ -8376,7 +8469,7 @@ validflag Time      Level   Message                 Code
     showDiagnostics() {
         const result = TableRegistry.getLastResult();
         const candidates = (result.candidates || []).map(item => `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : `识别分数 ${Math.round(item.score * 100)}%`}</span></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`).join('');
-        const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
+        const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.severity || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
         this.modal('解析详情', `<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
         document.querySelectorAll('.diagnostic-format-btn').forEach(button => {
             button.onclick = () => { this.closeModal(); this.setImportFormat(button.dataset.format); };
@@ -8403,6 +8496,7 @@ validflag Time      Level   Message                 Code
             Store.curr().raw = sourceText; Store.save();
             const result = Parser.parse(sourceText, this.getParseOptions());
             TableRegistry.setResult(result);
+            Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
             CellEditController.setRawTables(result.tables);
             ExportController.setContext({ raw: result.tables });
             this.applyStoredCellEdits();
@@ -8417,7 +8511,15 @@ validflag Time      Level   Message                 Code
             if(TableRegistry.getRaw().length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
         } catch(e) {
             console.error(e);
-            Toast.show("解析错误: " + e.message, true);
+            const msg = e.message || String(e);
+            // Map common errors to user-friendly Chinese messages
+            const friendly =
+                /超过.*25.*MB|MAX_IMPORT/i.test(msg)   ? '数据过大，请将输入控制在 25 MB 以内' :
+                /quota|storage.*full/i.test(msg)        ? '浏览器存储空间不足；当前数据仍在内存中，请立即备份工作区' :
+                /Unexpected.*token|JSON.*parse/i.test(msg) ? '数据格式无法识别，请尝试手动选择格式' :
+                /URI.*malformed/i.test(msg)             ? '文件名包含不支持字符' :
+                '';
+            Toast.show(friendly || `解析失败：${msg}`, true);
         }
     },
 

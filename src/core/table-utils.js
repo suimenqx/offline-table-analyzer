@@ -34,7 +34,7 @@ const TableUtils = {
             const r = this.trimRow(row || []);
             if(this.isEmptyRow(r)) return;
             if(width && r.length !== width) {
-                diagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', table:tableName, row:idx + 1, message:`${tableName} 第 ${idx + 1} 行列数为 ${r.length}，目标列数为 ${width}` });
+                diagnostics.push({ severity:'warning', code:'ROW_WIDTH_MISMATCH', table:tableName, row:idx + 1, message:`${tableName} 第 ${idx + 1} 行列数为 ${r.length}，目标列数为 ${width}` });
             }
             while(r.length < width) r.push('');
             out.push(r);

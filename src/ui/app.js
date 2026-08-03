@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -555,39 +555,8 @@ validflag Time      Level   Message                 Code
         const jm = $('joinModal');
         if(jm) jm.addEventListener('click', e => { if(e.target === jm) closeJoin(); });
 
-        document.addEventListener('keydown', e => {
-            const sourceModal = $('sourceEditorModal');
-            if(sourceModal && !sourceModal.classList.contains('hidden')) {
-                if(e.key === 'Escape') { e.preventDefault(); SourceController.close(); }
-                return;
-            }
-            const modalOverlay = $('modalOverlay');
-            if(modalOverlay && !modalOverlay.classList.contains('hidden')) {
-                if(e.key === 'Escape') { e.preventDefault(); this.closeModal(); }
-                return;
-            }
-            const mod = e.ctrlKey || e.metaKey;
-            const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName || '');
-            if(mod && e.key.toLowerCase() === 'enter') { e.preventDefault(); this.run(); return; }
-            if(mod && e.key.toLowerCase() === 'n') { e.preventDefault(); this.createNewTab(e); return; }
-            if(mod && e.key.toLowerCase() === 'o') { e.preventDefault(); $('sourceFileInput').click(); return; }
-            if(mod && e.key.toLowerCase() === 's') { e.preventDefault(); const inp = $('rawInput'); if(inp) Store.curr().raw = inp.value; Store.save(); Toast.show('工作区已保存'); return; }
-            if(mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); CellEditController.undo(); return; }
-            if(mod && !typing && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); CellEditController.redo(); return; }
-            if(e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeId); return; }
-            if(e.key === '?' && !typing) { e.preventDefault(); this.showHelp(); return; }
-            if($('joinModal').classList.contains('hidden')) return;
-            if(!$('modalOverlay').classList.contains('hidden')) return;
-            if(e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); return; }
-            if(e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-                e.preventDefault();
-                const idx = JoinEditor.state.selectedOrderIdx;
-                if(idx >= 0) JoinEditor.moveOrder(idx, e.key === 'ArrowUp' ? -1 : 1);
-                return;
-            }
-            if(e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('jeLSearch').focus(); return; }
-            if(e.key === 'Enter' && !e.shiftKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); JoinEditor.save(); return; }
-        });
+        // Keyboard shortcuts — delegated to KeyboardController
+        KeyboardController.init(this);
 
 
     },
@@ -635,7 +604,7 @@ validflag Time      Level   Message                 Code
     showDiagnostics() {
         const result = TableRegistry.getLastResult();
         const candidates = (result.candidates || []).map(item => `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : `识别分数 ${Math.round(item.score * 100)}%`}</span></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`).join('');
-        const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
+        const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.severity || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
         this.modal('解析详情', `<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
         document.querySelectorAll('.diagnostic-format-btn').forEach(button => {
             button.onclick = () => { this.closeModal(); this.setImportFormat(button.dataset.format); };
@@ -662,6 +631,7 @@ validflag Time      Level   Message                 Code
             Store.curr().raw = sourceText; Store.save();
             const result = Parser.parse(sourceText, this.getParseOptions());
             TableRegistry.setResult(result);
+            Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
             CellEditController.setRawTables(result.tables);
             ExportController.setContext({ raw: result.tables });
             this.applyStoredCellEdits();
@@ -676,7 +646,15 @@ validflag Time      Level   Message                 Code
             if(TableRegistry.getRaw().length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
         } catch(e) {
             console.error(e);
-            Toast.show("解析错误: " + e.message, true);
+            const msg = e.message || String(e);
+            // Map common errors to user-friendly Chinese messages
+            const friendly =
+                /超过.*25.*MB|MAX_IMPORT/i.test(msg)   ? '数据过大，请将输入控制在 25 MB 以内' :
+                /quota|storage.*full/i.test(msg)        ? '浏览器存储空间不足；当前数据仍在内存中，请立即备份工作区' :
+                /Unexpected.*token|JSON.*parse/i.test(msg) ? '数据格式无法识别，请尝试手动选择格式' :
+                /URI.*malformed/i.test(msg)             ? '文件名包含不支持字符' :
+                '';
+            Toast.show(friendly || `解析失败：${msg}`, true);
         }
     },
 

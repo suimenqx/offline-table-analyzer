@@ -55,6 +55,7 @@ const MODULE_ORDER = [
   'ui/filter-controller.js',
   'ui/modal-controller.js',
   'ui/tab-controller.js',
+  'ui/keyboard-controller.js',
   'ui/export-controller.js',
   'ui/app.js',
   'bootstrap.js',

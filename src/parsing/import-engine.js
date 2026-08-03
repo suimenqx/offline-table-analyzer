@@ -18,7 +18,7 @@ const ImportEngine = {
             if(item.code === 'UNCLOSED_QUOTE') quality -= 0.3;
             else if(item.code === 'ROW_WIDTH_MISMATCH') quality -= 0.04;
             else if(item.code === 'ALIGNED_POSITION_MISMATCH') alignedMismatchCount++;
-            else if(item.level === 'error') quality -= 0.35;
+            else if((item.severity || item.level) === 'error') quality -= 0.35;
         });
         if(alignedMismatchCount) quality -= Math.min(0.16, 0.08 + (alignedMismatchCount - 1) * 0.01);
         return Math.max(0.15, Math.min(1, quality));
@@ -45,7 +45,26 @@ const ImportEngine = {
                 if (chosen) scored = [{ parser: chosen, score: 1 }];
             }
 
-            // ── 1. FormatSniffer：特征指纹匹配 ──
+            // ── 1. 记忆格式优先试探 ──
+            if (!chosen && !selectedType) {
+                const lastFmt = (typeof Store !== 'undefined' && Store.lastSuccessfulFormat) || null;
+                if (lastFmt && lastFmt !== 'html-table') {
+                    const cachedParser = this.getParser(lastFmt);
+                    if (cachedParser && cachedParser.id !== 'plain-text') {
+                        try {
+                            const probeResult = cachedParser.parse(source, options);
+                            const quality = this.parseQuality(probeResult);
+                            if (quality > 0.6) {
+                                chosen = cachedParser;
+                                parsed = probeResult;
+                                scored = [{ parser: cachedParser, score: quality }];
+                            }
+                        } catch (e) { /* 记忆格式不兼容，回退到 sniff */ }
+                    }
+                }
+            }
+
+            // ── 2. FormatSniffer：特征指纹匹配 ──
             if (!chosen) {
                 const sniff = getSniff();
                 const sniffCandidates = sniff.candidates || [];

@@ -48,7 +48,7 @@ const AlignedTableParser = {
                 );
                 if(shouldDiagnoseMismatch) {
                     blockDiagnostics.push({
-                        level:'warning',
+                        severity:'warning',
                         code:'ALIGNED_POSITION_MISMATCH',
                         table:'',
                         row:i,
@@ -77,7 +77,7 @@ const AlignedTableParser = {
             tables.push(resolved);
         }
         if(!tables.length && options.format === this.id) {
-            return { tables:[], diagnostics:[{ level:'warning', code:'NO_ALIGNED_TABLE', message:'未检测到定宽对齐表格' }] };
+            return { tables:[], diagnostics:[{ severity:'warning', code:'NO_ALIGNED_TABLE', message:'未检测到定宽对齐表格' }] };
         }
         return { tables, diagnostics:tables.flatMap(table => table.diagnostics || []) };
     }

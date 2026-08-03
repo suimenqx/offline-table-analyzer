@@ -61,6 +61,7 @@ const MODULES = [
   ['ui/filter-controller.js',     'column filter popover'],
   ['ui/modal-controller.js',      'modal dialogs and selectors'],
   ['ui/tab-controller.js',        'tab bar drag/drop/rename'],
+  ['ui/keyboard-controller.js',    'global keyboard shortcuts'],
   ['ui/export-controller.js',     'file exports and workspace backup'],
   ['ui/app.js',                   'application orchestration and UI'],
 

@@ -12,7 +12,7 @@ const CliMultiBlockParser = {
         const titleCounts = new Map();
         let previousTitle = null;
         let previousWidth = 0;
-        const addDiagnostic = (item) => diagnostics.push({ level:'warning', ...item });
+        const addDiagnostic = (item) => diagnostics.push({ severity:'warning', ...item });
 
         for(let i = 0; i < markerIndexes.length; i++) {
             const markerIndex = markerIndexes[i];
@@ -40,7 +40,7 @@ const CliMultiBlockParser = {
             const rawHeaders = ranges.map(range => H.sliceByDisplayColumns(parts.headerLine, range.s, range.e));
             const blockDiagnostics = [];
             if(ranges[0].generated) {
-                blockDiagnostics.push({ level:'warning', code:'MISSING_FIRST_HEADER', row:1, message:'CLI 表格首列无表头，已生成 Column1' });
+                blockDiagnostics.push({ severity:'warning', code:'MISSING_FIRST_HEADER', row:1, message:'CLI 表格首列无表头，已生成 Column1' });
             }
             const rows = [];
             parts.dataLines.forEach((line, rowIndex) => {
@@ -49,14 +49,14 @@ const CliMultiBlockParser = {
                 const positioned = ranges.every(range => H.cliDisplayTokenStarts(line).includes(range.s));
                 const widthMismatch = fallback.length > ranges.length || (fallback.length < ranges.length && !positioned);
                 if(widthMismatch) {
-                    blockDiagnostics.push({ level:'warning', code:'ROW_WIDTH_MISMATCH', row:rowIndex + 1, message:`CLI 数据行 ${rowIndex + 1} 列数为 ${fallback.length}，目标列数为 ${ranges.length}` });
+                    blockDiagnostics.push({ severity:'warning', code:'ROW_WIDTH_MISMATCH', row:rowIndex + 1, message:`CLI 数据行 ${rowIndex + 1} 列数为 ${fallback.length}，目标列数为 ${ranges.length}` });
                 }
                 const positionMismatch = fallback.length >= ranges.length && (
                     fallback.length !== ranges.length || fallback.some((value, index) => value !== sliced[index])
                 );
                 const values = positionMismatch ? fallback : sliced;
                 if(positionMismatch) {
-                    blockDiagnostics.push({ level:'warning', code:'POSITION_MISMATCH', row:rowIndex + 1, message:`CLI 定宽数据行 ${rowIndex + 1} 的位置截取与空白分割不一致，已按空白分割保留值` });
+                    blockDiagnostics.push({ severity:'warning', code:'POSITION_MISMATCH', row:rowIndex + 1, message:`CLI 定宽数据行 ${rowIndex + 1} 的位置截取与空白分割不一致，已按空白分割保留值` });
                 }
                 if(!TableUtils.isEmptyRow(values)) rows.push(values);
             });

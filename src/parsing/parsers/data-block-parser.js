@@ -122,7 +122,7 @@ function parseQuotedValue(text, index, diagnostics, tableName, rowNumber) {
         cursor++;
     }
     diagnostics.push({
-        level:'warning',
+        severity:'warning',
         code:'UNCLOSED_QUOTE',
         table:tableName,
         row:rowNumber,
@@ -138,7 +138,7 @@ function parseRecord(body, tableName, rowNumber) {
     let cursor = 0;
 
     const addMissingColon = (fragment) => diagnostics.push({
-        level:'warning',
+        severity:'warning',
         code:'MISSING_COLON',
         table:tableName,
         row:rowNumber,
@@ -218,7 +218,7 @@ function parseRecords(body, tableName) {
             const parsed = parseRecord(body.slice(cursor + 1, partialEnd), tableName, recordNumber);
             if(parsed.fields.length) records.push(parsed);
             diagnostics.push({
-                level:'warning',
+                severity:'warning',
                 code:'UNMATCHED_BRACE',
                 table:tableName,
                 row:recordNumber,
@@ -292,7 +292,7 @@ const DataBlockParser = {
             const tableDiagnostics = [...parsed.diagnostics];
             if(!block.complete) {
                 tableDiagnostics.push({
-                    level:'error',
+                    severity:'error',
                     code:'UNCLOSED_DATA_BLOCK',
                     table:name,
                     message:`数据表 ${name} 缺少结束方括号`
@@ -300,7 +300,7 @@ const DataBlockParser = {
             }
             if(!rows.length && body.trim()) {
                 tableDiagnostics.push({
-                    level:'warning',
+                    severity:'warning',
                     code:'NO_DATA_RECORDS',
                     table:name,
                     message:`数据表 ${name} 未找到有效记录`
@@ -325,7 +325,7 @@ const DataBlockParser = {
             diagnostics.push(...tableDiagnostics);
         });
 
-        if(!blocks.length) diagnostics.push({ level:'info', code:'NO_DATA_BLOCK', message:'未找到有效 data 数据块' });
+        if(!blocks.length) diagnostics.push({ severity:'info', code:'NO_DATA_BLOCK', message:'未找到有效 data 数据块' });
         return { tables, diagnostics };
     }
 };

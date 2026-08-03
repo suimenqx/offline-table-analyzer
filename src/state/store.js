@@ -14,6 +14,7 @@ const Store = {
     migratedFrom: null,
     saveTimer: null,
     loadFailed: false,
+    lastSuccessfulFormat: null,  // session-only: last format that parsed successfully
     _listeners: null,  // Set of onChange callbacks; lazily initialised
     _notifyQueue: null, // pending events queued for batched async delivery
     _notifyTimer: null, // single batched async timer
@@ -243,6 +244,19 @@ const Store = {
         this.save();
         return true;
     },
+    duplicateDoc(id) {
+        const source = this.state.docs.find(d => d.id === id);
+        if(!source) return null;
+        const copy = JSON.parse(JSON.stringify(source));
+        copy.id = this.generateDocId();
+        copy.title = this.makeUniqueTitle(`${source.title || 'Analysis'} (副本)`, copy.id);
+        // Clear cell edits — they reference row indices that may not apply to the new context
+        if(copy.ui && copy.ui.cellEdits) copy.ui.cellEdits = {};
+        this.state.docs.push(copy);
+        this.state.activeId = copy.id;
+        this.save();
+        return copy;
+    },
     renameDoc(id, title) {
         const doc = this.state.docs.find(d => d.id === id);
         if(!doc) return false;
@@ -392,6 +406,16 @@ const Store = {
                     this._notify('state:changed', {});
                 }
                 return result;
+            }
+            case 'tab:duplicate': {
+                const id = payload && payload.id;
+                if (!id) return null;
+                const copy = this.duplicateDoc(id);
+                if (copy) {
+                    this._notify('tab:duplicated', { id: copy.id, sourceId: id });
+                    this._notify('state:changed', {});
+                }
+                return copy;
             }
             case 'tab:rename': {
                 const id = payload && payload.id;

@@ -10,7 +10,7 @@ const Parser = {
         } catch(e) {
             console.error(e);
             Toast.show('解析出错: ' + e.message, true);
-            this.lastResult = { tables:[], format:'error', label:'解析错误', diagnostics:[{ level:'error', code:'PARSE_ERROR', message:e.message || String(e) }], candidates:[] };
+            this.lastResult = { tables:[], format:'error', label:'解析错误', diagnostics:[{ severity:'error', code:'PARSE_ERROR', message:e.message || String(e) }], candidates:[] };
             return [];
         }
     }

@@ -19,7 +19,7 @@ const Delimited = {
             if(ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
             cell += ch;
         }
-        if(inQuotes) diagnostics.push({ level:'warning', code:'UNCLOSED_QUOTE', message:'检测到未闭合的引号字段；已按当前内容继续解析' });
+        if(inQuotes) diagnostics.push({ severity:'warning', code:'UNCLOSED_QUOTE', message:'检测到未闭合的引号字段；已按当前内容继续解析' });
         row.push(cell); rows.push(row);
         const filtered = rows.filter(r => !TableUtils.isEmptyRow(r));
         return { rows: filtered, diagnostics };
