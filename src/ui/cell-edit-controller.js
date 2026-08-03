@@ -122,7 +122,7 @@ const CellEditController = {
     },
 
     /**
-     * Apply cell edit (persist overlay + record history).
+     * Apply cell edit (persist overlay via dispatch + record history locally).
      */
     apply(tableName, rowIdx, colIdx, value) {
         const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
@@ -132,19 +132,15 @@ const CellEditController = {
         const next = String(value ?? '');
         if (previous === next) return false;
 
-        const ui = Store.curr().ui;
-        if (!ui.cellEdits) ui.cellEdits = {};
-        const tableKey = `$${tableName}`;
-        if (!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
-        if (!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
-        ui.cellEdits[tableKey][rowIdx][colIdx] = next;
+        // Persist via dispatch (single source of truth for Store writes)
+        dispatch('cell:edit', { table: tableName, row: rowIdx, col: colIdx, value: next });
+        // Apply to in-memory table immediately (synchronous with dispatch)
         table.rows[rowIdx][colIdx] = next;
 
         CellEditController.editHistory.push({ tableName, rowIdx, colIdx, previous, next });
         if (CellEditController.editHistory.length > MAX_HISTORY) CellEditController.editHistory.shift();
         CellEditController.editRedo = [];
 
-        Store.save();
         CellEditController._updateButtons();
         return true;
     },
@@ -167,18 +163,12 @@ const CellEditController = {
         dispatch('preview:renderRequested', {});
     },
 
-    /** Apply edit without recording history. */
+    /** Apply edit without recording history. Uses dispatch for consistency. */
     _applySilent(tableName, rowIdx, colIdx, value) {
         const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
         if (!table || !table.rows[rowIdx]) return;
-        const ui = Store.curr().ui;
-        const tableKey = `$${tableName}`;
-        if (!ui.cellEdits) ui.cellEdits = {};
-        if (!ui.cellEdits[tableKey]) ui.cellEdits[tableKey] = {};
-        if (!ui.cellEdits[tableKey][rowIdx]) ui.cellEdits[tableKey][rowIdx] = {};
-        ui.cellEdits[tableKey][rowIdx][colIdx] = value;
+        dispatch('cell:edit', { table: tableName, row: rowIdx, col: colIdx, value });
         table.rows[rowIdx][colIdx] = value;
-        Store.save();
     },
 
     /** Clear all history when source changes. */

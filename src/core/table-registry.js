@@ -1,30 +1,77 @@
 OTA.define('table-registry', ["store", "joiner"], ({Store}, {Joiner}) => {
-/* TableRegistry — shared access to parsed tables and column metadata.
+/* TableRegistry — single source of truth for parsed table data and metadata.
 
-   This module breaks the circular dependency between join-editor and app:
-   both depend on TableRegistry, neither depends on each other for data access.
+   This module holds the complete parse result (tables, format, diagnostics,
+   candidates) and provides column/table metadata queries. It breaks the
+   circular dependency between join-editor and app.
 
-   App.run() calls setRaw() after each parse. All downstream consumers
-   (JoinEditor, CellEditController, ExportController, etc.) read via
-   getAvailableTables() / getCols() / getRaw().
+   App.run() calls setResult() after each parse. All downstream consumers
+   read via getRaw() / getCols() / getAvailableTables() / getDiagnostics() etc.
 */
 
 const TableRegistry = {
+    /** @type {Object[]} raw parsed tables */
     _raw: [],
+    /** @type {string} last successful format id */
+    _format: 'empty',
+    /** @type {string} human-readable format label */
+    _label: '',
+    /** @type {Object[]} parse diagnostics */
+    _diagnostics: [],
+    /** @type {Object[]} format candidates with scores */
+    _candidates: [],
 
-    /** Called by App.run() after each successful parse. */
-    setRaw(tables) {
-        this._raw = tables || [];
+    /**
+     * Store the full parse result. Called by App.run() after each parse.
+     * @param {Object} result — ImportEngine.parse() return value
+     */
+    setResult(result) {
+        if (!result) {
+            this._raw = [];
+            this._format = 'empty';
+            this._label = '空输入';
+            this._diagnostics = [];
+            this._candidates = [];
+            return;
+        }
+        this._raw = result.tables || [];
+        this._format = result.format || 'empty';
+        this._label = result.label || '';
+        this._diagnostics = result.diagnostics || [];
+        this._candidates = result.candidates || [];
     },
 
-    /** @returns {Object[]} all raw parsed tables (read-only; do not mutate) */
-    getRaw() {
-        return this._raw;
-    },
+    // ── Read accessors ──
+
+    /** @returns {Object[]} all raw parsed tables */
+    getRaw() { return this._raw; },
 
     /** @returns {Object|null} a raw table by name, or null */
     getTable(name) {
         return this._raw.find(t => t.name === name) || null;
+    },
+
+    /** @returns {string} last parse result's format id */
+    getFormat() { return this._format; },
+
+    /** @returns {string} last parse result's human label */
+    getLabel() { return this._label; },
+
+    /** @returns {Object[]} diagnostics from last parse */
+    getDiagnostics() { return this._diagnostics; },
+
+    /** @returns {Object[]} format candidates from last parse */
+    getCandidates() { return this._candidates; },
+
+    /** @returns {Object} the full last parse result (shallow copy) */
+    getLastResult() {
+        return {
+            tables: this._raw,
+            format: this._format,
+            label: this._label,
+            diagnostics: this._diagnostics,
+            candidates: this._candidates,
+        };
     },
 
     /** @returns {string[]} all table and view names (raw + global JOIN views) */
@@ -46,7 +93,14 @@ const TableRegistry = {
             return res ? res.headers.slice() : [];
         }
         return [];
-    }
+    },
+
+    // ── Backward-compatible alias (setRaw still works, used by old callers) ──
+
+    /** @deprecated Use setResult() instead */
+    setRaw(tables) {
+        this._raw = tables || [];
+    },
 };
 
     return { TableRegistry };

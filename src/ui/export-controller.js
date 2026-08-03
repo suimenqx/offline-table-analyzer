@@ -1,4 +1,4 @@
-OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch"], ({$, Toast}, {Store, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}) => {
+OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry"], ({$, Toast}, {Store, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}) => {
 /* ExportController — file exports, workspace/config backup, copy format.
 
    Responsibilities:
@@ -12,13 +12,11 @@ OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "d
 */
 
 const ExportController = {
-    _raw: [],
     _rendered: [],
     _joinTables: [],
 
-    /** Called by App after each parse to keep references fresh. */
+    /** Called by App after each parse to keep transient references fresh. */
     setContext(ctx) {
-        if (ctx.raw) ExportController._raw = ctx.raw;
         if (ctx.rendered) ExportController._rendered = ctx.rendered;
         if (ctx.joinTables !== undefined) ExportController._joinTables = ctx.joinTables;
     },
@@ -38,7 +36,7 @@ const ExportController = {
 
         // XLSX exports
         const rawBtn = $('exportRawBtn');
-        if (rawBtn) rawBtn.onclick = () => Exporter.toExcel(ExportController._raw, ExportController._getPrefix('raw'));
+        if (rawBtn) rawBtn.onclick = () => Exporter.toExcel(TableRegistry.getRaw(), ExportController._getPrefix('raw'));
 
         const fullBtn = $('exportFullBtn');
         if (fullBtn) fullBtn.onclick = () => Exporter.toExcel(ExportController._getFullExportTables(), ExportController._getPrefix('full'));
@@ -189,7 +187,7 @@ const ExportController = {
         if (!Joiner) return [];
         return ui.enabledViews.map(v => {
             const cfg = Store.state.globalViews.find(g => g.view === v);
-            return cfg ? Joiner.run(ExportController._raw, cfg, Store.state.globalViews) : null;
+            return cfg ? Joiner.run(TableRegistry.getRaw(), cfg, Store.state.globalViews) : null;
         }).filter(x => x);
     },
 
@@ -221,7 +219,7 @@ const ExportController = {
 
     _getFullExportTables() {
         const ui = Store.curr().ui;
-        let tables = ExportController._raw || [];
+        let tables = TableRegistry.getRaw();
         if (ui.exportOnlyChecked && Array.isArray(ui.displayTables)) {
             const selected = new Set(ui.displayTables);
             tables = tables.filter(t => selected.has(t.name));

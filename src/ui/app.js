@@ -123,7 +123,7 @@ const App = {
     },
 
     getImportSummaryItems() {
-        const res = Parser.lastResult || {};
+        const res = TableRegistry.getLastResult();
         if(!res.format || res.format === 'empty') return [];
         const tables = res.tables || [];
         const hasGeneratedHeaders = tables.some(t => t.meta && t.meta.generatedHeaders);
@@ -201,11 +201,11 @@ const App = {
         const summary = $('datasetSummary');
         if(title) title.textContent = Store.curr().title || 'Analysis';
         if(!summary) return;
-        const tableCount = this.raw.length;
-        const rows = this.raw.reduce((sum, table) => sum + (table.rows || []).length, 0);
-        const maxCols = this.raw.reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
+        const tableCount = TableRegistry.getRaw().length;
+        const rows = TableRegistry.getRaw().reduce((sum, table) => sum + (table.rows || []).length, 0);
+        const maxCols = TableRegistry.getRaw().reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
         const importItems = this.getImportSummaryItems();
-        const format = (Parser.lastResult && (Parser.lastResult.label || Parser.lastResult.format)) || (importItems[0] || '').replace(/^格式:\s*/, '');
+        const format = (TableRegistry.getLastResult() && (TableRegistry.getLastResult().label || TableRegistry.getLastResult().format)) || (importItems[0] || '').replace(/^格式:\s*/, '');
         const header = importItems.find(text => text.indexOf('表头:') === 0) || '';
         summary.textContent = tableCount
             ? `${format || '已解析'}${header ? ` · ${header}` : ''} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列`
@@ -236,7 +236,7 @@ const App = {
         const status = $('parseStatus');
         const text = $('parseStatusText');
         const details = $('diagnosticsBtn');
-        const result = Parser.lastResult || {};
+        const result = TableRegistry.getLastResult();
         const diagnostics = result.diagnostics || [];
         const rowCount = (result.tables || []).reduce((sum, table) => sum + (table.rows || []).length, 0);
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
@@ -257,7 +257,7 @@ const App = {
         if(headerSelect) {
             headerSelect.value = (d.ui && d.ui.importHeaderMode) || 'auto';
             const manualFormat = formatSelect ? formatSelect.value : 'auto';
-            const parsedFormat = Parser.lastResult && Parser.lastResult.format;
+            const parsedFormat = TableRegistry.getLastResult() && TableRegistry.getLastResult().format;
             const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
             headerSelect.disabled = isCli;
         }
@@ -267,7 +267,7 @@ const App = {
     setHeaderMode(mode) {
         const current = Store.curr().ui.importHeaderMode || 'auto';
         if(current !== mode) this.invalidateCellEdits();
-        Store.updateUI('importHeaderMode', mode);
+        dispatch('import:setHeaderMode', { mode });
         this.run();
     },
 
@@ -275,7 +275,7 @@ const App = {
         const next = format || 'auto';
         const current = Store.curr().ui.importFormat || 'auto';
         if(current !== next) this.invalidateCellEdits();
-        Store.updateUI('importFormat', next);
+        dispatch('import:setFormat', { format: next });
         this.run();
     },
 
@@ -616,7 +616,7 @@ validflag Time      Level   Message                 Code
 
     applyStoredCellEdits() {
         const edits = Store.curr().ui.cellEdits || {};
-        this.raw.forEach(table => {
+        TableRegistry.getRaw().forEach(table => {
             const tableEdits = edits[`$${table.name}`];
             if(!tableEdits) return;
             Object.entries(tableEdits).forEach(([rowKey, cols]) => {
@@ -633,7 +633,7 @@ validflag Time      Level   Message                 Code
 
 
     showDiagnostics() {
-        const result = Parser.lastResult || {};
+        const result = TableRegistry.getLastResult();
         const candidates = (result.candidates || []).map(item => `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : `识别分数 ${Math.round(item.score * 100)}%`}</span></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`).join('');
         const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
         this.modal('解析详情', `<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
@@ -660,20 +660,20 @@ validflag Time      Level   Message                 Code
             const sourceText = $('rawInput').value;
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
             Store.curr().raw = sourceText; Store.save();
-            this.raw = Parser.parse(sourceText, this.getParseOptions());
-            TableRegistry.setRaw(this.raw);
-            CellEditController.setRawTables(this.raw);
-            ExportController.setContext({ raw: this.raw });
+            const result = Parser.parse(sourceText, this.getParseOptions());
+            TableRegistry.setResult(result);
+            CellEditController.setRawTables(result.tables);
+            ExportController.setContext({ raw: result.tables });
             this.applyStoredCellEdits();
             this.updateImportSummary();
             const elapsed = Math.round(performance.now() - started);
-            dispatch('parse:completed', { tables: this.raw, elapsed: elapsed });
+            dispatch('parse:completed', { tables: result.tables, elapsed: elapsed });
             if(render) {
                 this.updSelects();
                 this.renderPreview();
                 this.updChips();
             }
-            if(this.raw.length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
+            if(TableRegistry.getRaw().length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
         } catch(e) {
             console.error(e);
             Toast.show("解析错误: " + e.message, true);
@@ -683,7 +683,7 @@ validflag Time      Level   Message                 Code
     updSelects() {
         const s = $('targetTableSelect');
         const old = s.value; s.innerHTML = '';
-        this.raw.forEach(t => s.add(new Option(t.name, t.name)));
+        TableRegistry.getRaw().forEach(t => s.add(new Option(t.name, t.name)));
         Store.state.globalViews.forEach(v => s.add(new Option(`JOIN:${v.view}`, `JOIN:${v.view}`)));
         if(old && Array.from(s.options).some(o=>o.value===old)) s.value=old;
         else if(s.options.length>0) s.selectedIndex=0;
@@ -701,7 +701,7 @@ validflag Time      Level   Message                 Code
     updChips() {
         const ui = Store.curr().ui;
         // 只显示表/视图名称，过滤掉误保存的字段名
-        const tableNames = this.raw.map(t => t.name);
+        const tableNames = TableRegistry.getRaw().map(t => t.name);
         const tsRaw = ui.displayTables;
         const ts = (tsRaw===null || tsRaw===undefined) ? null : (tsRaw || []).filter(n => tableNames.includes(n));
         $('tablesTrigger').innerHTML = (ts===null) ? `<span class="chip" style="background:var(--bg-hover); color:var(--text-secondary); border-color:transparent;">默认全显</span>` : (ts.length ? ts.map(n=>`<span class="chip">${this.escapeHtml(n)}</span>`).join('') : `<span class="placeholder">无</span>`);
@@ -740,7 +740,7 @@ validflag Time      Level   Message                 Code
         const div = $('previewArea'); div.innerHTML = '';
         this.rendered = []; Select.clear();
         this.syncPreviewTablePicker([], false);
-        if(!this.raw.length) { 
+        if(!TableRegistry.getRaw().length) { 
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
                 <div style="font-weight:800; color:var(--text-strong);">把杂乱数据变成可分析表格</div>
@@ -751,14 +751,14 @@ validflag Time      Level   Message                 Code
         }
         
         const ui = Store.curr().ui;
-        let list = this.raw;
+        let list = TableRegistry.getRaw();
         if(ui.displayTables) list = list.filter(t=>ui.displayTables.includes(t.name));
         
         let joins = [];
         if(ui.enabledViews) {
             joins = ui.enabledViews.map(v => {
                 const cfg = Store.state.globalViews.find(g=>g.view===v);
-                return cfg ? Joiner.run(this.raw, cfg, Store.state.globalViews) : null;
+                return cfg ? Joiner.run(TableRegistry.getRaw(), cfg, Store.state.globalViews) : null;
             }).filter(x=>x);
         }
         const combined = [...list, ...joins];
@@ -892,19 +892,19 @@ validflag Time      Level   Message                 Code
     closeModal() { ModalController.close(); },
     modal(title, html) { ModalController.show(title, html); },
 
-    modTables() { ModalController.showTableSelector(this.raw.map(t => t.name), Store.curr().ui.displayTables); },
+    modTables() { ModalController.showTableSelector(TableRegistry.getRaw().map(t => t.name), Store.curr().ui.displayTables); },
     modViews() { ModalController.showViewSelector(Store.state.globalViews, Store.curr().ui.enabledViews || []); },
     
     modCols() {
         const tName = $('targetTableSelect').value;
         if (!tName) return;
         let all = [];
-        const rawTable = this.raw.find(x => x.name === tName);
+        const rawTable = TableRegistry.getRaw().find(x => x.name === tName);
         if (rawTable) { all = rawTable.headers; }
         else if (tName.startsWith('JOIN:')) {
             const vName = tName.replace('JOIN:', '');
             const vCfg = Store.state.globalViews.find(v => v.view === vName);
-            if (vCfg) { const res = Joiner.run(this.raw, vCfg, Store.state.globalViews); if (res) all = res.headers; }
+            if (vCfg) { const res = Joiner.run(TableRegistry.getRaw(), vCfg, Store.state.globalViews); if (res) all = res.headers; }
         }
         if (!all || !all.length) { const rt = this.rendered.find(x => x.name === tName); if (rt) all = rt.headers; }
         if (!all || !all.length) { if (typeof alert === 'function') alert('无法获取列信息'); return; }

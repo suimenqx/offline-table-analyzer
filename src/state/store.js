@@ -477,9 +477,39 @@ const Store = {
             }
 
             // ── Cell editing ──
-            case 'cell:edit':
-                // Handled via App.setCellEdit — delegates to existing method
-                return null;
+            case 'cell:edit': {
+                // Payload: { table, row, col, value }
+                const tableName = payload && payload.table;
+                const rowIdx = payload && payload.row;
+                const colIdx = payload && payload.col;
+                if (!tableName || !Number.isInteger(rowIdx) || !Number.isInteger(colIdx)) return false;
+                const doc = this.curr();
+                if (!doc.ui.cellEdits) doc.ui.cellEdits = {};
+                const tableKey = `$${tableName}`;
+                if (!doc.ui.cellEdits[tableKey]) doc.ui.cellEdits[tableKey] = {};
+                if (!doc.ui.cellEdits[tableKey][rowIdx]) doc.ui.cellEdits[tableKey][rowIdx] = {};
+                const value = payload.value !== undefined ? String(payload.value) : '';
+                doc.ui.cellEdits[tableKey][rowIdx][colIdx] = value;
+                this.save();
+                this._notify('cell:edited', { table: tableName, row: rowIdx, col: colIdx, value });
+                this._notify('state:changed', {});
+                return true;
+            }
+
+            // ── Filter management ──
+            case 'filter:clearTable': {
+                // Payload: { table }
+                const table = payload && payload.table;
+                if (!table) return false;
+                const doc = this.curr();
+                if (doc.ui.columnFilters) {
+                    delete doc.ui.columnFilters[table];
+                    this.save();
+                }
+                this._notify('filter:changed', { scope: 'column', table, column: null, value: '' });
+                this._notify('state:changed', {});
+                return true;
+            }
 
             // ── Preview ──
             case 'preview:renderRequested': {
@@ -511,6 +541,27 @@ const Store = {
             case 'ui:sidebarTab': {
                 this.updateUI('sidebarTab', payload && payload.tab || 'data');
                 this._notify('ui:sidebarChanged', { tab: payload && payload.tab });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'import:setFormat': {
+                this.updateUI('importFormat', payload && payload.format || 'auto');
+                this._notify('import:formatChanged', { format: payload && payload.format });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'import:setHeaderMode': {
+                this.updateUI('importHeaderMode', payload && payload.mode || 'auto');
+                this._notify('import:headerModeChanged', { mode: payload && payload.mode });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'filter:focus': {
+                // Payload: { table, columns }
+                const table = payload && payload.table;
+                if (!table) return false;
+                this.updateRule(table, 'focus', (payload && payload.columns) || []);
+                this._notify('filter:changed', { scope: 'focus', table });
                 this._notify('state:changed', {});
                 return true;
             }

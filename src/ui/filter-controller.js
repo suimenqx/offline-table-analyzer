@@ -122,13 +122,9 @@ const FilterController = {
      * Clear all column filters for a table.
      */
     clearTableFilters(tableName) {
-        const doc = Store.curr();
-        if (doc.ui.columnFilters) {
-            delete doc.ui.columnFilters[tableName];
-            Store.save();
-            if (FilterController.open) FilterController._hide();
-            dispatch('preview:renderRequested', {});
-        }
+        dispatch('filter:clearTable', { table: tableName });
+        if (FilterController.open) FilterController._hide();
+        dispatch('preview:renderRequested', {});
     },
 
     _hide() {

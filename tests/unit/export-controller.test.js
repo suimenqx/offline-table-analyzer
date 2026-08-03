@@ -6,7 +6,7 @@ import { strict as assert } from 'node:assert/strict';
 import { createStorageMock } from '../mocks/storage.js';
 import { loadModules } from '../helpers/load-modules.mjs';
 
-let storage, ExportController, Store;
+let storage, ExportController, Store, TableRegistry;
 
 const { OTA } = loadModules([], {});
 
@@ -28,6 +28,7 @@ beforeEach(() => {
 
   ExportController = OTA.require('export-controller').ExportController;
   Store = OTA.require('store').Store;
+  TableRegistry = OTA.require('table-registry').TableRegistry;
 
   Store.state = {
     docs: [{ id: 'a', title: 'Analysis 1', raw: '', ui: { exportOnlyChecked: false, exportCols: 'all', enabledViews: [], displayTables: null, rules: {} } }],
@@ -36,14 +37,15 @@ beforeEach(() => {
   };
   Store.loadFailed = false;
   Store._listeners = null;
+  TableRegistry.setRaw([]);
 });
 
 // ---------------------------------------------------------------------------
 describe('ExportController — setContext', () => {
   it('stores raw tables', () => {
     const tables = [{ name: 'T1', headers: ['A'], rows: [['1']] }];
-    ExportController.setContext({ raw: tables });
-    assert.equal(ExportController._raw, tables);
+    TableRegistry.setRaw(tables);
+    assert.equal(TableRegistry.getRaw(), tables);
   });
 
   it('updates rendered data', () => {
@@ -59,7 +61,7 @@ describe('ExportController — _getFullExportTables', () => {
     const tables = [
       { name: 'T1', headers: ['A', 'B'], rows: [['1', '2']] },
     ];
-    ExportController.setContext({ raw: tables });
+    TableRegistry.setRaw(tables);
     const result = ExportController._getFullExportTables();
     assert.equal(result.length, 1);
     assert.deepEqual(result[0].headers, ['A', 'B']);
@@ -72,7 +74,7 @@ describe('ExportController — _getFullExportTables', () => {
     ];
     Store.curr().ui.exportCols = 'shown';
     Store.curr().ui.rules = { T1: { focus: ['A', 'C'] } };
-    ExportController.setContext({ raw: tables });
+    TableRegistry.setRaw(tables);
 
     const result = ExportController._getFullExportTables();
     assert.deepEqual(result[0].headers, ['A', 'C']);
