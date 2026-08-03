@@ -56,6 +56,7 @@ const MODULES = [
   ['ui/table-builder.js',         'preview table DOM construction'],
   ['ui/selection.js',             'preview range selection'],
   ['ui/join-editor.js',           'JOIN editor UI'],
+  ['ui/view-manager.js',          'JOIN view CRUD management modal'],
   ['ui/source-controller.js',     'source editor and file import'],
   ['ui/cell-edit-controller.js',  'inline cell editing with undo/redo'],
   ['ui/filter-controller.js',     'column filter popover'],

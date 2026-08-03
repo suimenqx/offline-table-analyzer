@@ -2285,7 +2285,7 @@ const ClipboardFormatter = {
     toMarkdown(matrix) {
         if(!matrix || !matrix.length) return '';
         const esc = value => {
-            const safe = this.protectSpreadsheetFormula(this.normalizeCell(value));
+            const safe = this.protectSpreadsheetFormula(value);
             return safe.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
         };
         const widths = this.getWidths(matrix.map(row => row.map(esc)));
@@ -2298,7 +2298,7 @@ const ClipboardFormatter = {
     toAscii(matrix) {
         if(!matrix || !matrix.length) return '';
         const clean = value => {
-            const safe = this.protectSpreadsheetFormula(this.normalizeCell(value));
+            const safe = this.protectSpreadsheetFormula(value);
             return safe.replace(/\n/g, ' ');
         };
         const normalized = matrix.map(row => row.map(clean));
@@ -5161,7 +5161,7 @@ const Select = {
 });
 
 /* @module ui/join-editor.js: JOIN editor UI */
-OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}) => {
+OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}) => {
 /* Join Editor - v2: improved UX */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '', selectedOrderIdx: -1 },
@@ -5170,6 +5170,11 @@ const JoinEditor = {
     _shiftSelecting: false,
     escapeHtml,
     formatBytes,
+
+    // Register ViewManager edit callback (called once during bootstrap)
+    _initViewManager() {
+        ViewManager.setEditCallback((idx) => this.open(idx));
+    },
 
     formatTime(ts) {
         if(!ts) return '';
@@ -5827,7 +5832,14 @@ const JoinEditor = {
         const hasRel = this.state.rels.some(r => r.l && r.r);
         const el = $('jePreview');
         if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
-        const stats = Joiner.stats(TableRegistry.getRaw(), cfg, Store.state.globalViews);
+        // Cache stats by config fingerprint to avoid redundant recalc
+        const cacheKey = `${cfg.left}|${cfg.right}|${cfg.type}|${this.state.rels.map(r => `${r.l}=${r.r}`).join(',')}`;
+        if (!this._statsCache) this._statsCache = { key: null, value: null };
+        if (this._statsCache.key !== cacheKey) {
+            this._statsCache.key = cacheKey;
+            this._statsCache.value = Joiner.stats(TableRegistry.getRaw(), cfg, Store.state.globalViews);
+        }
+        const stats = this._statsCache.value;
         if(!stats) { el.textContent = '预览: —'; return; }
         el.textContent = `预览: 输出 ${stats.outRows.toLocaleString()} 行 · 匹配 ${stats.matched.toLocaleString()} · 左未匹配 ${stats.leftOnly.toLocaleString()} · 右未匹配 ${stats.rightOnly.toLocaleString()}`;
     },
@@ -5911,7 +5923,7 @@ const JoinEditor = {
         const title = this.state.titleBase || '全局视图';
         $('jeTitle').textContent = flag ? `${title} *` : title;
     },
-    markDirty() { this.setDirty(true); },
+    markDirty() { this._statsCache = null; this.setDirty(true); },
 
     /* ── Column refresh ── */
     refreshColumns() {
@@ -6066,12 +6078,126 @@ const JoinEditor = {
         Toast.show(this.state.editIdx > -1 ? '视图已更新' : '视图已创建');
     },
 
-    /* ── View Management ── */
+    /* ── View Management (delegates to ViewManager) ── */
+    modManageViews() { ViewManager.modManageViews(); },
+    normalizeView(v) { return ViewManager.normalizeView(v); },
+    importViewsFromText(txt) { ViewManager.importViewsFromText(txt); }
+};
+
+    return { JoinEditor };
+});
+
+/* @module ui/view-manager.js: JOIN view CRUD management modal */
+OTA.define('view-manager', ["runtime", "store", "exporter", "modal-controller"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Exporter}, {ModalController}) => {
+/* ViewManager — JOIN view CRUD and management modal.
+
+   Extracted from join-editor.js. All interactions go through Store.state.globalViews.
+   The host (join-editor) provides an onEdit(idx) callback for opening the editor.
+*/
+
+const ViewManager = {
+    /** @type {function(number):void} callback to open JOIN editor for a view index */
+    _onEdit: null,
+
+    /**
+     * Register the edit callback. Called once by JoinEditor during init.
+     * @param {function(number):void} fn — receives the view index to edit
+     */
+    setEditCallback(fn) {
+        this._onEdit = fn;
+    },
+
+    /** Emit a join-changed notification so App re-renders */
+    _notifyChange() {
+        if (typeof document !== 'undefined' && document.dispatchEvent) {
+            document.dispatchEvent(new CustomEvent('ota:joinChanged'));
+            document.dispatchEvent(new CustomEvent('ota:joinParseRequested'));
+        }
+    },
+
+    /** Generate a unique view name */
+    makeUniqueName(base) {
+        const used = new Set(Store.state.globalViews.map(v => v.view));
+        let name = (base || 'NewView').trim() || 'NewView';
+        if (!used.has(name)) return name;
+        let i = 2;
+        while (used.has(`${name}_${i}`)) i++;
+        return `${name}_${i}`;
+    },
+
+    /** Normalize a raw view object */
+    normalizeView(v) {
+        if (!v || !v.view || !v.left || !v.right) return null;
+        return {
+            view: v.view,
+            left: v.left,
+            right: v.right,
+            type: v.type || 'inner',
+            on: v.on || '',
+            select: v.select || '',
+            createdAt: v.createdAt || Date.now(),
+            updatedAt: Date.now()
+        };
+    },
+
+    /** Import views from a JSON text blob */
+    importViewsFromText(txt) {
+        const raw = (txt || '').trim();
+        if (!raw) return Toast.show('请输入配置内容', true);
+        let data;
+        try { data = JSON.parse(raw); } catch (e) { return alert('JSON格式错误: ' + e.message); }
+        let views = [];
+        if (Array.isArray(data)) views = data;
+        else if (data.kind === 'join-view' && data.view) views = [data.view];
+        else if (data.globalViews) views = data.globalViews;
+        else if (data.views) views = data.views;
+        else if (data.view && data.left) views = [data];
+        if (!views.length) return alert('未识别到视图配置');
+
+        let imported = 0;
+        views.forEach(v => {
+            const nv = this.normalizeView(v);
+            if (!nv) return;
+            const idx = Store.state.globalViews.findIndex(x => x.view === nv.view);
+            if (idx > -1) {
+                if (confirm(`视图 "${nv.view}" 已存在，是否覆盖？\n确定=覆盖 | 取消=自动改名`)) {
+                    nv.createdAt = Store.state.globalViews[idx].createdAt || nv.createdAt;
+                    Store.state.globalViews[idx] = nv;
+                } else {
+                    nv.view = this.makeUniqueName(nv.view);
+                    Store.state.globalViews.push(nv);
+                }
+            } else {
+                Store.state.globalViews.push(nv);
+            }
+            imported++;
+        });
+        if (imported) {
+            Store.save();
+            this._notifyChange();
+            this.modManageViews();
+            Toast.show(`已导入 ${imported} 个视图`);
+        }
+    },
+
+    /** Format a timestamp for display */
+    _formatTime(ts) {
+        if (!ts) return '';
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return '';
+        const pad = n => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    },
+
+    // ── Main management modal ──
+
     modManageViews() {
         const vs = Store.state.globalViews;
+        const joinTypeLabel = { inner: 'Inner', left: 'Left', right: 'Right', full: 'Full', semi: 'Semi', anti: 'Anti' };
+        let sortBy = 'name';
+        const self = this;
+
         const getFieldCount = (select) => (select || '').split(',').filter(Boolean).length;
-        const joinTypeLabel = { inner:'Inner', left:'Left', right:'Right', full:'Full', semi:'Semi', anti:'Anti' };
-        let sortBy = 'name'; // 'name' | 'time'
 
         const renderList = (filterText = '') => {
             let filtered = vs.map((v, i) => ({ ...v, originalIndex: i }))
@@ -6084,8 +6210,7 @@ const JoinEditor = {
                            (v.on || '').toLowerCase().includes(s);
                 });
 
-            // Sort
-            if(sortBy === 'time') {
+            if (sortBy === 'time') {
                 filtered.sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0));
             } else {
                 filtered.sort((a, b) => a.view.localeCompare(b.view));
@@ -6099,18 +6224,18 @@ const JoinEditor = {
 
             return filtered.map((v) => {
                 const i = v.originalIndex;
-                const stamp = this.formatTime(v.updatedAt || v.createdAt);
+                const stamp = self._formatTime(v.updatedAt || v.createdAt);
                 const fieldCount = getFieldCount(v.select);
                 const joinLabel = joinTypeLabel[v.type] || 'Inner';
-                const meta = `${joinLabel} · ${v.left} ⟕ ${v.right} · ${fieldCount}列${stamp ? ' · '+stamp : ''}`;
+                const meta = `${joinLabel} · ${v.left} ⟕ ${v.right} · ${fieldCount}列${stamp ? ' · ' + stamp : ''}`;
 
                 return `
                 <div class="view-item" data-index="${i}" style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid var(--border-light); margin-bottom:8px; border-radius:6px; background:var(--bg-card);">
                     <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
                         <input type="checkbox" class="view-checkbox" data-index="${i}" style="flex-shrink:0;">
                         <div style="min-width:0; flex:1;">
-                            <div style="font-weight:600; color:var(--primary); margin-bottom:2px;">${this.escapeHtml(v.view)}</div>
-                            <div style="font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${this.escapeHtml(meta)}">${this.escapeHtml(meta)}</div>
+                            <div style="font-weight:600; color:var(--primary); margin-bottom:2px;">${escapeHtml(v.view)}</div>
+                            <div style="font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(meta)}">${escapeHtml(meta)}</div>
                         </div>
                     </div>
                     <div style="display:flex; gap:4px; flex-shrink:0; align-items:center;">
@@ -6163,167 +6288,126 @@ const JoinEditor = {
 
         // Search
         const searchInput = $('jeViewSearch');
-        if(searchInput) {
+        if (searchInput) {
             searchInput.oninput = () => {
                 const filterText = searchInput.value.trim();
                 $('viewList').innerHTML = renderList(filterText);
-                this.bindViewActions(vs);
-                updateBatchButtons();
+                self._bindActions(vs);
+                self._updateBatchButtons();
             };
         }
 
         // Sort
         const sortSelect = $('jeViewSort');
-        if(sortSelect) {
+        if (sortSelect) {
             sortSelect.onchange = () => {
                 sortBy = sortSelect.value;
                 $('viewList').innerHTML = renderList(searchInput ? searchInput.value.trim() : '');
-                this.bindViewActions(vs);
-                updateBatchButtons();
+                self._bindActions(vs);
+                self._updateBatchButtons();
             };
         }
 
         const selectAllCheckbox = $('jeViewSelectAll');
-        if(selectAllCheckbox) {
+        if (selectAllCheckbox) {
             selectAllCheckbox.onchange = () => {
                 document.querySelectorAll('.view-checkbox').forEach(cb => { cb.checked = selectAllCheckbox.checked; });
-                updateBatchButtons();
+                self._updateBatchButtons();
             };
         }
 
-        const updateBatchButtons = () => {
-            const selectedCount = document.querySelectorAll('.view-checkbox:checked').length;
-            const batchDeleteBtn = $('jeBatchDelete');
-            const batchExportBtn = $('jeBatchExport');
-            if(batchDeleteBtn) batchDeleteBtn.disabled = selectedCount === 0;
-            if(batchExportBtn) batchExportBtn.disabled = selectedCount === 0;
-        };
-
         const batchDeleteBtn = $('jeBatchDelete');
-        if(batchDeleteBtn) {
+        if (batchDeleteBtn) {
             batchDeleteBtn.onclick = () => {
                 const selectedCbs = document.querySelectorAll('.view-checkbox:checked');
-                if(selectedCbs.length === 0) return;
-                const indices = Array.from(selectedCbs).map(cb => parseInt(cb.dataset.index)).sort((a,b) => b-a);
-                if(!confirm(`确定删除选中的 ${indices.length} 个视图吗？此操作不可恢复。`)) return;
+                if (selectedCbs.length === 0) return;
+                const indices = Array.from(selectedCbs).map(cb => parseInt(cb.dataset.index)).sort((a, b) => b - a);
+                if (!confirm(`确定删除选中的 ${indices.length} 个视图吗？此操作不可恢复。`)) return;
                 indices.forEach(idx => Store.state.globalViews.splice(idx, 1));
                 Store.save();
-                if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
-                if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
-                this.modManageViews();
+                self._notifyChange();
+                self.modManageViews();
                 Toast.show(`已删除 ${indices.length} 个视图`);
             };
         }
 
         const batchExportBtn = $('jeBatchExport');
-        if(batchExportBtn) {
+        if (batchExportBtn) {
             batchExportBtn.onclick = () => {
                 const selectedCbs = document.querySelectorAll('.view-checkbox:checked');
-                if(selectedCbs.length === 0) return;
+                if (selectedCbs.length === 0) return;
                 const selectedViews = Array.from(selectedCbs).map(cb => Store.state.globalViews[parseInt(cb.dataset.index)]);
                 Exporter.toJson({ kind: 'join-views', views: selectedViews }, `join_views_${Date.now()}`);
                 Toast.show(`已导出 ${selectedViews.length} 个视图`);
             };
         }
 
-        this.bindViewActions = (views) => {
-            views.forEach((v, i) => {
-                const editBtn = $(`jeEdit_${i}`);
-                const copyBtn = $(`jeCopy_${i}`);
-                const exportBtn = $(`jeExport_${i}`);
-                const delBtn = $(`jeDel_${i}`);
-                const delCancelBtn = $(`jeDelCancel_${i}`);
-                const delOkBtn = $(`jeDelOk_${i}`);
-                const checkbox = document.querySelector(`.view-checkbox[data-index="${i}"]`);
+        this._bindActions(vs);
 
-                if(editBtn) editBtn.onclick = () => { $('modalOverlay').classList.add('hidden'); this.open(i); };
-                if(copyBtn) copyBtn.onclick = () => {
-                    const name = this.makeUniqueName(`${v.view}_copy`);
-                    Store.state.globalViews.push({ ...v, view: name, createdAt: Date.now(), updatedAt: Date.now() });
-                    Store.save();
-                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
-                    this.modManageViews();
-                    Toast.show('视图已复制');
-                };
-                if(exportBtn) exportBtn.onclick = () => Exporter.toJson({ kind: 'join-view', view: v }, `join_${v.view}`);
-                if(delBtn) delBtn.onclick = () => {
-                    $(`jeActions_${i}`).style.display = 'none';
-                    $(`jeConfirm_${i}`).style.display = 'inline-flex';
-                };
-                if(delCancelBtn) delCancelBtn.onclick = () => {
-                    $(`jeActions_${i}`).style.display = 'inline-flex';
-                    $(`jeConfirm_${i}`).style.display = 'none';
-                };
-                if(delOkBtn) delOkBtn.onclick = () => {
-                    Store.state.globalViews.splice(i, 1);
-                    Store.save();
-                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
-                    this.modManageViews();
-                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
-                };
-                if(checkbox) checkbox.onchange = updateBatchButtons;
-            });
+        const addNewBtn = $('jeAddNew');
+        if (addNewBtn) addNewBtn.onclick = () => {
+            $('modalOverlay').classList.add('hidden');
+            if (typeof self._onEdit === 'function') self._onEdit(-1);
         };
 
-        this.bindViewActions(vs);
-
-        $('jeAddNew').onclick = () => { $('modalOverlay').classList.add('hidden'); this.open(-1); };
         const pasteBtn = $('jePasteBtn');
-        if(pasteBtn) pasteBtn.onclick = () => this.importViewsFromText($('jePaste').value || '');
+        if (pasteBtn) pasteBtn.onclick = () => self.importViewsFromText($('jePaste').value || '');
     },
 
-    normalizeView(v) {
-        if(!v || !v.view || !v.left || !v.right) return null;
-        return {
-            view: v.view,
-            left: v.left,
-            right: v.right,
-            type: v.type || 'inner',
-            on: v.on || '',
-            select: v.select || '',
-            createdAt: v.createdAt || Date.now(),
-            updatedAt: Date.now()
-        };
-    },
-    importViewsFromText(txt) {
-        const raw = (txt || '').trim();
-        if(!raw) return Toast.show('请输入配置内容', true);
-        let data;
-        try { data = JSON.parse(raw); } catch(e) { return alert('JSON格式错误: ' + e.message); }
-        let views = [];
-        if(Array.isArray(data)) views = data;
-        else if(data.kind === 'join-view' && data.view) views = [data.view];
-        else if(data.globalViews) views = data.globalViews;
-        else if(data.views) views = data.views;
-        else if(data.view && data.left) views = [data];
-        if(!views.length) return alert('未识别到视图配置');
+    // ── Internal helpers ──
 
-        let imported = 0;
-        views.forEach(v => {
-            const nv = this.normalizeView(v);
-            if(!nv) return;
-            const idx = Store.state.globalViews.findIndex(x => x.view === nv.view);
-            if(idx > -1) {
-                if(confirm(`视图 "${nv.view}" 已存在，是否覆盖？\n确定=覆盖 | 取消=自动改名`)) {
-                    nv.createdAt = Store.state.globalViews[idx].createdAt || nv.createdAt;
-                    Store.state.globalViews[idx] = nv;
-                } else {
-                    nv.view = this.makeUniqueName(nv.view);
-                    Store.state.globalViews.push(nv);
-                }
-            } else {
-                Store.state.globalViews.push(nv);
-            }
-            imported++;
+    _updateBatchButtons() {
+        const selectedCount = document.querySelectorAll('.view-checkbox:checked').length;
+        const batchDeleteBtn = $('jeBatchDelete');
+        const batchExportBtn = $('jeBatchExport');
+        if (batchDeleteBtn) batchDeleteBtn.disabled = selectedCount === 0;
+        if (batchExportBtn) batchExportBtn.disabled = selectedCount === 0;
+    },
+
+    _bindActions(views) {
+        const self = this;
+        views.forEach((v, i) => {
+            const editBtn = $(`jeEdit_${i}`);
+            const copyBtn = $(`jeCopy_${i}`);
+            const exportBtn = $(`jeExport_${i}`);
+            const delBtn = $(`jeDel_${i}`);
+            const delCancelBtn = $(`jeDelCancel_${i}`);
+            const delOkBtn = $(`jeDelOk_${i}`);
+            const checkbox = document.querySelector(`.view-checkbox[data-index="${i}"]`);
+
+            if (editBtn) editBtn.onclick = () => {
+                $('modalOverlay').classList.add('hidden');
+                if (typeof self._onEdit === 'function') self._onEdit(i);
+            };
+            if (copyBtn) copyBtn.onclick = () => {
+                const name = self.makeUniqueName(`${v.view}_copy`);
+                Store.state.globalViews.push({ ...v, view: name, createdAt: Date.now(), updatedAt: Date.now() });
+                Store.save();
+                self._notifyChange();
+                self.modManageViews();
+                Toast.show('视图已复制');
+            };
+            if (exportBtn) exportBtn.onclick = () => Exporter.toJson({ kind: 'join-view', view: v }, `join_${v.view}`);
+            if (delBtn) delBtn.onclick = () => {
+                $(`jeActions_${i}`).style.display = 'none';
+                $(`jeConfirm_${i}`).style.display = 'inline-flex';
+            };
+            if (delCancelBtn) delCancelBtn.onclick = () => {
+                $(`jeActions_${i}`).style.display = 'inline-flex';
+                $(`jeConfirm_${i}`).style.display = 'none';
+            };
+            if (delOkBtn) delOkBtn.onclick = () => {
+                Store.state.globalViews.splice(i, 1);
+                Store.save();
+                self._notifyChange();
+                self.modManageViews();
+            };
+            if (checkbox) checkbox.onchange = () => self._updateBatchButtons();
         });
-        if(imported) {
-            Store.save(); if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged")); if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested")); this.modManageViews();
-            Toast.show(`已导入 ${imported} 个视图`);
-        }
     }
 };
 
-    return { JoinEditor };
+    return { ViewManager };
 });
 
 /* @module ui/source-controller.js: source editor and file import */
@@ -7317,6 +7401,8 @@ OTA.define('tab-controller', ["runtime", "store", "dispatch"], ({$, escapeHtml, 
 const TabController = {
     /** Drag state */
     dragSourceId: null,
+    /** Optional callback: fn(tabId, event) called on right-click of a tab */
+    onContextMenu: null,
 
     /**
      * Bind tab bar events. Called once from App.init().
@@ -7392,6 +7478,15 @@ const TabController = {
         };
 
         // Drag events
+        // Right-click context menu extension point
+        container.addEventListener('contextmenu', (e) => {
+            const tab = e.target.closest('.doc-tab');
+            if (tab && typeof TabController.onContextMenu === 'function') {
+                e.preventDefault();
+                TabController.onContextMenu(tab.dataset.id, e);
+            }
+        });
+
         container.addEventListener('dragstart', (e) => {
             const tab = e.target.closest('.doc-tab');
             if (!tab || e.target.closest('.doc-tab-close') || e.target.closest('.doc-tab-title-input')) {
@@ -7698,18 +7793,7 @@ const ExportController = {
             const r = new FileReader();
             r.onload = (evt) => {
                 try {
-                    const d = JSON.parse(evt.target.result);
-                    const replace = confirm('确定：替换当前工作区\n取消：把备份追加为新页签');
-                    const count = Store.importWorkspace(d, !replace);
-                    if (d.preferences && typeof d.preferences === 'object') {
-                        if (['light', 'dark'].includes(d.preferences.theme)) Store.state.theme = d.preferences.theme;
-                        if (COPY_FORMATS.includes(d.preferences.copyFormat)) Store.state.copyFormat = d.preferences.copyFormat;
-                        if (typeof d.preferences.persistRaw === 'boolean') Store.state.persistRaw = d.preferences.persistRaw;
-                        if (typeof d.preferences.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = d.preferences.spreadsheetSafe;
-                        Store.applyTheme();
-                        Store.save();
-                    }
-                    dispatch('workspace:imported', { count });
+                    const count = ExportController._importWorkspacePayload(evt.target.result);
                     ExportController._emit('tabsChanged');
                     Toast.show(`已恢复 ${count} 个页签`);
                 } catch (error) {
@@ -7738,56 +7822,9 @@ const ExportController = {
             const r = new FileReader();
             r.onload = (evt) => {
                 try {
-                    const d = JSON.parse(evt.target.result);
-                    if (d.kind !== 'table-tool-config' || !Store.isSafePayload(d)) throw new Error('配置结构无效');
-
-                    if (Array.isArray(d.globalViews)) {
-                        const oldCount = Store.state.globalViews.length;
-                        Store.state.globalViews = d.globalViews.slice(0, 500).filter(view => view && typeof view === 'object' && typeof view.view === 'string');
-                        Toast.show(`全局视图已更新 (${oldCount} → ${d.globalViews.length} 个)`, false, 2000);
-                    }
-
-                    if (Array.isArray(d.docs) && d.docs.length > 0 && d.docs.length <= 100) {
-                        let appliedCount = 0;
-                        const ignoredDocs = [];
-                        d.docs.filter(x => x && typeof x === 'object').forEach(x => {
-                            let t = Store.state.docs.find(y => y.title === x.title);
-                            if (!t) t = Store.state.docs.find(y => y.id === x.id);
-                            if (t) {
-                                if (x.ui && typeof x.ui === 'object') t.ui = x.ui;
-                                appliedCount++;
-                            } else {
-                                ignoredDocs.push(x.title || x.id);
-                            }
-                        });
-
-                        if (ignoredDocs.length > 0) {
-                            const msg = `配置导入完成：\n• 已应用 ${appliedCount} 个文档的配置\n• ${ignoredDocs.length} 个配置无法匹配（${ignoredDocs.slice(0, 3).join(', ')}${ignoredDocs.length > 3 ? '...' : ''}）\n\n是否为这些配置创建新文档？`;
-                            if (confirm(msg)) {
-                                ignoredDocs.forEach((docName) => {
-                                    const config = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
-                                    if (config) {
-                                        Store.addDoc({ title: config.title, raw: '', ui: (config.ui && typeof config.ui === 'object') ? config.ui : {} });
-                                    }
-                                });
-                                Store.save();
-                                ExportController._emit('tabsChanged');
-                                Toast.show('配置已更新，新增文档已创建', false, 3000);
-                            } else {
-                                Store.save();
-                                ExportController._emit('tabsChanged');
-                                Toast.show(`配置已更新（应用了 ${appliedCount} 个文档）`, false, 2000);
-                            }
-                        } else {
-                            Store.save();
-                            ExportController._emit('tabsChanged');
-                            Toast.show(`配置已更新（应用了 ${appliedCount} 个文档）`, false, 2000);
-                        }
-                    } else {
-                        Store.save();
-                        ExportController._emit('tabsChanged');
-                        Toast.show('配置已更新');
-                    }
+                    ExportController._importConfigPayload(evt.target.result);
+                    ExportController._emit('tabsChanged');
+                    Toast.show('配置已更新');
                 } catch (err) {
                     console.error(err);
                     if (typeof alert === 'function') alert('配置文件格式错误，请检查文件是否完整');
@@ -7864,6 +7901,72 @@ const ExportController = {
         }));
     },
 
+    // ── Pure business-logic helpers (testable without FileReader/DOM) ──
+
+    /** Parse + apply workspace JSON. Returns imported doc count. */
+    _importWorkspacePayload(json) {
+        const d = JSON.parse(json);
+        const replace = typeof confirm === 'function' ? confirm('确定：替换当前工作区\n取消：把备份追加为新页签') : true;
+        const count = Store.importWorkspace(d, !replace);
+        this._applyPreferences(d.preferences);
+        dispatch('workspace:imported', { count });
+        return count;
+    },
+
+    /** Parse + apply config JSON. Returns matched doc count. */
+    _importConfigPayload(json) {
+        const d = JSON.parse(json);
+        if (d.kind !== 'table-tool-config' || !Store.isSafePayload(d)) throw new Error('配置结构无效');
+
+        if (Array.isArray(d.globalViews)) {
+            const oldCount = Store.state.globalViews.length;
+            Store.state.globalViews = d.globalViews.slice(0, 500).filter(
+                view => view && typeof view === 'object' && typeof view.view === 'string'
+            );
+            Toast.show(`全局视图已更新 (${oldCount} → ${Store.state.globalViews.length} 个)`);
+        }
+
+        let appliedCount = 0;
+        const unmatched = [];
+        if (Array.isArray(d.docs) && d.docs.length > 0 && d.docs.length <= 100) {
+            d.docs.filter(x => x && typeof x === 'object').forEach(x => {
+                let t = Store.state.docs.find(y => y.title === x.title);
+                if (!t) t = Store.state.docs.find(y => y.id === x.id);
+                if (t) {
+                    if (x.ui && typeof x.ui === 'object') t.ui = x.ui;
+                    appliedCount++;
+                } else {
+                    unmatched.push(x.title || x.id);
+                }
+            });
+        }
+
+        if (unmatched.length > 0) {
+            const names = unmatched.slice(0, 3).join(', ') + (unmatched.length > 3 ? '...' : '');
+            if (typeof confirm === 'function' && confirm(
+                `配置导入完成：\n• 已应用 ${appliedCount} 个文档\n• ${unmatched.length} 个无法匹配 (${names})\n\n为未匹配项创建新文档？`
+            )) {
+                unmatched.forEach(docName => {
+                    const cfg = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
+                    if (cfg) Store.addDoc({ title: cfg.title, raw: '', ui: cfg.ui || {} });
+                });
+            }
+        }
+        Store.save();
+        return appliedCount;
+    },
+
+    /** Apply workspace preferences block to current Store. */
+    _applyPreferences(prefs) {
+        if (!prefs || typeof prefs !== 'object') return;
+        if (['light', 'dark'].includes(prefs.theme)) Store.state.theme = prefs.theme;
+        if (COPY_FORMATS.includes(prefs.copyFormat)) Store.state.copyFormat = prefs.copyFormat;
+        if (typeof prefs.persistRaw === 'boolean') Store.state.persistRaw = prefs.persistRaw;
+        if (typeof prefs.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = prefs.spreadsheetSafe;
+        Store.applyTheme();
+        Store.save();
+    },
+
     _emit(name) {
         if (typeof document !== 'undefined' && document.dispatchEvent) {
             document.dispatchEvent(new CustomEvent('ota:' + name, {}));
@@ -7875,7 +7978,7 @@ const ExportController = {
 });
 
 /* @module ui/app.js: application orchestration and UI */
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -8425,6 +8528,9 @@ validflag Time      Level   Message                 Code
 
         // Keyboard shortcuts — delegated to KeyboardController
         KeyboardController.init(this);
+
+        // Register ViewManager edit callback (ViewManager → JoinEditor)
+        ViewManager.setEditCallback((idx) => JoinEditor.open(idx));
 
     },
 

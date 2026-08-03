@@ -71,18 +71,7 @@ const ExportController = {
             const r = new FileReader();
             r.onload = (evt) => {
                 try {
-                    const d = JSON.parse(evt.target.result);
-                    const replace = confirm('确定：替换当前工作区\n取消：把备份追加为新页签');
-                    const count = Store.importWorkspace(d, !replace);
-                    if (d.preferences && typeof d.preferences === 'object') {
-                        if (['light', 'dark'].includes(d.preferences.theme)) Store.state.theme = d.preferences.theme;
-                        if (COPY_FORMATS.includes(d.preferences.copyFormat)) Store.state.copyFormat = d.preferences.copyFormat;
-                        if (typeof d.preferences.persistRaw === 'boolean') Store.state.persistRaw = d.preferences.persistRaw;
-                        if (typeof d.preferences.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = d.preferences.spreadsheetSafe;
-                        Store.applyTheme();
-                        Store.save();
-                    }
-                    dispatch('workspace:imported', { count });
+                    const count = ExportController._importWorkspacePayload(evt.target.result);
                     ExportController._emit('tabsChanged');
                     Toast.show(`已恢复 ${count} 个页签`);
                 } catch (error) {
@@ -111,56 +100,9 @@ const ExportController = {
             const r = new FileReader();
             r.onload = (evt) => {
                 try {
-                    const d = JSON.parse(evt.target.result);
-                    if (d.kind !== 'table-tool-config' || !Store.isSafePayload(d)) throw new Error('配置结构无效');
-
-                    if (Array.isArray(d.globalViews)) {
-                        const oldCount = Store.state.globalViews.length;
-                        Store.state.globalViews = d.globalViews.slice(0, 500).filter(view => view && typeof view === 'object' && typeof view.view === 'string');
-                        Toast.show(`全局视图已更新 (${oldCount} → ${d.globalViews.length} 个)`, false, 2000);
-                    }
-
-                    if (Array.isArray(d.docs) && d.docs.length > 0 && d.docs.length <= 100) {
-                        let appliedCount = 0;
-                        const ignoredDocs = [];
-                        d.docs.filter(x => x && typeof x === 'object').forEach(x => {
-                            let t = Store.state.docs.find(y => y.title === x.title);
-                            if (!t) t = Store.state.docs.find(y => y.id === x.id);
-                            if (t) {
-                                if (x.ui && typeof x.ui === 'object') t.ui = x.ui;
-                                appliedCount++;
-                            } else {
-                                ignoredDocs.push(x.title || x.id);
-                            }
-                        });
-
-                        if (ignoredDocs.length > 0) {
-                            const msg = `配置导入完成：\n• 已应用 ${appliedCount} 个文档的配置\n• ${ignoredDocs.length} 个配置无法匹配（${ignoredDocs.slice(0, 3).join(', ')}${ignoredDocs.length > 3 ? '...' : ''}）\n\n是否为这些配置创建新文档？`;
-                            if (confirm(msg)) {
-                                ignoredDocs.forEach((docName) => {
-                                    const config = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
-                                    if (config) {
-                                        Store.addDoc({ title: config.title, raw: '', ui: (config.ui && typeof config.ui === 'object') ? config.ui : {} });
-                                    }
-                                });
-                                Store.save();
-                                ExportController._emit('tabsChanged');
-                                Toast.show('配置已更新，新增文档已创建', false, 3000);
-                            } else {
-                                Store.save();
-                                ExportController._emit('tabsChanged');
-                                Toast.show(`配置已更新（应用了 ${appliedCount} 个文档）`, false, 2000);
-                            }
-                        } else {
-                            Store.save();
-                            ExportController._emit('tabsChanged');
-                            Toast.show(`配置已更新（应用了 ${appliedCount} 个文档）`, false, 2000);
-                        }
-                    } else {
-                        Store.save();
-                        ExportController._emit('tabsChanged');
-                        Toast.show('配置已更新');
-                    }
+                    ExportController._importConfigPayload(evt.target.result);
+                    ExportController._emit('tabsChanged');
+                    Toast.show('配置已更新');
                 } catch (err) {
                     console.error(err);
                     if (typeof alert === 'function') alert('配置文件格式错误，请检查文件是否完整');
@@ -235,6 +177,72 @@ const ExportController = {
             headers: r.headers,
             rows: r.rows.map(row => row.d)
         }));
+    },
+
+    // ── Pure business-logic helpers (testable without FileReader/DOM) ──
+
+    /** Parse + apply workspace JSON. Returns imported doc count. */
+    _importWorkspacePayload(json) {
+        const d = JSON.parse(json);
+        const replace = typeof confirm === 'function' ? confirm('确定：替换当前工作区\n取消：把备份追加为新页签') : true;
+        const count = Store.importWorkspace(d, !replace);
+        this._applyPreferences(d.preferences);
+        dispatch('workspace:imported', { count });
+        return count;
+    },
+
+    /** Parse + apply config JSON. Returns matched doc count. */
+    _importConfigPayload(json) {
+        const d = JSON.parse(json);
+        if (d.kind !== 'table-tool-config' || !Store.isSafePayload(d)) throw new Error('配置结构无效');
+
+        if (Array.isArray(d.globalViews)) {
+            const oldCount = Store.state.globalViews.length;
+            Store.state.globalViews = d.globalViews.slice(0, 500).filter(
+                view => view && typeof view === 'object' && typeof view.view === 'string'
+            );
+            Toast.show(`全局视图已更新 (${oldCount} → ${Store.state.globalViews.length} 个)`);
+        }
+
+        let appliedCount = 0;
+        const unmatched = [];
+        if (Array.isArray(d.docs) && d.docs.length > 0 && d.docs.length <= 100) {
+            d.docs.filter(x => x && typeof x === 'object').forEach(x => {
+                let t = Store.state.docs.find(y => y.title === x.title);
+                if (!t) t = Store.state.docs.find(y => y.id === x.id);
+                if (t) {
+                    if (x.ui && typeof x.ui === 'object') t.ui = x.ui;
+                    appliedCount++;
+                } else {
+                    unmatched.push(x.title || x.id);
+                }
+            });
+        }
+
+        if (unmatched.length > 0) {
+            const names = unmatched.slice(0, 3).join(', ') + (unmatched.length > 3 ? '...' : '');
+            if (typeof confirm === 'function' && confirm(
+                `配置导入完成：\n• 已应用 ${appliedCount} 个文档\n• ${unmatched.length} 个无法匹配 (${names})\n\n为未匹配项创建新文档？`
+            )) {
+                unmatched.forEach(docName => {
+                    const cfg = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
+                    if (cfg) Store.addDoc({ title: cfg.title, raw: '', ui: cfg.ui || {} });
+                });
+            }
+        }
+        Store.save();
+        return appliedCount;
+    },
+
+    /** Apply workspace preferences block to current Store. */
+    _applyPreferences(prefs) {
+        if (!prefs || typeof prefs !== 'object') return;
+        if (['light', 'dark'].includes(prefs.theme)) Store.state.theme = prefs.theme;
+        if (COPY_FORMATS.includes(prefs.copyFormat)) Store.state.copyFormat = prefs.copyFormat;
+        if (typeof prefs.persistRaw === 'boolean') Store.state.persistRaw = prefs.persistRaw;
+        if (typeof prefs.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = prefs.spreadsheetSafe;
+        Store.applyTheme();
+        Store.save();
     },
 
     _emit(name) {

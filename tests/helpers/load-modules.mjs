@@ -50,6 +50,7 @@ const MODULE_ORDER = [
   'ui/table-builder.js',
   'ui/selection.js',
   'ui/join-editor.js',
+  'ui/view-manager.js',
   'ui/source-controller.js',
   'ui/cell-edit-controller.js',
   'ui/filter-controller.js',

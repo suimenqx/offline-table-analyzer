@@ -85,7 +85,7 @@ const ClipboardFormatter = {
     toMarkdown(matrix) {
         if(!matrix || !matrix.length) return '';
         const esc = value => {
-            const safe = this.protectSpreadsheetFormula(this.normalizeCell(value));
+            const safe = this.protectSpreadsheetFormula(value);
             return safe.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
         };
         const widths = this.getWidths(matrix.map(row => row.map(esc)));
@@ -98,7 +98,7 @@ const ClipboardFormatter = {
     toAscii(matrix) {
         if(!matrix || !matrix.length) return '';
         const clean = value => {
-            const safe = this.protectSpreadsheetFormula(this.normalizeCell(value));
+            const safe = this.protectSpreadsheetFormula(value);
             return safe.replace(/\n/g, ' ');
         };
         const normalized = matrix.map(row => row.map(clean));

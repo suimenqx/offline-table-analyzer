@@ -12,6 +12,8 @@ OTA.define('tab-controller', ["runtime", "store", "dispatch"], ({$, escapeHtml, 
 const TabController = {
     /** Drag state */
     dragSourceId: null,
+    /** Optional callback: fn(tabId, event) called on right-click of a tab */
+    onContextMenu: null,
 
     /**
      * Bind tab bar events. Called once from App.init().
@@ -87,6 +89,15 @@ const TabController = {
         };
 
         // Drag events
+        // Right-click context menu extension point
+        container.addEventListener('contextmenu', (e) => {
+            const tab = e.target.closest('.doc-tab');
+            if (tab && typeof TabController.onContextMenu === 'function') {
+                e.preventDefault();
+                TabController.onContextMenu(tab.dataset.id, e);
+            }
+        });
+
         container.addEventListener('dragstart', (e) => {
             const tab = e.target.closest('.doc-tab');
             if (!tab || e.target.closest('.doc-tab-close') || e.target.closest('.doc-tab-title-input')) {
