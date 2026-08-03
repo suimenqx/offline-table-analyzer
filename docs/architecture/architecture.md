@@ -12,9 +12,10 @@ The generated file is intentionally kept as the only end-user artifact, while so
 
 | Module | Responsibility |
 | --- | --- |
-| `OTA` (module-loader) | Local module registry: `define`, `require`, `start` |
+| `OTA` (module-loader) | Local module registry: `define`, `require`, `start` (`src/core/module-loader.js`) |
 | `runtime` | DOM query helpers (`$`, `createEl`), `Tooltip`, `Toast` |
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
+| `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
 
 ### State (`src/state/`)
 
@@ -52,9 +53,10 @@ The generated file is intentionally kept as the only end-user artifact, while so
 
 | Module | Responsibility |
 | --- | --- |
+| `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed rows from `FilterEngine` and renders filterable `<table>` elements. |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
-| `App` | UI orchestration, parsing, pagination, filtering, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading |
+| `App` | UI orchestration, parsing, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading. Delegates filtering to `FilterEngine` and table DOM building to `TableBuilder`. |
 
 The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor.md); the complete acceptance checklist is in [Refactor requirements](../planning/refactor-requirements.md).
 
@@ -132,6 +134,7 @@ paste / drop / file / fullscreen editor
   → adapter parse (TextLayout supplies position-aware aligned parsing)
   → HeaderResolver and TableUtils normalization
   → diagnostics + normalized tables
+  → FilterEngine: token-based filtering, highlighting, column projection
   → persisted correction overlay + edit undo/redo
   → filters/highlights/focus columns
   → optional JOIN views (dependency cycle check → execution)

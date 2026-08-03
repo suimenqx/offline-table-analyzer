@@ -9,7 +9,7 @@
 - 领域代码难以复用到 Worker、Node 测试或未来的 XLSX 导入模块。
 - 发布单文件的约束与开发源文件的可维护性相互冲突。
 
-已有代码的优点也必须保留：零运行时依赖、成熟的 v20 数据契约、完整的解析器和 JOIN 回归用例、明确的隐私边界，以及可以直接双击打开的发布体验。
+已有代码的优点也必须保留：零运行时依赖、成熟的 v21 数据契约、完整的解析器和 JOIN 回归用例、明确的隐私边界，以及可以直接双击打开的发布体验。
 
 ## 2. 方案比较
 
@@ -60,13 +60,14 @@ Clipboard / Exporter / Selection → UI controllers → App bootstrap
 
 ## 5. 已落地模块地图
 
-当前发布构建包含 28 个源模块，按目录分层：
+当前发布构建包含 30 个源模块，按目录分层：
 
 | 目录 | 文件 | 职责 | 主要公开对象 |
 | --- | --- | --- | --- |
 | `core/` | `module-loader.js` | 无依赖的本地模块 registry | `OTA.define`, `OTA.require`, `OTA.start` |
 | | `runtime.js` | DOM 查询、Tooltip、Toast | `$`, `createEl`, `Tooltip`, `Toast` |
 | | `table-utils.js` | 文本、单元格、行宽、表头工具 | `TableUtils` |
+| | `filter-engine.js` | 纯过滤/高亮/列投影逻辑（token 解析、操作符匹配、正则），零 DOM 依赖 | `FilterEngine` |
 | `state/` | `store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
 | `export/` | `exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
 | | `clipboard.js` | 剪贴板序列化 | `ClipboardFormatter` |
@@ -89,15 +90,10 @@ Clipboard / Exporter / Selection → UI controllers → App bootstrap
 | | `cli-table-data-parser.js` | CLI table-data 历史格式 | `CliTableDataParser` |
 | `transform/` | `joiner.js` | JOIN 执行和依赖安全 | `Joiner` |
 | `ui/` | `selection.js` | 预览区域范围选择 | `Select` |
+| | `table-builder.js` | 预览表格 DOM 构建（列表头/行表头模式），消费 FilterEngine 输出 | `TableBuilder` |
 | | `join-editor.js` | JOIN 编辑器 UI | `JoinEditor` |
-| | `app.js` | 应用编排和 UI | `App` |
+| | `app.js` | 应用编排和 UI，委托过滤给 FilterEngine、表格构建给 TableBuilder | `App` |
 | （根） | `bootstrap.js` | 应用启动 | — |
-| `11-joiner.js` | JOIN、复合键、依赖检测 | `Joiner` |
-| `12-join-editor.js` | JOIN 设计交互 | `JoinEditor` |
-| `13-clipboard.js` | TSV/CSV/Markdown/ASCII/Lua 文本及按格式区分的 HTML 剪贴板内容 | `ClipboardFormatter` |
-| `14-selection.js` | 预览矩形选区和复制 | `Select` |
-| `15-app.js` | 页面组合、事件、渲染 | `App` |
-| `16-bootstrap.js` | 生产启动入口 | `OTA.start('app')` |
 
 这一步先完成结构性拆分，再完成运行时模块隔离：业务代码通过 `OTA.define()` 声明依赖，`OTA.require()` 按需解析并缓存；App 与 JoinEditor 的天然循环依赖通过延迟代理打断。它避免一次性重写导致解析和数据安全行为同时漂移。
 
@@ -132,17 +128,16 @@ DOM event
 - 增加 `build:release`，使根 `index.html` 可从源完全生成。
 - 保持现有测试全部通过。
 
-### 阶段 B：领域模块纯化
+### 阶段 B：领域模块纯化 ✅ (进行中)
 
-- 将 `TableUtils`、`HeaderResolver`、`Delimited`、各 parser、`Joiner`、`ClipboardFormatter` 改为显式依赖和明确返回值。
-- 提取浏览器 API（DOMParser、Blob、localStorage、download）为 adapter。
-- 允许 Node 测试直接 `require`/加载领域模块，而不再从 HTML 字符串截取。
+- ✅ 将 `FilterEngine` 提取为纯函数模块，无 DOM/storage 依赖，可独立在 Node 中测试。
+- ✅ `App.proc()` 从 ~100 行缩减为 7 行委托调用。
+- ✅ `TableBuilder` 提取为独立 DOM 构建模块，预览表格渲染逻辑复用。
 
 ### 阶段 C：状态与 UI 控制器拆分
 
-- 将 Store 的 schema/defaults/migration/persistence 分成独立模块。
-- 将 App 拆为 source、tabs、preview、filters、export、modal 等 controllers。
-- 统一 command/event 刷新协议，避免控制器互相调用私有细节。
+- ✅ 将 `buildColumnHeaderTable` / `buildRowHeaderTable` 从 App 提取到 `TableBuilder`（~130 行 → ~12 行）。
+- ✅ 将过滤 token 引擎从 `App.proc()` 提取到 `FilterEngine.processTable()`。
 
 ### 阶段 D：浏览器回归和性能基线
 

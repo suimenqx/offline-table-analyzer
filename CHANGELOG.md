@@ -2,6 +2,25 @@
 
 All notable changes are documented here. The project follows semantic versioning from v20 onward.
 
+## 21.0.0 — 2026-07-20
+
+### Architecture: domain module purification
+
+- Extracted `FilterEngine` (`src/core/filter-engine.js`): pure filtering, highlighting, and column-projection logic with zero DOM/storage dependencies. Exports `tokenize()`, `matchToken()`, `matchRule()`, `buildHeaderMap()`, `resolveFocusColumns()`, and `processTable()`.
+- Extracted `TableBuilder` (`src/ui/table-builder.js`): reusable DOM construction for column-header and row-header preview tables. Decouples table rendering from App orchestration.
+- Slimmed `App.proc()` from ~100 lines to 7 lines (delegates to `FilterEngine.processTable()`).
+- Slimmed `App.buildColumnHeaderTable()` / `App.buildRowHeaderTable()` from ~130 lines combined to ~12 lines (delegates to `TableBuilder`).
+- Build manifest now produces 30 source modules (was 28).
+
+### Version
+
+- Bumped to v21.0.0 across `package.json`, `APP_VERSION`, HTML template title, and version pill.
+
+### Documentation
+
+- Updated architecture docs with new `FilterEngine` and `TableBuilder` modules.
+- Updated refactor architecture docs: module map (28→30), migration phase progress, removed stale legacy module entries.
+
 ## 20.2.0 — 2026-07-15
 
 ### Architecture refactor

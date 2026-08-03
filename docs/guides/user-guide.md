@@ -1,4 +1,4 @@
-# Offline Table Analyzer — User Guide (v20.2.0)
+# Offline Table Analyzer — User Guide (v21.0.0)
 
 ## 1. Import data
 
