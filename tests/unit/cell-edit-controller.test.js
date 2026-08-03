@@ -6,7 +6,7 @@ import { strict as assert } from 'node:assert/strict';
 import { createStorageMock } from '../mocks/storage.js';
 import { loadModules } from '../helpers/load-modules.mjs';
 
-let storage, CellEditController, Store;
+let storage, CellEditController, Store, TableRegistry;
 
 const { OTA } = loadModules([], {});
 
@@ -26,6 +26,7 @@ beforeEach(() => {
 
   CellEditController = OTA.require('cell-edit-controller').CellEditController;
   Store = OTA.require('store').Store;
+  TableRegistry = OTA.require('table-registry').TableRegistry;
 
   // Setup Store with a doc and parsed tables
   Store.state = {
@@ -37,8 +38,8 @@ beforeEach(() => {
   Store.lastSaveError = null;
   Store._listeners = null;
 
-  // Setup raw tables (simulating parsed data)
-  CellEditController.setRawTables([
+  // Setup raw tables in the shared registry (simulating parsed data)
+  TableRegistry.setRaw([
     {
       name: 'T1',
       headers: ['A', 'B'],
@@ -62,7 +63,7 @@ describe('CellEditController — apply', () => {
   it('applies a cell edit and records history', () => {
     const ok = CellEditController.apply('T1', 0, 0, 'modified');
     assert.equal(ok, true);
-    assert.equal(CellEditController._rawTables[0].rows[0][0], 'modified');
+    assert.equal(TableRegistry.getRaw()[0].rows[0][0], 'modified');
     assert.equal(CellEditController.editHistory.length, 1);
     assert.equal(CellEditController.editRedo.length, 0);
   });
@@ -100,10 +101,10 @@ describe('CellEditController — apply', () => {
 describe('CellEditController — undo / redo', () => {
   it('undo reverts the last edit', () => {
     CellEditController.apply('T1', 0, 0, 'modified');
-    assert.equal(CellEditController._rawTables[0].rows[0][0], 'modified');
+    assert.equal(TableRegistry.getRaw()[0].rows[0][0], 'modified');
 
     CellEditController.undo();
-    assert.equal(CellEditController._rawTables[0].rows[0][0], 'x');
+    assert.equal(TableRegistry.getRaw()[0].rows[0][0], 'x');
     assert.equal(CellEditController.editHistory.length, 0);
     assert.equal(CellEditController.editRedo.length, 1);
   });
@@ -112,7 +113,7 @@ describe('CellEditController — undo / redo', () => {
     CellEditController.apply('T1', 0, 0, 'modified');
     CellEditController.undo();
     CellEditController.redo();
-    assert.equal(CellEditController._rawTables[0].rows[0][0], 'modified');
+    assert.equal(TableRegistry.getRaw()[0].rows[0][0], 'modified');
     assert.equal(CellEditController.editHistory.length, 1);
     assert.equal(CellEditController.editRedo.length, 0);
   });

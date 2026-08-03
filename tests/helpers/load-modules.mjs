@@ -46,6 +46,7 @@ const MODULE_ORDER = [
   'parsing/import-engine.js',
   'parsing/legacy-facade.js',
   'transform/joiner.js',
+  'core/table-registry.js',
   'ui/table-builder.js',
   'ui/selection.js',
   'ui/join-editor.js',

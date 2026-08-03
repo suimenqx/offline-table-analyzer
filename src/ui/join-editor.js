@@ -1,15 +1,4 @@
-OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$, escapeHtml, formatBytes}, {Store}, {Joiner}, {Exporter, Toast}) => {
-const App = new Proxy({}, {
-    get(_target, key) {
-        const app = OTA.require('app').App;
-        const value = app[key];
-        return typeof value === 'function' ? value.bind(app) : value;
-    },
-    set(_target, key, value) {
-        OTA.require('app').App[key] = value;
-        return true;
-    }
-});
+OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}) => {
 /* Join Editor - v2: improved UX */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '', selectedOrderIdx: -1 },
@@ -63,10 +52,10 @@ const JoinEditor = {
         return res;
     },
     getTableData(name) {
-        const raw = App.raw.find(t => t.name === name);
+        const raw = TableRegistry.getRaw().find(t => t.name === name);
         if(raw) return raw;
         const view = Store.state.globalViews.find(v => v.view === name);
-        if(view) return Joiner.run(App.raw, view, Store.state.globalViews);
+        if(view) return Joiner.run(TableRegistry.getRaw(), view, Store.state.globalViews);
         return null;
     },
 
@@ -135,7 +124,7 @@ const JoinEditor = {
                         }
                     }
                     this._shiftSelecting = false;
-                    this.syncOrderFromSelections(App.getCols($('jeLeftTable').value), App.getCols($('jeRightTable').value));
+                    this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
                     this.renderSelectedOrder();
                     this.updateAll();
                     this.markDirty();
@@ -154,14 +143,14 @@ const JoinEditor = {
         } else {
             if(idx > -1) arr.splice(idx,1);
         }
-        this.syncOrderFromSelections(App.getCols($('jeLeftTable').value), App.getCols($('jeRightTable').value), appendToEnd ? {side, col, checked} : null);
+        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value), appendToEnd ? {side, col, checked} : null);
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
     },
 
     toggleAll(side) {
-        const cols = this.getFilteredCols(side, App.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
+        const cols = this.getFilteredCols(side, TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
         if(!cols.length) return;
         const selected = side === 'l' ? this.state.lSel : this.state.rSel;
         const allChecked = cols.every(c => selected.includes(c));
@@ -172,20 +161,20 @@ const JoinEditor = {
             if(!allChecked && idx === -1) arr.push(c);
             else if(allChecked && idx > -1) arr.splice(idx, 1);
         });
-        this.syncOrderFromSelections(App.getCols($('jeLeftTable').value), App.getCols($('jeRightTable').value));
-        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', App.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
+        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
+        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
     },
     selectFiltered(side) {
-        const cols = this.getFilteredCols(side, App.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
+        const cols = this.getFilteredCols(side, TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
         if(!cols.length) return;
         // Batch: add all missing at once
         const arr = side === 'l' ? this.state.lSel : this.state.rSel;
         cols.forEach(c => { if(!arr.includes(c)) arr.push(c); });
-        this.syncOrderFromSelections(App.getCols($('jeLeftTable').value), App.getCols($('jeRightTable').value));
-        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', App.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
+        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
+        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
@@ -374,8 +363,8 @@ const JoinEditor = {
         const sIdx = arr.indexOf(item.col);
         if(sIdx > -1) arr.splice(sIdx, 1);
         this.state.selectedOrderIdx = -1;
-        this.renderColList('jeLList', App.getCols($('jeLeftTable').value), this.state.lSel, 'l');
-        this.renderColList('jeRList', App.getCols($('jeRightTable').value), this.state.rSel, 'r');
+        this.renderColList('jeLList', TableRegistry.getCols($('jeLeftTable').value), this.state.lSel, 'l');
+        this.renderColList('jeRList', TableRegistry.getCols($('jeRightTable').value), this.state.rSel, 'r');
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
@@ -397,8 +386,8 @@ const JoinEditor = {
         this.state.rSel = [];
         this.state.order = [];
         this.state.selectedOrderIdx = -1;
-        this.renderColList('jeLList', App.getCols($('jeLeftTable').value), this.state.lSel, 'l');
-        this.renderColList('jeRList', App.getCols($('jeRightTable').value), this.state.rSel, 'r');
+        this.renderColList('jeLList', TableRegistry.getCols($('jeLeftTable').value), this.state.lSel, 'l');
+        this.renderColList('jeRList', TableRegistry.getCols($('jeRightTable').value), this.state.rSel, 'r');
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
@@ -412,8 +401,8 @@ const JoinEditor = {
         if(side === 'r') this.state.lSel = [];
         this.state.order = this.state.order.filter(o => o.side === side);
         this.state.selectedOrderIdx = -1;
-        this.renderColList('jeLList', App.getCols($('jeLeftTable').value), this.state.lSel, 'l');
-        this.renderColList('jeRList', App.getCols($('jeRightTable').value), this.state.rSel, 'r');
+        this.renderColList('jeLList', TableRegistry.getCols($('jeLeftTable').value), this.state.lSel, 'l');
+        this.renderColList('jeRList', TableRegistry.getCols($('jeRightTable').value), this.state.rSel, 'r');
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
@@ -423,8 +412,8 @@ const JoinEditor = {
     renderRels() {
         const lName = $('jeLeftTable').value;
         const rName = $('jeRightTable').value;
-        const lCols = App.getCols(lName);
-        const rCols = App.getCols(rName);
+        const lCols = TableRegistry.getCols(lName);
+        const rCols = TableRegistry.getCols(rName);
         const lOpts = lCols.map(c=>`<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
         const rOpts = rCols.map(c=>`<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
 
@@ -504,8 +493,8 @@ const JoinEditor = {
     autoMatchRels() {
         const lName = $('jeLeftTable').value;
         const rName = $('jeRightTable').value;
-        const lCols = App.getCols(lName);
-        const rCols = App.getCols(rName);
+        const lCols = TableRegistry.getCols(lName);
+        const rCols = TableRegistry.getCols(rName);
 
         // Exact match first, then case-insensitive
         const lSet = new Set(lCols);
@@ -614,8 +603,8 @@ const JoinEditor = {
         if(validRels.length === 0 && this.state.rels.some(r => r.l || r.r)) errors.push(`❌ 关联条件不完整：${incompleteIdxs.length}个条件缺少字段`);
         else if(this.state.rels.length === 0 || (this.state.rels.length === 1 && !this.state.rels[0].l && !this.state.rels[0].r)) errors.push('❌ 至少配置一个关联条件（点击 添加条件 按钮）');
 
-        const leftCols = App.getCols(leftVal);
-        const rightCols = App.getCols(rightVal);
+        const leftCols = TableRegistry.getCols(leftVal);
+        const rightCols = TableRegistry.getCols(rightVal);
         const staleRels = [];
         this.state.rels.forEach((r, i) => {
             if(r.l && !leftCols.includes(r.l)) staleRels.push(`#${i+1} 左:${r.l}`);
@@ -626,7 +615,7 @@ const JoinEditor = {
         if(this.state.order.length === 0) errors.push('❌ 至少选择一个输出列');
 
         const cfg = this.getCurrentConfig();
-        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.state.globalViews, App.raw.map(t => t.name))) {
+        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.state.globalViews, TableRegistry.getRaw().map(t => t.name))) {
             errors.push('❌ 视图依赖会形成循环引用');
         }
 
@@ -675,7 +664,7 @@ const JoinEditor = {
         const hasRel = this.state.rels.some(r => r.l && r.r);
         const el = $('jePreview');
         if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
-        const stats = Joiner.stats(App.raw, cfg, Store.state.globalViews);
+        const stats = Joiner.stats(TableRegistry.getRaw(), cfg, Store.state.globalViews);
         if(!stats) { el.textContent = '预览: —'; return; }
         el.textContent = `预览: 输出 ${stats.outRows.toLocaleString()} 行 · 匹配 ${stats.matched.toLocaleString()} · 左未匹配 ${stats.leftOnly.toLocaleString()} · 右未匹配 ${stats.rightOnly.toLocaleString()}`;
     },
@@ -691,14 +680,14 @@ const JoinEditor = {
             const stamp = this.formatTime(lView.updatedAt || lView.createdAt);
             parts.push(`<div class="dep-chain"><strong>左表 ${this.escapeHtml(lName)}</strong>: ${this.buildDependencyChain(lName)} · ${stamp || '?'}</div>`);
         } else if(lName) {
-            const lCols = App.getCols(lName);
+            const lCols = TableRegistry.getCols(lName);
             parts.push(`<div class="dep-chain"><strong>左表 ${this.escapeHtml(lName)}</strong>: 原始表 · ${lCols.length} 列</div>`);
         }
         if(rView) {
             const stamp = this.formatTime(rView.updatedAt || rView.createdAt);
             parts.push(`<div class="dep-chain"><strong>右表 ${this.escapeHtml(rName)}</strong>: ${this.buildDependencyChain(rName)} · ${stamp || '?'}</div>`);
         } else if(rName) {
-            const rCols = App.getCols(rName);
+            const rCols = TableRegistry.getCols(rName);
             parts.push(`<div class="dep-chain"><strong>右表 ${this.escapeHtml(rName)}</strong>: 原始表 · ${rCols.length} 列</div>`);
         }
         el.innerHTML = parts.length ? parts.join('') : '<span class="muted">选择左右表查看结构</span>';
@@ -727,7 +716,7 @@ const JoinEditor = {
         const next = sel.value;
         const prev = side === 'l' ? this.state.prevLeft : this.state.prevRight;
         if(next === prev) return;
-        const cols = App.getCols(next);
+        const cols = TableRegistry.getCols(next);
         const removedCols = (side === 'l' ? this.state.lSel : this.state.rSel).filter(c => !cols.includes(c));
         const removedRels = this.state.rels.filter(r => {
             const col = side === 'l' ? r.l : r.r;
@@ -765,8 +754,8 @@ const JoinEditor = {
     refreshColumns() {
         const lName = $('jeLeftTable').value;
         const rName = $('jeRightTable').value;
-        const lCols = App.getCols(lName);
-        const rCols = App.getCols(rName);
+        const lCols = TableRegistry.getCols(lName);
+        const rCols = TableRegistry.getCols(rName);
 
         this.state.lSel = this.state.lSel.filter(c => lCols.includes(c));
         this.state.rSel = this.state.rSel.filter(c => rCols.includes(c));
@@ -786,7 +775,7 @@ const JoinEditor = {
 
     /* ── Name conflict ── */
     isNameConflict(name, excludeIdx=-1) {
-        const rawNames = App.raw.map(t => t.name);
+        const rawNames = TableRegistry.getRaw().map(t => t.name);
         const viewNames = Store.state.globalViews.filter((_,i)=>i!==excludeIdx).map(v => v.view);
         return rawNames.includes(name) || viewNames.includes(name);
     },
@@ -813,7 +802,7 @@ const JoinEditor = {
         $('jeName').value = v.view;
         $('jeType').value = v.type;
 
-        const availableTables = App.getAvailableTables();
+        const availableTables = TableRegistry.getAvailableTables();
         ['jeLeftTable','jeRightTable'].forEach(id => {
             const select = $(id);
             select.replaceChildren();
@@ -906,8 +895,8 @@ const JoinEditor = {
         else Store.state.globalViews.push(nv);
 
         Store.save();
-        App.updSelects();
-        App.run();
+        if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
+        if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
         this.setDirty(false);
         $('joinModal').classList.add('hidden');
         document.body.classList.remove('modal-open');
@@ -978,7 +967,7 @@ const JoinEditor = {
             }).join('');
         };
 
-        App.modal('管理全局视图', `
+        ModalController.show('管理全局视图', `
             <div style="margin-bottom:10px; display:flex; gap:8px;">
                 <input type="text" id="jeViewSearch" placeholder="🔍 搜索视图..." style="flex:1; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:13px;">
                 <select id="jeViewSort" style="width:100px; height:36px; font-size:12px;">
@@ -1056,8 +1045,8 @@ const JoinEditor = {
                 if(!confirm(`确定删除选中的 ${indices.length} 个视图吗？此操作不可恢复。`)) return;
                 indices.forEach(idx => Store.state.globalViews.splice(idx, 1));
                 Store.save();
-                App.updSelects();
-                App.run();
+                if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
+                if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
                 this.modManageViews();
                 Toast.show(`已删除 ${indices.length} 个视图`);
             };
@@ -1089,7 +1078,7 @@ const JoinEditor = {
                     const name = this.makeUniqueName(`${v.view}_copy`);
                     Store.state.globalViews.push({ ...v, view: name, createdAt: Date.now(), updatedAt: Date.now() });
                     Store.save();
-                    App.updSelects();
+                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
                     this.modManageViews();
                     Toast.show('视图已复制');
                 };
@@ -1105,9 +1094,9 @@ const JoinEditor = {
                 if(delOkBtn) delOkBtn.onclick = () => {
                     Store.state.globalViews.splice(i, 1);
                     Store.save();
-                    App.updSelects();
+                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
                     this.modManageViews();
-                    App.run();
+                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
                 };
                 if(checkbox) checkbox.onchange = updateBatchButtons;
             });
@@ -1165,7 +1154,7 @@ const JoinEditor = {
             imported++;
         });
         if(imported) {
-            Store.save(); App.updSelects(); App.run(); this.modManageViews();
+            Store.save(); if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged")); if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested")); this.modManageViews();
             Toast.show(`已导入 ${imported} 个视图`);
         }
     }

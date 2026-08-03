@@ -84,7 +84,10 @@ const ClipboardFormatter = {
     },
     toMarkdown(matrix) {
         if(!matrix || !matrix.length) return '';
-        const esc = value => this.normalizeCell(value).replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+        const esc = value => {
+            const safe = this.protectSpreadsheetFormula(this.normalizeCell(value));
+            return safe.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+        };
         const widths = this.getWidths(matrix.map(row => row.map(esc)));
         const line = row => `| ${row.map((cell, i) => esc(cell).padEnd(widths[i], ' ')).join(' | ')} |`;
         const sep = `| ${widths.map(w => '-'.repeat(Math.max(3, w))).join(' | ')} |`;
@@ -94,7 +97,10 @@ const ClipboardFormatter = {
     },
     toAscii(matrix) {
         if(!matrix || !matrix.length) return '';
-        const clean = value => this.normalizeCell(value).replace(/\n/g, ' ');
+        const clean = value => {
+            const safe = this.protectSpreadsheetFormula(this.normalizeCell(value));
+            return safe.replace(/\n/g, ' ');
+        };
         const normalized = matrix.map(row => row.map(clean));
         const widths = this.getWidths(normalized);
         const border = '+' + widths.map(w => '-'.repeat(w + 2)).join('+') + '+';

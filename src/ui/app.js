@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -68,6 +68,7 @@ const App = {
         if (typeof document !== 'undefined' && document.addEventListener) {
             document.addEventListener('ota:sourceFileLoaded', () => { this.run(); });
             document.addEventListener('ota:sourceParseRequested', () => { this.run(); });
+            document.addEventListener('ota:sourceAutoParse', () => { this.run(); });
             document.addEventListener('ota:formatChanged', (e) => {
                 if (e.detail && e.detail.format) this.setImportFormat(e.detail.format);
             });
@@ -77,6 +78,14 @@ const App = {
             document.addEventListener('ota:tabsChanged', () => {
                 this.renderTabs();
                 this.loadDoc();
+            });
+            document.addEventListener('ota:joinChanged', () => {
+                this.updSelects();
+                this.updChips();
+                this.renderPreview();
+            });
+            document.addEventListener('ota:joinParseRequested', () => {
+                this.run();
             });
         }
 
@@ -106,21 +115,11 @@ const App = {
     },
 
     getAvailableTables() {
-        const raws = this.raw.map(t => t.name);
-        const views = Store.state.globalViews.map(v => v.view);
-        return [...raws, ...views];
+        return TableRegistry.getAvailableTables();
     },
     
     getCols(tableName) {
-        if(!tableName) return [];
-        const raw = this.raw.find(t => t.name === tableName);
-        if(raw) return raw.headers;
-        const view = Store.state.globalViews.find(v => v.view === tableName);
-        if(view) {
-            const res = Joiner.run(this.raw, view, Store.state.globalViews);
-            return res ? res.headers : [];
-        }
-        return [];
+        return TableRegistry.getCols(tableName);
     },
 
     getImportSummaryItems() {
@@ -662,6 +661,7 @@ validflag Time      Level   Message                 Code
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
             Store.curr().raw = sourceText; Store.save();
             this.raw = Parser.parse(sourceText, this.getParseOptions());
+            TableRegistry.setRaw(this.raw);
             CellEditController.setRawTables(this.raw);
             ExportController.setContext({ raw: this.raw });
             this.applyStoredCellEdits();

@@ -647,15 +647,15 @@
                                 </div>
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label>高亮规则 <span class="help-icon" data-tip="语法增强：&#10;• ID=1001 (精确)&#10;• CPU>90 (数值)&#10;• Msg:Error (包含)&#10;• A=1 B!=OK (组合)">?</span></label>
+                                <label>高亮规则 <span class="help-icon" data-tip="高亮匹配行，支持：&#10;• error — 包含 'error'&#10;• ID=1001 — 精确匹配&#10;• CPU>90 — 数值比较&#10;• Msg:Error — 包含 Error&#10;• /err[0-9]+/ — 正则&#10;• !Status=OK — NOT 取反&#10;• a|b|c — OR 逻辑&#10;• A=1 B!=OK — AND 组合">?</span></label>
                                 <input type="text" id="hlInput" placeholder="error | ID=1 | CPU>90">
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label>行过滤</label>
+                                <label>行过滤 <span class="help-icon" data-tip="仅显示匹配行（AND 组合），语法同上。&#10;例：Status=OK Qty>0&#10;例：/error|warn/ !Level=DEBUG">?</span></label>
                                 <input type="text" id="filterInput" placeholder="Status!=OK, Qty>0 ...">
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label>全局过滤</label>
+                                <label>全局过滤 <span class="help-icon" data-tip="对所有表生效的过滤（AND 组合），语法同上。&#10;例：Server=web01&#10;例：CPU>90 | Mem>80">?</span></label>
                                 <input type="text" id="globalFilter" placeholder="全局搜索 (支持 key=val)...">
                             </div>
                             <div class="control-block">
@@ -1722,10 +1722,29 @@ const Store = {
                 }
                 return result;
             }
-            case 'tab:rename':
-            case 'tab:reorder':
-                // Use existing methods; they call save() internally
-                return null; // handled by existing methods directly for now
+            case 'tab:rename': {
+                const id = payload && payload.id;
+                const title = payload && payload.title;
+                if (!id || title === undefined || title === null) return false;
+                const ok = this.renameDoc(id, title);
+                if (ok) {
+                    this._notify('tab:renamed', { id, title: this.state.docs.find(d => d.id === id)?.title || title });
+                    this._notify('state:changed', {});
+                }
+                return ok;
+            }
+            case 'tab:reorder': {
+                const sourceId = payload && payload.sourceId;
+                const targetId = payload && payload.targetId;
+                const place = (payload && payload.place) || 'before';
+                if (!sourceId || !targetId) return false;
+                const ok = this.moveDoc(sourceId, targetId, place);
+                if (ok) {
+                    this._notify('tab:reordered', { sourceId, targetId, place });
+                    this._notify('state:changed', {});
+                }
+                return ok;
+            }
 
             // ── Source ──
             case 'source:changed': {
@@ -1768,17 +1787,20 @@ const Store = {
             }
             case 'filter:column': {
                 // Payload: { table, column, value }
+                const table = payload && payload.table;
+                const column = payload && payload.column;
+                if (!table || !column) return false;
                 const ui = this.curr().ui;
                 if (!ui.columnFilters) ui.columnFilters = {};
-                if (!ui.columnFilters[payload.table]) ui.columnFilters[payload.table] = {};
+                if (!ui.columnFilters[table]) ui.columnFilters[table] = {};
                 const val = (payload.value || '').trim();
                 if (val) {
-                    ui.columnFilters[payload.table][payload.column] = val;
+                    ui.columnFilters[table][column] = val;
                 } else {
-                    delete ui.columnFilters[payload.table][payload.column];
+                    delete ui.columnFilters[table][column];
                 }
                 this.save();
-                this._notify('filter:changed', { scope: 'column', table: payload.table, column: payload.column, value: val });
+                this._notify('filter:changed', { scope: 'column', table, column, value: val });
                 this._notify('state:changed', {});
                 return true;
             }
@@ -2187,7 +2209,10 @@ const ClipboardFormatter = {
     },
     toMarkdown(matrix) {
         if(!matrix || !matrix.length) return '';
-        const esc = value => this.normalizeCell(value).replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+        const esc = value => {
+            const safe = this.protectSpreadsheetFormula(this.normalizeCell(value));
+            return safe.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
+        };
         const widths = this.getWidths(matrix.map(row => row.map(esc)));
         const line = row => `| ${row.map((cell, i) => esc(cell).padEnd(widths[i], ' ')).join(' | ')} |`;
         const sep = `| ${widths.map(w => '-'.repeat(Math.max(3, w))).join(' | ')} |`;
@@ -2197,7 +2222,10 @@ const ClipboardFormatter = {
     },
     toAscii(matrix) {
         if(!matrix || !matrix.length) return '';
-        const clean = value => this.normalizeCell(value).replace(/\n/g, ' ');
+        const clean = value => {
+            const safe = this.protectSpreadsheetFormula(this.normalizeCell(value));
+            return safe.replace(/\n/g, ' ');
+        };
         const normalized = matrix.map(row => row.map(clean));
         const widths = this.getWidths(normalized);
         const border = '+' + widths.map(w => '-'.repeat(w + 2)).join('+') + '+';
@@ -4525,6 +4553,61 @@ const Joiner = {
     return { Joiner };
 });
 
+/* @module core/table-registry.js: shared table/column metadata access */
+OTA.define('table-registry', ["store", "joiner"], ({Store}, {Joiner}) => {
+/* TableRegistry — shared access to parsed tables and column metadata.
+
+   This module breaks the circular dependency between join-editor and app:
+   both depend on TableRegistry, neither depends on each other for data access.
+
+   App.run() calls setRaw() after each parse. All downstream consumers
+   (JoinEditor, CellEditController, ExportController, etc.) read via
+   getAvailableTables() / getCols() / getRaw().
+*/
+
+const TableRegistry = {
+    _raw: [],
+
+    /** Called by App.run() after each successful parse. */
+    setRaw(tables) {
+        this._raw = tables || [];
+    },
+
+    /** @returns {Object[]} all raw parsed tables (read-only; do not mutate) */
+    getRaw() {
+        return this._raw;
+    },
+
+    /** @returns {Object|null} a raw table by name, or null */
+    getTable(name) {
+        return this._raw.find(t => t.name === name) || null;
+    },
+
+    /** @returns {string[]} all table and view names (raw + global JOIN views) */
+    getAvailableTables() {
+        const raws = this._raw.map(t => t.name);
+        const views = (Store.state.globalViews || []).map(v => v.view);
+        return [...raws, ...views];
+    },
+
+    /** @returns {string[]} column headers for a table or view by name */
+    getCols(tableName) {
+        if (!tableName) return [];
+        const raw = this._raw.find(t => t.name === tableName);
+        if (raw) return raw.headers.slice();
+        const views = Store.state.globalViews || [];
+        const view = views.find(v => v.view === tableName);
+        if (view) {
+            const res = Joiner.run(this._raw, view, views);
+            return res ? res.headers.slice() : [];
+        }
+        return [];
+    }
+};
+
+    return { TableRegistry };
+});
+
 /* @module ui/table-builder.js: preview table DOM construction */
 OTA.define('table-builder', ["runtime","filter-engine"], ({$, createEl, escapeHtml}, {FilterEngine}) => {
 /* TableBuilder — DOM construction helpers for column-header and row-header
@@ -4930,18 +5013,7 @@ const Select = {
 });
 
 /* @module ui/join-editor.js: JOIN editor UI */
-OTA.define('join-editor', ["runtime","store","joiner","exporter"], ({$, escapeHtml, formatBytes}, {Store}, {Joiner}, {Exporter, Toast}) => {
-const App = new Proxy({}, {
-    get(_target, key) {
-        const app = OTA.require('app').App;
-        const value = app[key];
-        return typeof value === 'function' ? value.bind(app) : value;
-    },
-    set(_target, key, value) {
-        OTA.require('app').App[key] = value;
-        return true;
-    }
-});
+OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}) => {
 /* Join Editor - v2: improved UX */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '', selectedOrderIdx: -1 },
@@ -4995,10 +5067,10 @@ const JoinEditor = {
         return res;
     },
     getTableData(name) {
-        const raw = App.raw.find(t => t.name === name);
+        const raw = TableRegistry.getRaw().find(t => t.name === name);
         if(raw) return raw;
         const view = Store.state.globalViews.find(v => v.view === name);
-        if(view) return Joiner.run(App.raw, view, Store.state.globalViews);
+        if(view) return Joiner.run(TableRegistry.getRaw(), view, Store.state.globalViews);
         return null;
     },
 
@@ -5067,7 +5139,7 @@ const JoinEditor = {
                         }
                     }
                     this._shiftSelecting = false;
-                    this.syncOrderFromSelections(App.getCols($('jeLeftTable').value), App.getCols($('jeRightTable').value));
+                    this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
                     this.renderSelectedOrder();
                     this.updateAll();
                     this.markDirty();
@@ -5086,14 +5158,14 @@ const JoinEditor = {
         } else {
             if(idx > -1) arr.splice(idx,1);
         }
-        this.syncOrderFromSelections(App.getCols($('jeLeftTable').value), App.getCols($('jeRightTable').value), appendToEnd ? {side, col, checked} : null);
+        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value), appendToEnd ? {side, col, checked} : null);
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
     },
 
     toggleAll(side) {
-        const cols = this.getFilteredCols(side, App.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
+        const cols = this.getFilteredCols(side, TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
         if(!cols.length) return;
         const selected = side === 'l' ? this.state.lSel : this.state.rSel;
         const allChecked = cols.every(c => selected.includes(c));
@@ -5104,20 +5176,20 @@ const JoinEditor = {
             if(!allChecked && idx === -1) arr.push(c);
             else if(allChecked && idx > -1) arr.splice(idx, 1);
         });
-        this.syncOrderFromSelections(App.getCols($('jeLeftTable').value), App.getCols($('jeRightTable').value));
-        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', App.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
+        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
+        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
     },
     selectFiltered(side) {
-        const cols = this.getFilteredCols(side, App.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
+        const cols = this.getFilteredCols(side, TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
         if(!cols.length) return;
         // Batch: add all missing at once
         const arr = side === 'l' ? this.state.lSel : this.state.rSel;
         cols.forEach(c => { if(!arr.includes(c)) arr.push(c); });
-        this.syncOrderFromSelections(App.getCols($('jeLeftTable').value), App.getCols($('jeRightTable').value));
-        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', App.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
+        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
+        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
@@ -5306,8 +5378,8 @@ const JoinEditor = {
         const sIdx = arr.indexOf(item.col);
         if(sIdx > -1) arr.splice(sIdx, 1);
         this.state.selectedOrderIdx = -1;
-        this.renderColList('jeLList', App.getCols($('jeLeftTable').value), this.state.lSel, 'l');
-        this.renderColList('jeRList', App.getCols($('jeRightTable').value), this.state.rSel, 'r');
+        this.renderColList('jeLList', TableRegistry.getCols($('jeLeftTable').value), this.state.lSel, 'l');
+        this.renderColList('jeRList', TableRegistry.getCols($('jeRightTable').value), this.state.rSel, 'r');
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
@@ -5329,8 +5401,8 @@ const JoinEditor = {
         this.state.rSel = [];
         this.state.order = [];
         this.state.selectedOrderIdx = -1;
-        this.renderColList('jeLList', App.getCols($('jeLeftTable').value), this.state.lSel, 'l');
-        this.renderColList('jeRList', App.getCols($('jeRightTable').value), this.state.rSel, 'r');
+        this.renderColList('jeLList', TableRegistry.getCols($('jeLeftTable').value), this.state.lSel, 'l');
+        this.renderColList('jeRList', TableRegistry.getCols($('jeRightTable').value), this.state.rSel, 'r');
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
@@ -5344,8 +5416,8 @@ const JoinEditor = {
         if(side === 'r') this.state.lSel = [];
         this.state.order = this.state.order.filter(o => o.side === side);
         this.state.selectedOrderIdx = -1;
-        this.renderColList('jeLList', App.getCols($('jeLeftTable').value), this.state.lSel, 'l');
-        this.renderColList('jeRList', App.getCols($('jeRightTable').value), this.state.rSel, 'r');
+        this.renderColList('jeLList', TableRegistry.getCols($('jeLeftTable').value), this.state.lSel, 'l');
+        this.renderColList('jeRList', TableRegistry.getCols($('jeRightTable').value), this.state.rSel, 'r');
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
@@ -5355,8 +5427,8 @@ const JoinEditor = {
     renderRels() {
         const lName = $('jeLeftTable').value;
         const rName = $('jeRightTable').value;
-        const lCols = App.getCols(lName);
-        const rCols = App.getCols(rName);
+        const lCols = TableRegistry.getCols(lName);
+        const rCols = TableRegistry.getCols(rName);
         const lOpts = lCols.map(c=>`<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
         const rOpts = rCols.map(c=>`<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
 
@@ -5436,8 +5508,8 @@ const JoinEditor = {
     autoMatchRels() {
         const lName = $('jeLeftTable').value;
         const rName = $('jeRightTable').value;
-        const lCols = App.getCols(lName);
-        const rCols = App.getCols(rName);
+        const lCols = TableRegistry.getCols(lName);
+        const rCols = TableRegistry.getCols(rName);
 
         // Exact match first, then case-insensitive
         const lSet = new Set(lCols);
@@ -5546,8 +5618,8 @@ const JoinEditor = {
         if(validRels.length === 0 && this.state.rels.some(r => r.l || r.r)) errors.push(`❌ 关联条件不完整：${incompleteIdxs.length}个条件缺少字段`);
         else if(this.state.rels.length === 0 || (this.state.rels.length === 1 && !this.state.rels[0].l && !this.state.rels[0].r)) errors.push('❌ 至少配置一个关联条件（点击 添加条件 按钮）');
 
-        const leftCols = App.getCols(leftVal);
-        const rightCols = App.getCols(rightVal);
+        const leftCols = TableRegistry.getCols(leftVal);
+        const rightCols = TableRegistry.getCols(rightVal);
         const staleRels = [];
         this.state.rels.forEach((r, i) => {
             if(r.l && !leftCols.includes(r.l)) staleRels.push(`#${i+1} 左:${r.l}`);
@@ -5558,7 +5630,7 @@ const JoinEditor = {
         if(this.state.order.length === 0) errors.push('❌ 至少选择一个输出列');
 
         const cfg = this.getCurrentConfig();
-        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.state.globalViews, App.raw.map(t => t.name))) {
+        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.state.globalViews, TableRegistry.getRaw().map(t => t.name))) {
             errors.push('❌ 视图依赖会形成循环引用');
         }
 
@@ -5607,7 +5679,7 @@ const JoinEditor = {
         const hasRel = this.state.rels.some(r => r.l && r.r);
         const el = $('jePreview');
         if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
-        const stats = Joiner.stats(App.raw, cfg, Store.state.globalViews);
+        const stats = Joiner.stats(TableRegistry.getRaw(), cfg, Store.state.globalViews);
         if(!stats) { el.textContent = '预览: —'; return; }
         el.textContent = `预览: 输出 ${stats.outRows.toLocaleString()} 行 · 匹配 ${stats.matched.toLocaleString()} · 左未匹配 ${stats.leftOnly.toLocaleString()} · 右未匹配 ${stats.rightOnly.toLocaleString()}`;
     },
@@ -5623,14 +5695,14 @@ const JoinEditor = {
             const stamp = this.formatTime(lView.updatedAt || lView.createdAt);
             parts.push(`<div class="dep-chain"><strong>左表 ${this.escapeHtml(lName)}</strong>: ${this.buildDependencyChain(lName)} · ${stamp || '?'}</div>`);
         } else if(lName) {
-            const lCols = App.getCols(lName);
+            const lCols = TableRegistry.getCols(lName);
             parts.push(`<div class="dep-chain"><strong>左表 ${this.escapeHtml(lName)}</strong>: 原始表 · ${lCols.length} 列</div>`);
         }
         if(rView) {
             const stamp = this.formatTime(rView.updatedAt || rView.createdAt);
             parts.push(`<div class="dep-chain"><strong>右表 ${this.escapeHtml(rName)}</strong>: ${this.buildDependencyChain(rName)} · ${stamp || '?'}</div>`);
         } else if(rName) {
-            const rCols = App.getCols(rName);
+            const rCols = TableRegistry.getCols(rName);
             parts.push(`<div class="dep-chain"><strong>右表 ${this.escapeHtml(rName)}</strong>: 原始表 · ${rCols.length} 列</div>`);
         }
         el.innerHTML = parts.length ? parts.join('') : '<span class="muted">选择左右表查看结构</span>';
@@ -5659,7 +5731,7 @@ const JoinEditor = {
         const next = sel.value;
         const prev = side === 'l' ? this.state.prevLeft : this.state.prevRight;
         if(next === prev) return;
-        const cols = App.getCols(next);
+        const cols = TableRegistry.getCols(next);
         const removedCols = (side === 'l' ? this.state.lSel : this.state.rSel).filter(c => !cols.includes(c));
         const removedRels = this.state.rels.filter(r => {
             const col = side === 'l' ? r.l : r.r;
@@ -5697,8 +5769,8 @@ const JoinEditor = {
     refreshColumns() {
         const lName = $('jeLeftTable').value;
         const rName = $('jeRightTable').value;
-        const lCols = App.getCols(lName);
-        const rCols = App.getCols(rName);
+        const lCols = TableRegistry.getCols(lName);
+        const rCols = TableRegistry.getCols(rName);
 
         this.state.lSel = this.state.lSel.filter(c => lCols.includes(c));
         this.state.rSel = this.state.rSel.filter(c => rCols.includes(c));
@@ -5718,7 +5790,7 @@ const JoinEditor = {
 
     /* ── Name conflict ── */
     isNameConflict(name, excludeIdx=-1) {
-        const rawNames = App.raw.map(t => t.name);
+        const rawNames = TableRegistry.getRaw().map(t => t.name);
         const viewNames = Store.state.globalViews.filter((_,i)=>i!==excludeIdx).map(v => v.view);
         return rawNames.includes(name) || viewNames.includes(name);
     },
@@ -5745,7 +5817,7 @@ const JoinEditor = {
         $('jeName').value = v.view;
         $('jeType').value = v.type;
 
-        const availableTables = App.getAvailableTables();
+        const availableTables = TableRegistry.getAvailableTables();
         ['jeLeftTable','jeRightTable'].forEach(id => {
             const select = $(id);
             select.replaceChildren();
@@ -5838,8 +5910,8 @@ const JoinEditor = {
         else Store.state.globalViews.push(nv);
 
         Store.save();
-        App.updSelects();
-        App.run();
+        if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
+        if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
         this.setDirty(false);
         $('joinModal').classList.add('hidden');
         document.body.classList.remove('modal-open');
@@ -5910,7 +5982,7 @@ const JoinEditor = {
             }).join('');
         };
 
-        App.modal('管理全局视图', `
+        ModalController.show('管理全局视图', `
             <div style="margin-bottom:10px; display:flex; gap:8px;">
                 <input type="text" id="jeViewSearch" placeholder="🔍 搜索视图..." style="flex:1; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:13px;">
                 <select id="jeViewSort" style="width:100px; height:36px; font-size:12px;">
@@ -5988,8 +6060,8 @@ const JoinEditor = {
                 if(!confirm(`确定删除选中的 ${indices.length} 个视图吗？此操作不可恢复。`)) return;
                 indices.forEach(idx => Store.state.globalViews.splice(idx, 1));
                 Store.save();
-                App.updSelects();
-                App.run();
+                if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
+                if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
                 this.modManageViews();
                 Toast.show(`已删除 ${indices.length} 个视图`);
             };
@@ -6021,7 +6093,7 @@ const JoinEditor = {
                     const name = this.makeUniqueName(`${v.view}_copy`);
                     Store.state.globalViews.push({ ...v, view: name, createdAt: Date.now(), updatedAt: Date.now() });
                     Store.save();
-                    App.updSelects();
+                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
                     this.modManageViews();
                     Toast.show('视图已复制');
                 };
@@ -6037,9 +6109,9 @@ const JoinEditor = {
                 if(delOkBtn) delOkBtn.onclick = () => {
                     Store.state.globalViews.splice(i, 1);
                     Store.save();
-                    App.updSelects();
+                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
                     this.modManageViews();
-                    App.run();
+                    if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
                 };
                 if(checkbox) checkbox.onchange = updateBatchButtons;
             });
@@ -6097,7 +6169,7 @@ const JoinEditor = {
             imported++;
         });
         if(imported) {
-            Store.save(); App.updSelects(); App.run(); this.modManageViews();
+            Store.save(); if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged")); if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested")); this.modManageViews();
             Toast.show(`已导入 ${imported} 个视图`);
         }
     }
@@ -6127,6 +6199,7 @@ const SourceController = {
     // ── Timers (held here rather than on App) ──
     _persistTimer: null,
     _statsTimer: null,
+    _autoParseTimer: null,
     _returnFocus: null,
 
     // ── Pure helpers ──
@@ -6198,6 +6271,17 @@ const SourceController = {
                 Store.curr().raw = rawInput.value;
                 Store.save();
             }, 650);
+
+            // Debounced auto-parse: fire parse when input stabilises (≤1 MB)
+            clearTimeout(SourceController._autoParseTimer);
+            const text = rawInput.value;
+            if (text.length * 2 < 1024 * 1024) {
+                SourceController._autoParseTimer = setTimeout(() => {
+                    if (typeof document !== 'undefined' && document.dispatchEvent) {
+                        document.dispatchEvent(new CustomEvent('ota:sourceAutoParse'));
+                    }
+                }, 500);
+            }
         });
     },
 
@@ -6567,7 +6651,7 @@ const SourceController = {
 });
 
 /* @module ui/cell-edit-controller.js: inline cell editing with undo/redo */
-OTA.define('cell-edit-controller', ["runtime", "store", "dispatch"], ({$, Toast}, {Store}, {dispatch}) => {
+OTA.define('cell-edit-controller', ["runtime", "store", "dispatch", "table-registry"], ({$, Toast}, {Store}, {dispatch}, {TableRegistry}) => {
 /* CellEditController — inline cell editing with undo/redo.
 
    Responsibilities:
@@ -6586,11 +6670,15 @@ const CellEditController = {
     activeEditor: null,
     editHistory: [],
     editRedo: [],
-    _rawTables: [],
 
-    /** Called by App after each successful parse. */
+    /** @returns {Object[]} raw tables from the shared registry */
+    _getRawTables() {
+        return TableRegistry.getRaw();
+    },
+
+    /** Called by App after each successful parse (kept for backward compat). */
     setRawTables(tables) {
-        CellEditController._rawTables = tables || [];
+        // no-op: TableRegistry is now the single source of truth
     },
 
     /**
@@ -6690,7 +6778,7 @@ const CellEditController = {
      * Apply cell edit (persist overlay + record history).
      */
     apply(tableName, rowIdx, colIdx, value) {
-        const table = CellEditController._rawTables.find(item => item.name === tableName && !item.isView);
+        const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
         if (!table || !table.rows[rowIdx] || colIdx < 0 || colIdx >= table.headers.length) return false;
 
         const previous = String(table.rows[rowIdx][colIdx] ?? '');
@@ -6734,7 +6822,7 @@ const CellEditController = {
 
     /** Apply edit without recording history. */
     _applySilent(tableName, rowIdx, colIdx, value) {
-        const table = CellEditController._rawTables.find(item => item.name === tableName && !item.isView);
+        const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
         if (!table || !table.rows[rowIdx]) return;
         const ui = Store.curr().ui;
         const tableKey = `${tableName}`;
@@ -7216,10 +7304,12 @@ const TabController = {
             if (!tab || tab.dataset.id === TabController.dragSourceId) return;
             e.preventDefault();
             const place = tab.classList.contains('drag-over-after') || e.target === container ? 'after' : 'before';
-            Store.moveDoc(TabController.dragSourceId, tab.dataset.id, place);
+            const sourceId = TabController.dragSourceId;
+            Store.moveDoc(sourceId, tab.dataset.id, place);
             TabController._clearAllMarkers();
             TabController.dragSourceId = null;
             TabController.render();
+            dispatch('tab:reordered', { sourceId, targetId: tab.dataset.id, place });
         });
 
         container.addEventListener('dragend', () => {
@@ -7266,10 +7356,7 @@ const TabController = {
         const finish = (save) => {
             if (done) return;
             done = true;
-            if (save) {
-                Store.renameDoc(id, input.value);
-                dispatch('tab:renamed', { id: id });
-            }
+            if (save) dispatch('tab:rename', { id: id, title: input.value });
             TabController.render();
         };
         input.onclick = e => e.stopPropagation();
@@ -7575,7 +7662,7 @@ const ExportController = {
 });
 
 /* @module ui/app.js: application orchestration and UI */
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}) => {
+OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -7645,6 +7732,7 @@ const App = {
         if (typeof document !== 'undefined' && document.addEventListener) {
             document.addEventListener('ota:sourceFileLoaded', () => { this.run(); });
             document.addEventListener('ota:sourceParseRequested', () => { this.run(); });
+            document.addEventListener('ota:sourceAutoParse', () => { this.run(); });
             document.addEventListener('ota:formatChanged', (e) => {
                 if (e.detail && e.detail.format) this.setImportFormat(e.detail.format);
             });
@@ -7654,6 +7742,14 @@ const App = {
             document.addEventListener('ota:tabsChanged', () => {
                 this.renderTabs();
                 this.loadDoc();
+            });
+            document.addEventListener('ota:joinChanged', () => {
+                this.updSelects();
+                this.updChips();
+                this.renderPreview();
+            });
+            document.addEventListener('ota:joinParseRequested', () => {
+                this.run();
             });
         }
 
@@ -7683,21 +7779,11 @@ const App = {
     },
 
     getAvailableTables() {
-        const raws = this.raw.map(t => t.name);
-        const views = Store.state.globalViews.map(v => v.view);
-        return [...raws, ...views];
+        return TableRegistry.getAvailableTables();
     },
     
     getCols(tableName) {
-        if(!tableName) return [];
-        const raw = this.raw.find(t => t.name === tableName);
-        if(raw) return raw.headers;
-        const view = Store.state.globalViews.find(v => v.view === tableName);
-        if(view) {
-            const res = Joiner.run(this.raw, view, Store.state.globalViews);
-            return res ? res.headers : [];
-        }
-        return [];
+        return TableRegistry.getCols(tableName);
     },
 
     getImportSummaryItems() {
@@ -8227,6 +8313,7 @@ validflag Time      Level   Message                 Code
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
             Store.curr().raw = sourceText; Store.save();
             this.raw = Parser.parse(sourceText, this.getParseOptions());
+            TableRegistry.setRaw(this.raw);
             CellEditController.setRawTables(this.raw);
             ExportController.setContext({ raw: this.raw });
             this.applyStoredCellEdits();

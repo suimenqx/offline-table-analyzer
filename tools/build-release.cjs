@@ -49,6 +49,9 @@ const MODULES = [
   // ── Data transform ──
   ['transform/joiner.js',         'JOIN execution and dependency safety'],
 
+  // ── Shared data access (breaks circular dep between app ↔ join-editor) ──
+  ['core/table-registry.js',      'shared table/column metadata access'],
+
   // ── UI layer ──
   ['ui/table-builder.js',         'preview table DOM construction'],
   ['ui/selection.js',             'preview range selection'],

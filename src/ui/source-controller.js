@@ -18,6 +18,7 @@ const SourceController = {
     // ── Timers (held here rather than on App) ──
     _persistTimer: null,
     _statsTimer: null,
+    _autoParseTimer: null,
     _returnFocus: null,
 
     // ── Pure helpers ──
@@ -89,6 +90,17 @@ const SourceController = {
                 Store.curr().raw = rawInput.value;
                 Store.save();
             }, 650);
+
+            // Debounced auto-parse: fire parse when input stabilises (≤1 MB)
+            clearTimeout(SourceController._autoParseTimer);
+            const text = rawInput.value;
+            if (text.length * 2 < 1024 * 1024) {
+                SourceController._autoParseTimer = setTimeout(() => {
+                    if (typeof document !== 'undefined' && document.dispatchEvent) {
+                        document.dispatchEvent(new CustomEvent('ota:sourceAutoParse'));
+                    }
+                }, 500);
+            }
         });
     },
 

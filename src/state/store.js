@@ -393,10 +393,29 @@ const Store = {
                 }
                 return result;
             }
-            case 'tab:rename':
-            case 'tab:reorder':
-                // Use existing methods; they call save() internally
-                return null; // handled by existing methods directly for now
+            case 'tab:rename': {
+                const id = payload && payload.id;
+                const title = payload && payload.title;
+                if (!id || title === undefined || title === null) return false;
+                const ok = this.renameDoc(id, title);
+                if (ok) {
+                    this._notify('tab:renamed', { id, title: this.state.docs.find(d => d.id === id)?.title || title });
+                    this._notify('state:changed', {});
+                }
+                return ok;
+            }
+            case 'tab:reorder': {
+                const sourceId = payload && payload.sourceId;
+                const targetId = payload && payload.targetId;
+                const place = (payload && payload.place) || 'before';
+                if (!sourceId || !targetId) return false;
+                const ok = this.moveDoc(sourceId, targetId, place);
+                if (ok) {
+                    this._notify('tab:reordered', { sourceId, targetId, place });
+                    this._notify('state:changed', {});
+                }
+                return ok;
+            }
 
             // ── Source ──
             case 'source:changed': {
@@ -439,17 +458,20 @@ const Store = {
             }
             case 'filter:column': {
                 // Payload: { table, column, value }
+                const table = payload && payload.table;
+                const column = payload && payload.column;
+                if (!table || !column) return false;
                 const ui = this.curr().ui;
                 if (!ui.columnFilters) ui.columnFilters = {};
-                if (!ui.columnFilters[payload.table]) ui.columnFilters[payload.table] = {};
+                if (!ui.columnFilters[table]) ui.columnFilters[table] = {};
                 const val = (payload.value || '').trim();
                 if (val) {
-                    ui.columnFilters[payload.table][payload.column] = val;
+                    ui.columnFilters[table][column] = val;
                 } else {
-                    delete ui.columnFilters[payload.table][payload.column];
+                    delete ui.columnFilters[table][column];
                 }
                 this.save();
-                this._notify('filter:changed', { scope: 'column', table: payload.table, column: payload.column, value: val });
+                this._notify('filter:changed', { scope: 'column', table, column, value: val });
                 this._notify('state:changed', {});
                 return true;
             }

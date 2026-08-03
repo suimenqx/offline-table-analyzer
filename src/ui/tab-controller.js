@@ -133,10 +133,12 @@ const TabController = {
             if (!tab || tab.dataset.id === TabController.dragSourceId) return;
             e.preventDefault();
             const place = tab.classList.contains('drag-over-after') || e.target === container ? 'after' : 'before';
-            Store.moveDoc(TabController.dragSourceId, tab.dataset.id, place);
+            const sourceId = TabController.dragSourceId;
+            Store.moveDoc(sourceId, tab.dataset.id, place);
             TabController._clearAllMarkers();
             TabController.dragSourceId = null;
             TabController.render();
+            dispatch('tab:reordered', { sourceId, targetId: tab.dataset.id, place });
         });
 
         container.addEventListener('dragend', () => {
@@ -183,10 +185,7 @@ const TabController = {
         const finish = (save) => {
             if (done) return;
             done = true;
-            if (save) {
-                Store.renameDoc(id, input.value);
-                dispatch('tab:renamed', { id: id });
-            }
+            if (save) dispatch('tab:rename', { id: id, title: input.value });
             TabController.render();
         };
         input.onclick = e => e.stopPropagation();

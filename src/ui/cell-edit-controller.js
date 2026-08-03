@@ -1,4 +1,4 @@
-OTA.define('cell-edit-controller', ["runtime", "store", "dispatch"], ({$, Toast}, {Store}, {dispatch}) => {
+OTA.define('cell-edit-controller', ["runtime", "store", "dispatch", "table-registry"], ({$, Toast}, {Store}, {dispatch}, {TableRegistry}) => {
 /* CellEditController — inline cell editing with undo/redo.
 
    Responsibilities:
@@ -17,11 +17,15 @@ const CellEditController = {
     activeEditor: null,
     editHistory: [],
     editRedo: [],
-    _rawTables: [],
 
-    /** Called by App after each successful parse. */
+    /** @returns {Object[]} raw tables from the shared registry */
+    _getRawTables() {
+        return TableRegistry.getRaw();
+    },
+
+    /** Called by App after each successful parse (kept for backward compat). */
     setRawTables(tables) {
-        CellEditController._rawTables = tables || [];
+        // no-op: TableRegistry is now the single source of truth
     },
 
     /**
@@ -121,7 +125,7 @@ const CellEditController = {
      * Apply cell edit (persist overlay + record history).
      */
     apply(tableName, rowIdx, colIdx, value) {
-        const table = CellEditController._rawTables.find(item => item.name === tableName && !item.isView);
+        const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
         if (!table || !table.rows[rowIdx] || colIdx < 0 || colIdx >= table.headers.length) return false;
 
         const previous = String(table.rows[rowIdx][colIdx] ?? '');
@@ -165,7 +169,7 @@ const CellEditController = {
 
     /** Apply edit without recording history. */
     _applySilent(tableName, rowIdx, colIdx, value) {
-        const table = CellEditController._rawTables.find(item => item.name === tableName && !item.isView);
+        const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
         if (!table || !table.rows[rowIdx]) return;
         const ui = Store.curr().ui;
         const tableKey = `$${tableName}`;
