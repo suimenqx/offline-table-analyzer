@@ -265,15 +265,6 @@ function inspectBlock(block, text) {
 const DataBlockParser = {
     id:'data-block',
     label:'Data-Block 数据块',
-    confidence(source) {
-        const text = TableUtils.normalizeText(source && source.text || '');
-        const blocks = scanDataBlocks(text);
-        if(!blocks.length) return 0;
-        const inspected = blocks.map(block => inspectBlock(block, text));
-        if(inspected.some(item => item.complete && item.valid)) return 0.96;
-        if(inspected.some(item => item.complete)) return 0.42;
-        return 0.34;
-    },
     parse(source) {
         const text = TableUtils.normalizeText(source && source.text || '');
         const blocks = scanDataBlocks(text);

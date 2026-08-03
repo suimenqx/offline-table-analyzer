@@ -1,10 +1,6 @@
 OTA.define('html-parser', ["table-utils","header-resolver"], ({TableUtils}, {HeaderResolver}) => {
 const HtmlTableParser = {
     id:'html-table', label:'HTML 网页表格',
-    confidence(source) {
-        const html = source.html || source.text || '';
-        return /<table[\s>]/i.test(html) && /<tr[\s>]/i.test(html) ? 0.98 : 0;
-    },
     parse(source, options={}) {
         const html = source.html || source.text || '';
         const tables = [];

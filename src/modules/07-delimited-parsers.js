@@ -7,10 +7,9 @@ function buildSingleTableResult(rows, name, sourceType, options={}, meta={}, for
     };
 }
 
-function createDelimitedParser({ id, label, delimiter, tableName, confidence }) {
+function createDelimitedParser({ id, label, delimiter, tableName }) {
     return {
         id, label, delimiter,
-        confidence(source) { return confidence(source); },
         parse(source, options={}) {
             const matrix = Delimited.parse(source.text || '', delimiter);
             const result = buildSingleTableResult(matrix, tableName, id, options, { delimiter });
@@ -23,33 +22,15 @@ function createDelimitedParser({ id, label, delimiter, tableName, confidence }) 
 }
 
 const CsvParser = createDelimitedParser({
-    id:'csv', label:'CSV', delimiter:',', tableName:'CSV Table 1',
-    confidence(source) {
-        const text = source.text || '';
-        const tabStats = Delimited.delimiterStats(text, '\t');
-        if(tabStats.hasDelimiter) return 0.05;
-        const st = Delimited.delimiterStats(text, ',');
-        if(!st.hasDelimiter) return 0;
-        return st.consistent ? st.score : Math.min(0.25, st.score * 0.3);
-    }
+    id:'csv', label:'CSV', delimiter:',', tableName:'CSV Table 1'
 });
 
 const SemicolonCsvParser = createDelimitedParser({
-    id:'semicolon-csv', label:'分号分隔', delimiter:';', tableName:'Delimited Table 1',
-    confidence(source) {
-        const st = Delimited.delimiterStats(source.text || '', ';');
-        return st.hasDelimiter && st.consistent ? st.score - 0.04 : 0;
-    }
+    id:'semicolon-csv', label:'分号分隔', delimiter:';', tableName:'Delimited Table 1'
 });
 
 const ExcelPasteParser = createDelimitedParser({
-    id:'excel-paste', label:'Excel/表格复制 TSV', delimiter:'\t', tableName:'Excel Paste Table 1',
-    confidence(source) {
-        const text = source.text || '';
-        const st = Delimited.delimiterStats(text, '\t');
-        if(!st.hasDelimiter) return 0;
-        return st.consistent ? Math.max(0.82, st.score) : 0.35;
-    }
+    id:'excel-paste', label:'Excel/表格复制 TSV', delimiter:'\t', tableName:'Excel Paste Table 1'
 });
 
     return { buildSingleTableResult, CsvParser, SemicolonCsvParser, ExcelPasteParser };

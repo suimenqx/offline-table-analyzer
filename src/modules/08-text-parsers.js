@@ -1,25 +1,6 @@
 OTA.define('text-parsers', ["table-utils","header-resolver","text-layout","delimited","delimited-parsers"], ({TableUtils}, {HeaderResolver}, {TextLayout}, {Delimited}, {buildSingleTableResult}) => {
 const PipeTableParser = {
     id:'pipe-table', label:'竖线/网页表格文本', delimiter:'|',
-    confidence(source) {
-        const lines = TableUtils.lines(source.text || '').filter(l => l.trim());
-        const pipeLines = lines.filter(l => (l.match(/\|/g) || []).length >= 2);
-        if(pipeLines.length < 2) return 0;
-        const hasMdSep = lines.some(l => /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(l));
-        const widths = pipeLines.map(line => {
-            let value = line.trim();
-            if(value.startsWith('|')) value = value.slice(1);
-            if(value.endsWith('|')) value = value.slice(0, -1);
-            return splitPipeCells(value).length;
-        });
-        const mode = new Map();
-        widths.forEach(width => mode.set(width, (mode.get(width) || 0) + 1));
-        const consistency = Math.max(...mode.values()) / widths.length;
-        if(consistency < 0.5) return hasMdSep ? 0.45 : 0.12;
-        const hasBareDoublePipe = !hasMdSep && pipeLines.every(line => /\|\|/.test(line) && !/^\s*\|/.test(line) && !/\|\s*$/.test(line));
-        if(hasBareDoublePipe) return 0.05;
-        return hasMdSep ? 0.9 : 0.62;
-    },
     parse(source, options={}) {
         let lines = TableUtils.lines(source.text).filter(l => l.trim());
         const mdSep = /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/;
@@ -60,15 +41,6 @@ function splitPipeRows(lines) {
 
 const AsciiTableParser = {
     id:'ascii-table', label:'ASCII/终端表格',
-    confidence(source) {
-        const text = source.text || '';
-        const lines = TableUtils.lines(text).filter(l => l.trim());
-        const border = /^[\s+|\-─┌┬┐├┼┤└┴┘│]+$/;
-        const borderLines = lines.filter(l => border.test(l.trim()));
-        const strongBorderLines = borderLines.filter(l => /[+┌┬┐├┼┤└┴┘]/.test(l));
-        const dataLines = lines.filter(l => /[|│]/.test(l) && !border.test(l.trim()));
-        return strongBorderLines.length >= 2 && dataLines.length >= 2 ? 0.88 : 0;
-    },
     parse(source, options={}) {
         const border = /^[\s+|\-─┌┬┐├┼┤└┴┘│]+$/;
         const lines = TableUtils.lines(source.text)
@@ -80,15 +52,6 @@ const AsciiTableParser = {
 
 const FixedWidthParser = {
     id:'fixed-width', label:'固定宽度/多空格表格',
-    confidence(source) {
-        const lines = TableUtils.lines(source.text || '').filter(l => l.trim());
-        if(lines.length < 2 || /\t|,/.test(source.text || '')) return 0;
-        const splitRows = lines.slice(0, 20).map(l => l.trim().split(/\s{2,}/));
-        const widths = splitRows.map(r => r.length).filter(n => n > 1);
-        if(widths.length < 2) return 0;
-        const common = widths.filter(w => w === widths[0]).length / widths.length;
-        return common >= 0.55 ? 0.56 + common * 0.18 : 0.22;
-    },
     parse(source, options={}) {
         const rows = TableUtils.lines(source.text).filter(l => l.trim()).map(l => l.trim().split(/\s{2,}/).map(v => v.trim()));
         return buildSingleTableResult(rows, 'Fixed Width Table 1', this.id, options);
@@ -234,9 +197,6 @@ function inspectCliMultiBlock(source) {
 
 const CliMultiBlockParser = {
     id:'cli-multi-block', label:'CLI 多块定宽表',
-    confidence(source) {
-        return inspectCliMultiBlock(source).score;
-    },
     parse(source, options={}) {
         const lines = TableUtils.lines(source.text || '');
         const inspected = inspectCliMultiBlock(source);
@@ -381,26 +341,6 @@ function isStrongAlignedHeader(headerLine='', dataLines=[]) {
 
 const AlignedTableParser = {
     id:'aligned-table', label:'定宽对齐表格',
-    confidence(source) {
-        const lines = TableUtils.lines(source.text || '').filter(l => l.trim());
-        // CLI multi-block input has a more precise block/header model. Keep
-        // the legacy aligned parser from winning auto-detection on its ----
-        // separators while preserving explicit aligned-table parsing.
-        const hasCliBlock = lines.some(isCliBlockSeparator) && lines.some(isCliDataSeparator);
-        if(hasCliBlock) return 0;
-        if(!lines.some(isAlignedSeparator)) return 0;
-        const blocks = alignedBlocks(source);
-        let best = 0;
-        blocks.forEach((block, index) => {
-            const own = block.length >= 2 ? inspectAlignedHeader(block[0], block.slice(1)) : null;
-            if(own) best = Math.max(best, own.score);
-            if(block.length === 1 && blocks[index + 1]) {
-                const separated = inspectAlignedHeader(block[0], blocks[index + 1]);
-                if(separated) best = Math.max(best, Math.min(0.94, separated.score + 0.04));
-            }
-        });
-        return best;
-    },
     parse(source, options={}) {
         // 1) 去掉定宽表分隔线（替换为空行，保留表间边界）
         const blocks = alignedBlocks(source);
@@ -494,7 +434,6 @@ const AlignedTableParser = {
 
 const PlainTextTableParser = {
     id:'plain-text', label:'空白分隔文本',
-    confidence(source) { return (source.text || '').trim() ? 0.08 : 0; },
     parse(source, options={}) {
         const rows = TableUtils.lines(source.text).filter(l => l.trim()).map(l => l.trim().split(/\s+/));
         return buildSingleTableResult(rows, 'Text Table 1', this.id, options);
@@ -503,7 +442,6 @@ const PlainTextTableParser = {
 
 const CliTableDataParser = {
     id:'cli-table-data', label:'CLI table-data',
-    confidence(source) { return /table-data/i.test(source.text || '') ? 1 : 0; },
     tableNameFromLine(line, index, used) {
         const lower = String(line || '').toLowerCase();
         const pos = lower.lastIndexOf('table-data');

@@ -56,10 +56,14 @@ test('data-block malformed records keep later fields and report diagnostics', ()
 });
 
 test('data-block signature is not matched without a data bracket', () => {
-  const parser = ImportEngine.getParser('data-block');
-  assert(parser && parser.confidence({ text:'module MALL;' }) === 0, 'module-only input matched data-block');
-  assert(parser.confidence({ text:'data NotADataBlock;' }) === 0, 'incomplete data signature matched data-block');
-  assert(parser.confidence({ text:'data Broken [{id:"1"]' }) < 0.9, 'unmatched data-block braces kept high confidence');
+  // 非 data-block 输入不应被 FormatSniffer 检测为 data-block
+  assert(ImportEngine.parse('module MALL;').format !== 'data-block', 'module-only input detected as data-block');
+  assert(ImportEngine.parse('data NotADataBlock;').format !== 'data-block', 'incomplete signature detected as data-block');
+  // 不完整括号 → 不应高置信度识别
+  const broken = ImportEngine.parse('data Broken [{id:"1"]');
+  const brokenCandidate = (broken.candidates || []).find(c => c.id === 'data-block');
+  assert(!brokenCandidate || brokenCandidate.score < 0.9, 'unmatched braces kept high confidence');
+  // 手动指定 data-block 格式时，应优雅降级
   const empty = ImportEngine.parse('module MALL;', { format:'data-block' });
   assert(empty.tables.length === 0 && empty.diagnostics.some(d => d.code === 'NO_DATA_BLOCK'), 'module-only data-block diagnostics missing');
 });
@@ -467,8 +471,9 @@ test('CLI multi-block fallback and width diagnostics', () => {
 });
 
 test('CLI multi-block incomplete input degrades with diagnostics', () => {
-  const parser = ImportEngine.getParser('cli-multi-block');
-  assert(parser && parser.confidence({ text:'A\n--------------------\n1' }) === 0, 'CLI parser matched without ==== separator');
+  // 无 ==== 分隔线时，不应被 FormatSniffer 检测为 cli-multi-block
+  const noBlockSep = ImportEngine.parse('A\n--------------------\n1');
+  assert(noBlockSep.format !== 'cli-multi-block', 'CLI parser matched without ==== separator');
   const missingSeparator = ImportEngine.parse('Title\n====================', { format:'cli-multi-block' });
   assert(missingSeparator.tables.length === 0 && missingSeparator.diagnostics.some(d => d.code === 'MISSING_SEPARATOR'), 'missing separator was not diagnosed');
   const emptyBlock = ImportEngine.parse('Title\n====================\nA     B\n--------------------', { format:'cli-multi-block' });

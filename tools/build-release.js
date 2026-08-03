@@ -15,6 +15,7 @@ const MODULES = [
   ['03-table-utils.js', 'table normalization'],
   ['04-header-resolver.js', 'header inference'],
   ['04-text-layout.js', 'position-aware text layout inference'],
+  ['05-format-sniffer.js', 'statistical fingerprint format detection'],
   ['05-delimited.js', 'quote-aware delimited parsing'],
   ['06-html-parser.js', 'HTML clipboard parser'],
   ['07-delimited-parsers.js', 'CSV, TSV, and parser factories'],
