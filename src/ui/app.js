@@ -976,14 +976,22 @@ validflag Time      Level   Message                 Code
         $('jeOrderRightOnly').onclick = () => JoinEditor.keepOnly('r');
         $('jeOrderShowL').onchange = e => { JoinEditor.state.showL = e.target.checked; JoinEditor.renderSelectedOrder(); };
         $('jeOrderShowR').onchange = e => { JoinEditor.state.showR = e.target.checked; JoinEditor.renderSelectedOrder(); };
+        if($('jeOrderMoveTop')) $('jeOrderMoveTop').onclick = () => JoinEditor.moveOrderToEdge('top');
+        if($('jeOrderMoveBottom')) $('jeOrderMoveBottom').onclick = () => JoinEditor.moveOrderToEdge('bottom');
 
         $('jeLeftTable').onchange = () => JoinEditor.handleTableChange('l');
         $('jeRightTable').onchange = () => JoinEditor.handleTableChange('r');
         $('jeType').onchange = () => { JoinEditor.markDirty(); JoinEditor.updateAll(); };
         $('jeName').oninput = () => { JoinEditor.markDirty(); JoinEditor.updateSaveState(); };
 
-        $('jeLSearch').oninput = () => JoinEditor.renderColList('jeLList', App.getCols($('jeLeftTable').value), JoinEditor.state.lSel, 'l');
-        $('jeRSearch').oninput = () => JoinEditor.renderColList('jeRList', App.getCols($('jeRightTable').value), JoinEditor.state.rSel, 'r');
+        $('jeLSearch').oninput = () => {
+            clearTimeout(JoinEditor._searchTimerL);
+            JoinEditor._searchTimerL = setTimeout(() => JoinEditor.renderColList('jeLList', App.getCols($('jeLeftTable').value), JoinEditor.state.lSel, 'l'), 200);
+        };
+        $('jeRSearch').oninput = () => {
+            clearTimeout(JoinEditor._searchTimerR);
+            JoinEditor._searchTimerR = setTimeout(() => JoinEditor.renderColList('jeRList', App.getCols($('jeRightTable').value), JoinEditor.state.rSel, 'r'), 200);
+        };
         $('jeLAll').onclick = () => JoinEditor.toggleAll('l');
         $('jeRAll').onclick = () => JoinEditor.toggleAll('r');
         $('jeLAllFiltered').onclick = () => JoinEditor.selectFiltered('l');
@@ -1021,9 +1029,15 @@ validflag Time      Level   Message                 Code
             if(e.key === '?' && !typing) { e.preventDefault(); this.showHelp(); return; }
             if($('joinModal').classList.contains('hidden')) return;
             if(!$('modalOverlay').classList.contains('hidden')) return;
-            if(e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); }
-            if(e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('jeLSearch').focus(); }
-            if(e.key === 'Enter' && !e.shiftKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); JoinEditor.save(); }
+            if(e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); return; }
+            if(e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+                e.preventDefault();
+                const idx = JoinEditor.state.selectedOrderIdx;
+                if(idx >= 0) JoinEditor.moveOrder(idx, e.key === 'ArrowUp' ? -1 : 1);
+                return;
+            }
+            if(e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); $('jeLSearch').focus(); return; }
+            if(e.key === 'Enter' && !e.shiftKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); JoinEditor.save(); return; }
         });
 
         // Filter popover bindings

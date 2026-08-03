@@ -348,7 +348,7 @@
                 <div class="join-col">
                     <div class="join-col-head">
                         <div class="join-col-title">
-                            <span>左表字段</span>
+                            <span>左表字段 <span class="col-count-badge" id="jeLCount">0/0</span></span>
                             <label class="join-toggle"><input type="checkbox" id="jeLOnlySel">仅看已选</label>
                         </div>
                         <div class="join-col-tools">
@@ -365,12 +365,12 @@
                         <span>关联条件 (ON)</span>
                         <div class="flex gap-2">
                             <select id="jeType" class="sm" style="height:32px;">
-                                <option value="inner">Inner Join · 仅匹配</option>
-                                <option value="left">Left Join · 保留左表</option>
-                                <option value="right">Right Join · 保留右表</option>
-                                <option value="full">Full Join · 保留两侧</option>
-                                <option value="semi">Semi Join · 左表有匹配</option>
-                                <option value="anti">Anti Join · 左表无匹配</option>
+                                <option value="inner">INNER · 仅匹配</option>
+                                <option value="left">LEFT · 保留左</option>
+                                <option value="right">RIGHT · 保留右</option>
+                                <option value="full">FULL · 全保留</option>
+                                <option value="semi">SEMI · 左匹配</option>
+                                <option value="anti">ANTI · 左排除</option>
                             </select>
                             <button class="sm" id="jeAutoRel">自动匹配</button>
                             <button class="sm" id="jeAddRel">添加条件</button>
@@ -382,12 +382,14 @@
                             <div class="join-order-head">
                                 <div class="eyebrow">输出顺序</div>
                                 <div class="join-order-tools">
-                                    <button class="sm" id="jeOrderRebuild">重建</button>
-                                    <button class="sm" id="jeOrderClear">清空</button>
-                                    <button class="sm" id="jeOrderLeftOnly">只保留左</button>
-                                    <button class="sm" id="jeOrderRightOnly">只保留右</button>
+                                    <button class="sm" id="jeOrderRebuild" title="按左→右重建顺序">重建</button>
+                                    <button class="sm" id="jeOrderClear" title="清空全部输出列">清空</button>
+                                    <button class="sm" id="jeOrderLeftOnly" title="仅保留左表列">只保留左</button>
+                                    <button class="sm" id="jeOrderRightOnly" title="仅保留右表列">只保留右</button>
                                     <label class="join-toggle"><input type="checkbox" id="jeOrderShowL" checked>左</label>
                                     <label class="join-toggle"><input type="checkbox" id="jeOrderShowR" checked>右</label>
+                                    <button class="icon-btn sm" id="jeOrderMoveTop" title="选中列移到最前" style="font-size:10px;">⏫</button>
+                                    <button class="icon-btn sm" id="jeOrderMoveBottom" title="选中列移到最后" style="font-size:10px;">⏬</button>
                                 </div>
                             </div>
                             <div id="jeOrderList" class="join-order"></div>
@@ -398,7 +400,7 @@
                 <div class="join-col">
                     <div class="join-col-head">
                         <div class="join-col-title">
-                            <span>右表字段</span>
+                            <span>右表字段 <span class="col-count-badge" id="jeRCount">0/0</span></span>
                             <label class="join-toggle"><input type="checkbox" id="jeROnlySel">仅看已选</label>
                         </div>
                         <div class="join-col-tools">
@@ -415,7 +417,8 @@
             <div class="join-foot-left">
                 <div class="muted" id="jeStatus">已选输出列: 0</div>
                 <div class="join-preview" id="jePreview">预览: -</div>
-                <div class="join-hints">快捷键: Enter 保存 · Esc 关闭 · / 搜索</div>
+                <div class="join-dependency" id="jeDependency"></div>
+                <div class="join-hints">快捷键: Enter 保存 · Esc 关闭 · / 搜索 · Alt+↑↓ 移动列</div>
             </div>
             <div class="toolbar">
                 <button class="sm" id="jeCancelFooter">取消</button>
