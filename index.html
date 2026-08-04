@@ -455,6 +455,18 @@
         .doc-tab.active { color: var(--text-strong); background: var(--bg-elevated); border-color: var(--border); }
         .workspace-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
         .workspace-actions .action-divider { height: 22px; width: 1px; background: var(--border); margin: 0 2px; }
+        .copy-preferences { display: inline-flex; align-items: center; gap: 6px; }
+        .copy-header-toggle { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-mid); font-size: 11px; font-weight: 650; cursor: pointer; user-select: none; transition: background .12s ease, border-color .12s ease, color .12s ease; }
+        .copy-header-toggle:hover { background: var(--bg-hover); color: var(--text-strong); }
+        .copy-header-toggle input { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+        .copy-header-toggle input:focus-visible + .copy-header-switch { outline: 2px solid var(--primary); outline-offset: 2px; }
+        .copy-header-switch { position: relative; width: 24px; height: 14px; border-radius: 999px; background: var(--border-strong); transition: background .12s ease; }
+        .copy-header-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .18); transition: transform .12s ease; }
+        .copy-header-toggle input:checked + .copy-header-switch { background: var(--primary); }
+        .copy-header-toggle input:checked + .copy-header-switch::after { transform: translateX(10px); }
+        .copy-header-toggle input:disabled + .copy-header-switch { background: var(--text-weak); opacity: .55; }
+        .copy-header-toggle.is-disabled { cursor: default; }
+        .copy-header-toggle.is-disabled > span:first-child { color: var(--text-weak); }
         .workspace-subbar { min-height: 44px; padding: 7px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg-card) 72%, var(--bg-app)); }
         .workspace-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .workspace-summary strong { font-size: 12px; }
@@ -515,6 +527,8 @@
             .main-content { width: 100%; }
             .top-nav { padding: 7px 9px; }
             .workspace-actions { gap: 3px; }
+            .copy-preferences { gap: 3px; }
+            .copy-header-toggle { padding: 0 5px; }
             .workspace-actions .copy-format-select, .workspace-actions .export-secondary { display: none; }
             .workspace-subbar { padding: 7px 10px; }
             .preview-table-picker { max-width: 52vw; }
@@ -737,14 +751,21 @@
                 <button class="icon-btn sm optional-action" id="undoEditBtn" type="button" title="撤销单元格编辑" disabled aria-label="撤销单元格编辑">↶</button>
                 <button class="icon-btn sm optional-action" id="redoEditBtn" type="button" title="重做单元格编辑" disabled aria-label="重做单元格编辑">↷</button>
                 <button class="icon-btn sm" id="themeBtn" type="button" title="切换明暗主题" aria-label="切换明暗主题">◐</button>
-                <select id="copyFormatSelect" class="copy-format-select" title="复制表格时的纯文本格式，全局生效">
-                    <option value="default">复制: TSV</option>
-                    <option value="csv">复制: CSV</option>
-                    <option value="markdown">复制: Markdown</option>
-                    <option value="ascii">复制: ASCII</option>
-                    <option value="lua-inline">复制: Lua 单行</option>
-                    <option value="lua-expanded">复制: Lua 展开</option>
-                </select>
+                <div class="copy-preferences" aria-label="复制设置">
+                    <select id="copyFormatSelect" class="copy-format-select" title="复制表格时的纯文本格式，全局生效">
+                        <option value="default">复制: TSV</option>
+                        <option value="csv">复制: CSV</option>
+                        <option value="markdown">复制: Markdown</option>
+                        <option value="ascii">复制: ASCII</option>
+                        <option value="lua-inline">复制: Lua 单行</option>
+                        <option value="lua-expanded">复制: Lua 展开</option>
+                    </select>
+                    <label class="copy-header-toggle" title="复制选中区域时是否包含列名">
+                        <span>表头</span>
+                        <input id="copyHeadersToggle" type="checkbox" checked aria-label="复制时包含表头">
+                        <span class="copy-header-switch" aria-hidden="true"></span>
+                    </label>
+                </div>
                 <button class="sm export-secondary" id="exportFullBtn" type="button" title="导出当前页签的全量数据">全量 Excel</button>
                 <button class="primary sm" id="exportPrevBtn" type="button" title="导出当前筛选后的预览结果">导出预览</button>
                 <button class="icon-btn sm" id="helpBtn" type="button" title="帮助与快捷键" aria-label="帮助与快捷键">?</button>
@@ -1360,7 +1381,7 @@ const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'lua-inline', 'lua-expanded']);
 
 const Store = {
-    state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
+    state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', copyWithHeaders:true, spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
     lastSaveError: null,
     storageBytes: 0,
     migratedFrom: null,
@@ -1396,6 +1417,7 @@ const Store = {
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!Array.isArray(this.state.globalViews)) this.state.globalViews = [];
         if(!COPY_FORMATS.includes(this.state.copyFormat)) this.state.copyFormat = 'default';
+        if(typeof this.state.copyWithHeaders !== 'boolean') this.state.copyWithHeaders = true;
         if(typeof this.state.spreadsheetSafe !== 'boolean') this.state.spreadsheetSafe = true;
         if(typeof this.state.persistRaw !== 'boolean') this.state.persistRaw = true;
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
@@ -1655,6 +1677,10 @@ const Store = {
     },
     setCopyFormat(format='default') {
         this.state.copyFormat = COPY_FORMATS.includes(format) ? format : 'default';
+        this.save();
+    },
+    setCopyWithHeaders(enabled=true) {
+        this.state.copyWithHeaders = enabled !== false;
         this.save();
     },
     setPersistRaw(enabled=true) {
@@ -1951,6 +1977,12 @@ const Store = {
             case 'ui:copyFormat': {
                 this.setCopyFormat(payload && payload.format);
                 this._notify('ui:copyFormatChanged', { format: this.state.copyFormat });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'ui:copyHeaders': {
+                this.setCopyWithHeaders(payload && payload.enabled);
+                this._notify('ui:copyHeadersChanged', { enabled: this.state.copyWithHeaders });
                 this._notify('state:changed', {});
                 return true;
             }
@@ -2312,31 +2344,41 @@ const ClipboardFormatter = {
         };
         return (matrix || []).map(row => (row || []).map(quoteFor).join(delimiter)).join('\n');
     },
-    toMarkdown(matrix) {
+    toMarkdown(matrix, includeHeaders=true) {
         if(!matrix || !matrix.length) return '';
         const esc = value => {
             const safe = this.protectSpreadsheetFormula(value);
             return safe.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
         };
-        const widths = this.getWidths(matrix.map(row => row.map(esc)));
+        const bodyRows = includeHeaders ? matrix : matrix.slice(1);
+        if(!bodyRows.length) return '';
+        const widths = this.getWidths(bodyRows.map(row => row.map(esc)));
         const line = row => `| ${row.map((cell, i) => esc(cell).padEnd(widths[i], ' ')).join(' | ')} |`;
+        if(!includeHeaders) return bodyRows.map(line).join('\n');
         const sep = `| ${widths.map(w => '-'.repeat(Math.max(3, w))).join(' | ')} |`;
-        const rows = [line(matrix[0]), sep];
-        matrix.slice(1).forEach(row => rows.push(line(row)));
-        return rows.join('\n');
+        const output = [line(matrix[0]), sep];
+        matrix.slice(1).forEach(row => output.push(line(row)));
+        return output.join('\n');
     },
-    toAscii(matrix) {
+    toAscii(matrix, includeHeaders=true) {
         if(!matrix || !matrix.length) return '';
         const clean = value => {
             const safe = this.protectSpreadsheetFormula(value);
             return safe.replace(/\n/g, ' ');
         };
-        const normalized = matrix.map(row => row.map(clean));
+        const rows = includeHeaders ? matrix : matrix.slice(1);
+        if(!rows.length) return '';
+        const normalized = rows.map(row => row.map(clean));
         const widths = this.getWidths(normalized);
         const border = '+' + widths.map(w => '-'.repeat(w + 2)).join('+') + '+';
         const line = row => '| ' + row.map((cell, i) => String(cell).padEnd(widths[i], ' ')).join(' | ') + ' |';
-        const out = [border, line(normalized[0]), border];
-        normalized.slice(1).forEach(row => out.push(line(row)));
+        const out = [border];
+        if(includeHeaders) {
+            out.push(line(normalized[0]), border);
+            normalized.slice(1).forEach(row => out.push(line(row)));
+        } else {
+            normalized.forEach(row => out.push(line(row)));
+        }
         out.push(border);
         return out.join('\n');
     },
@@ -2344,7 +2386,7 @@ const ClipboardFormatter = {
         const width = Math.max(0, ...(matrix || []).map(row => row.length));
         return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
     },
-    toHtml(matrix, format='default') {
+    toHtml(matrix, format='default', includeHeaders=true) {
         if(format === 'lua-inline' || format === 'lua-expanded') {
             const layout = format === 'lua-expanded' ? 'expanded' : 'inline';
             return `<pre><code>${this.escapeHtml(this.toLua(matrix, layout))}</code></pre>`;
@@ -2352,17 +2394,22 @@ const ClipboardFormatter = {
         if(!matrix || !matrix.length) return '<table></table>';
         const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
         const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
-        return `<table border="1"><thead>${rowHtml(matrix[0], 'th')}</thead><tbody>${matrix.slice(1).map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
+        const header = includeHeaders ? `<thead>${rowHtml(matrix[0], 'th')}</thead>` : '';
+        const rows = includeHeaders ? matrix.slice(1) : matrix;
+        return `<table border="1">${header}<tbody>${rows.map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
-    toText(matrix, format='default') {
+    toText(matrix, format='default', includeHeaders=true) {
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        const effectiveHeaders = isLua || includeHeaders !== false;
+        const rows = effectiveHeaders ? matrix : (matrix || []).slice(1);
         switch(format) {
-            case 'csv': return this.toDelimited(matrix, ',');
-            case 'markdown': return this.toMarkdown(matrix);
-            case 'ascii': return this.toAscii(matrix);
+            case 'csv': return this.toDelimited(rows, ',');
+            case 'markdown': return this.toMarkdown(matrix, effectiveHeaders);
+            case 'ascii': return this.toAscii(matrix, effectiveHeaders);
             case 'lua-inline': return this.toLua(matrix, 'inline');
             case 'lua-expanded': return this.toLua(matrix, 'expanded');
             case 'default':
-            default: return this.toDelimited(matrix, '\t');
+            default: return this.toDelimited(rows, '\t');
         }
     },
     label(format='default') {
@@ -5180,12 +5227,17 @@ const Select = {
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
         const format = Store.state.copyFormat || 'default';
         const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        // Lua output uses column names as field keys, so it always retains the
+        // header even when the general copy preference is disabled.
+        const includeHeaders = isLua || Store.state.copyWithHeaders !== false;
         const matrix = isLua
             ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
-        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format));
-        e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format));
-        Toast.show(`已复制 ${Math.max(0, matrix.length - 1)} 行 · ${ClipboardFormatter.label(format)}`);
+        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format, includeHeaders));
+        e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format, includeHeaders));
+        const rowCount = includeHeaders ? Math.max(0, matrix.length - 1) : matrix.length;
+        const headerLabel = includeHeaders ? '含表头' : '不含表头';
+        Toast.show(`已复制 ${rowCount} 行 · ${ClipboardFormatter.label(format)} · ${headerLabel}`);
     }
 };
 
@@ -8024,6 +8076,14 @@ const ExportController = {
             };
         }
 
+        const copyHeadersToggle = $('copyHeadersToggle');
+        if (copyHeadersToggle) {
+            copyHeadersToggle.checked = Store.state.copyWithHeaders !== false;
+            copyHeadersToggle.onchange = (e) => {
+                dispatch('ui:copyHeaders', { enabled: e.target.checked });
+            };
+        }
+
         // XLSX exports
         const rawBtn = $('exportRawBtn');
         if (rawBtn) rawBtn.onclick = () => Exporter.toExcel(TableRegistry.getRaw(), ExportController._getPrefix('raw'));
@@ -8046,6 +8106,7 @@ const ExportController = {
             preferences: {
                 theme: Store.state.theme,
                 copyFormat: Store.state.copyFormat,
+                copyWithHeaders: Store.state.copyWithHeaders !== false,
                 persistRaw: Store.state.persistRaw,
                 spreadsheetSafe: Store.state.spreadsheetSafe
             }
@@ -8249,6 +8310,7 @@ const ExportController = {
         if (!prefs || typeof prefs !== 'object') return;
         if (['light', 'dark'].includes(prefs.theme)) Store.state.theme = prefs.theme;
         if (COPY_FORMATS.includes(prefs.copyFormat)) Store.state.copyFormat = prefs.copyFormat;
+        if (typeof prefs.copyWithHeaders === 'boolean') Store.state.copyWithHeaders = prefs.copyWithHeaders;
         if (typeof prefs.persistRaw === 'boolean') Store.state.persistRaw = prefs.persistRaw;
         if (typeof prefs.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = prefs.spreadsheetSafe;
         Store.applyTheme();
@@ -8329,6 +8391,10 @@ const App = {
                     break;
                 case 'ui:copyFormatChanged':
                     this.syncCopyFormatControl();
+                    this.syncCopyHeaderControl();
+                    break;
+                case 'ui:copyHeadersChanged':
+                    this.syncCopyHeaderControl();
                     break;
             }
         });
@@ -8578,6 +8644,22 @@ const App = {
     syncCopyFormatControl() {
         const el = $('copyFormatSelect');
         if(el) el.value = Store.state.copyFormat || 'default';
+    },
+
+    syncCopyHeaderControl() {
+        const el = $('copyHeadersToggle');
+        if(!el) return;
+        const format = Store.state.copyFormat || 'default';
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        el.checked = isLua || Store.state.copyWithHeaders !== false;
+        el.disabled = isLua;
+        const label = el.closest ? el.closest('.copy-header-toggle') : null;
+        if(label) {
+            label.classList.toggle('is-disabled', isLua);
+            label.title = isLua
+                ? 'Lua 格式使用表头作为字段名，因此始终包含表头'
+                : '复制选中区域时是否包含列名';
+        }
     },
 
     getParseOptions() {
@@ -8876,6 +8958,7 @@ validflag Time      Level   Message                 Code
         if($('checkFormulaSafe')) $('checkFormulaSafe').checked = Store.state.spreadsheetSafe !== false;
         if($('sidebar')) this.setSidebarTab(d.ui.sidebarTab || 'data');
         this.syncCopyFormatControl();
+        this.syncCopyHeaderControl();
         this.run(false);
         this.renderPreview();
         this.updateStorageStatus();

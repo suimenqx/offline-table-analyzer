@@ -61,6 +61,10 @@ const App = {
                     break;
                 case 'ui:copyFormatChanged':
                     this.syncCopyFormatControl();
+                    this.syncCopyHeaderControl();
+                    break;
+                case 'ui:copyHeadersChanged':
+                    this.syncCopyHeaderControl();
                     break;
             }
         });
@@ -310,6 +314,22 @@ const App = {
     syncCopyFormatControl() {
         const el = $('copyFormatSelect');
         if(el) el.value = Store.state.copyFormat || 'default';
+    },
+
+    syncCopyHeaderControl() {
+        const el = $('copyHeadersToggle');
+        if(!el) return;
+        const format = Store.state.copyFormat || 'default';
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        el.checked = isLua || Store.state.copyWithHeaders !== false;
+        el.disabled = isLua;
+        const label = el.closest ? el.closest('.copy-header-toggle') : null;
+        if(label) {
+            label.classList.toggle('is-disabled', isLua);
+            label.title = isLua
+                ? 'Lua 格式使用表头作为字段名，因此始终包含表头'
+                : '复制选中区域时是否包含列名';
+        }
     },
 
     getParseOptions() {
@@ -618,6 +638,7 @@ validflag Time      Level   Message                 Code
         if($('checkFormulaSafe')) $('checkFormulaSafe').checked = Store.state.spreadsheetSafe !== false;
         if($('sidebar')) this.setSidebarTab(d.ui.sidebarTab || 'data');
         this.syncCopyFormatControl();
+        this.syncCopyHeaderControl();
         this.run(false);
         this.renderPreview();
         this.updateStorageStatus();

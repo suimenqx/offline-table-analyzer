@@ -191,12 +191,17 @@ const Select = {
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
         const format = Store.state.copyFormat || 'default';
         const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        // Lua output uses column names as field keys, so it always retains the
+        // header even when the general copy preference is disabled.
+        const includeHeaders = isLua || Store.state.copyWithHeaders !== false;
         const matrix = isLua
             ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
-        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format));
-        e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format));
-        Toast.show(`已复制 ${Math.max(0, matrix.length - 1)} 行 · ${ClipboardFormatter.label(format)}`);
+        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format, includeHeaders));
+        e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format, includeHeaders));
+        const rowCount = includeHeaders ? Math.max(0, matrix.length - 1) : matrix.length;
+        const headerLabel = includeHeaders ? '含表头' : '不含表头';
+        Toast.show(`已复制 ${rowCount} 行 · ${ClipboardFormatter.label(format)} · ${headerLabel}`);
     }
 };
 

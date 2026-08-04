@@ -36,6 +36,30 @@ describe('ClipboardFormatter — text formats', () => {
   it('ASCII includes border', () => {
     assert.ok(F.toText(matrix, 'ascii').startsWith('+'));
   });
+
+  it('omits headers for delimited formats when requested', () => {
+    assert.equal(F.toText(matrix, 'default', false), '1\tAlice\n2\tBob, Jr.');
+    assert.equal(F.toText(matrix, 'csv', false), '1,Alice\n2,"Bob, Jr."');
+  });
+
+  it('omits the Markdown header row when requested', () => {
+    const text = F.toText(matrix, 'markdown', false);
+    assert.ok(text.startsWith('| 1 '));
+    assert.ok(!text.includes('id'));
+    assert.ok(!text.includes('---'));
+  });
+
+  it('renders HTML data rows without a thead when requested', () => {
+    const html = F.toHtml(matrix, 'default', false);
+    assert.ok(!html.includes('<thead>'));
+    assert.ok(html.includes('<td'));
+    assert.ok(!html.includes('<th'));
+  });
+
+  it('keeps Lua field names when headers are disabled', () => {
+    const text = F.toText([['fieldA'], ['1']], 'lua-inline', false);
+    assert.ok(text.includes('["fieldA"] = 1'));
+  });
 });
 
 // ---------------------------------------------------------------------------

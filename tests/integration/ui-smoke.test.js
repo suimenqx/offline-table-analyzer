@@ -69,6 +69,43 @@ describe('Selection.buildLuaClipboardMatrix', () => {
   });
 });
 
+describe('Selection.copy', () => {
+  it('omits the header when the copy preference is disabled', () => {
+    setupDOM();
+    const { Select } = OTA.require('selection');
+    const { Store } = OTA.require('store');
+    Store.state.copyFormat = 'default';
+    Store.state.copyWithHeaders = false;
+
+    const values = { '0:0': '1', '0:1': 'Alice', '1:0': '2', '1:1': 'Bob' };
+    const fakeTable = {
+      dataset: { viewMode: 'column-header' },
+      querySelectorAll(selector) {
+        if(selector === 'thead th') return [{ textContent: 'id' }, { textContent: 'name' }];
+        return [];
+      },
+      querySelector(selector) {
+        const match = /data-vr="(\d+)"\]\[data-vc="(\d+)"/.exec(selector);
+        if(!match) return null;
+        const value = values[`${match[1]}:${match[2]}`];
+        return value === undefined ? null : { textContent: value };
+      },
+    };
+
+    const originalQuery = document.querySelector;
+    document.querySelector = selector => selector === 'table[data-idx="0"]' ? fakeTable : null;
+    Select.start = { idx: 0, r: 0, c: 0 };
+    Select.end = { idx: 0, r: 1, c: 1 };
+    const copied = {};
+    Select.copy({ clipboardData: { setData(type, value) { copied[type] = value; } } });
+    document.querySelector = originalQuery;
+
+    assert.equal(copied['text/plain'], '1\tAlice\n2\tBob');
+    assert.ok(!copied['text/html'].includes('<thead>'));
+    Select.clear();
+  });
+});
+
 describe('Filter via App.proc', () => {
   it('applies regex alternation correctly', () => {
     setupDOM();

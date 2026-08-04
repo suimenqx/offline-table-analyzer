@@ -163,6 +163,23 @@ describe('Store — copy format', () => {
     Store.setCopyFormat('invalid');
     assert.equal(Store.state.copyFormat, 'default');
   });
+
+  it('defaults to including headers for older saved workspaces', () => {
+    Store.state.copyWithHeaders = undefined;
+    Store.init();
+    assert.equal(Store.state.copyWithHeaders, true);
+  });
+
+  it('persists the copy header preference', () => {
+    Store.setCopyWithHeaders(false);
+    assert.equal(Store.state.copyWithHeaders, false);
+    const persisted = JSON.parse(storage.getItem('ota_v20_workspace'));
+    assert.equal(persisted.copyWithHeaders, false);
+
+    Store.state.copyWithHeaders = true;
+    Store.init();
+    assert.equal(Store.state.copyWithHeaders, false);
+  });
 });
 
 // ---------------------------------------------------------------------------

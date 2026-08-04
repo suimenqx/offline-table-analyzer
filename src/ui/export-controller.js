@@ -26,6 +26,14 @@ const ExportController = {
             };
         }
 
+        const copyHeadersToggle = $('copyHeadersToggle');
+        if (copyHeadersToggle) {
+            copyHeadersToggle.checked = Store.state.copyWithHeaders !== false;
+            copyHeadersToggle.onchange = (e) => {
+                dispatch('ui:copyHeaders', { enabled: e.target.checked });
+            };
+        }
+
         // XLSX exports
         const rawBtn = $('exportRawBtn');
         if (rawBtn) rawBtn.onclick = () => Exporter.toExcel(TableRegistry.getRaw(), ExportController._getPrefix('raw'));
@@ -48,6 +56,7 @@ const ExportController = {
             preferences: {
                 theme: Store.state.theme,
                 copyFormat: Store.state.copyFormat,
+                copyWithHeaders: Store.state.copyWithHeaders !== false,
                 persistRaw: Store.state.persistRaw,
                 spreadsheetSafe: Store.state.spreadsheetSafe
             }
@@ -251,6 +260,7 @@ const ExportController = {
         if (!prefs || typeof prefs !== 'object') return;
         if (['light', 'dark'].includes(prefs.theme)) Store.state.theme = prefs.theme;
         if (COPY_FORMATS.includes(prefs.copyFormat)) Store.state.copyFormat = prefs.copyFormat;
+        if (typeof prefs.copyWithHeaders === 'boolean') Store.state.copyWithHeaders = prefs.copyWithHeaders;
         if (typeof prefs.persistRaw === 'boolean') Store.state.persistRaw = prefs.persistRaw;
         if (typeof prefs.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = prefs.spreadsheetSafe;
         Store.applyTheme();

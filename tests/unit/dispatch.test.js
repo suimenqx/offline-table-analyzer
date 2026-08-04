@@ -91,6 +91,14 @@ describe('dispatch — command routing', () => {
     assert.equal(Store.state.copyFormat, 'default');
   });
 
+  it('dispatch("ui:copyHeaders") updates the copy header preference', () => {
+    dispatch('ui:copyHeaders', { enabled: false });
+    assert.equal(Store.state.copyWithHeaders, false);
+
+    dispatch('ui:copyHeaders', { enabled: true });
+    assert.equal(Store.state.copyWithHeaders, true);
+  });
+
   it('dispatch returns null for unknown actions', () => {
     assert.equal(dispatch('no:such:action', {}), null);
   });

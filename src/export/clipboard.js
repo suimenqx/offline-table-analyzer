@@ -82,31 +82,41 @@ const ClipboardFormatter = {
         };
         return (matrix || []).map(row => (row || []).map(quoteFor).join(delimiter)).join('\n');
     },
-    toMarkdown(matrix) {
+    toMarkdown(matrix, includeHeaders=true) {
         if(!matrix || !matrix.length) return '';
         const esc = value => {
             const safe = this.protectSpreadsheetFormula(value);
             return safe.replace(/\|/g, '\\|').replace(/\n/g, '<br>');
         };
-        const widths = this.getWidths(matrix.map(row => row.map(esc)));
+        const bodyRows = includeHeaders ? matrix : matrix.slice(1);
+        if(!bodyRows.length) return '';
+        const widths = this.getWidths(bodyRows.map(row => row.map(esc)));
         const line = row => `| ${row.map((cell, i) => esc(cell).padEnd(widths[i], ' ')).join(' | ')} |`;
+        if(!includeHeaders) return bodyRows.map(line).join('\n');
         const sep = `| ${widths.map(w => '-'.repeat(Math.max(3, w))).join(' | ')} |`;
-        const rows = [line(matrix[0]), sep];
-        matrix.slice(1).forEach(row => rows.push(line(row)));
-        return rows.join('\n');
+        const output = [line(matrix[0]), sep];
+        matrix.slice(1).forEach(row => output.push(line(row)));
+        return output.join('\n');
     },
-    toAscii(matrix) {
+    toAscii(matrix, includeHeaders=true) {
         if(!matrix || !matrix.length) return '';
         const clean = value => {
             const safe = this.protectSpreadsheetFormula(value);
             return safe.replace(/\n/g, ' ');
         };
-        const normalized = matrix.map(row => row.map(clean));
+        const rows = includeHeaders ? matrix : matrix.slice(1);
+        if(!rows.length) return '';
+        const normalized = rows.map(row => row.map(clean));
         const widths = this.getWidths(normalized);
         const border = '+' + widths.map(w => '-'.repeat(w + 2)).join('+') + '+';
         const line = row => '| ' + row.map((cell, i) => String(cell).padEnd(widths[i], ' ')).join(' | ') + ' |';
-        const out = [border, line(normalized[0]), border];
-        normalized.slice(1).forEach(row => out.push(line(row)));
+        const out = [border];
+        if(includeHeaders) {
+            out.push(line(normalized[0]), border);
+            normalized.slice(1).forEach(row => out.push(line(row)));
+        } else {
+            normalized.forEach(row => out.push(line(row)));
+        }
         out.push(border);
         return out.join('\n');
     },
@@ -114,7 +124,7 @@ const ClipboardFormatter = {
         const width = Math.max(0, ...(matrix || []).map(row => row.length));
         return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
     },
-    toHtml(matrix, format='default') {
+    toHtml(matrix, format='default', includeHeaders=true) {
         if(format === 'lua-inline' || format === 'lua-expanded') {
             const layout = format === 'lua-expanded' ? 'expanded' : 'inline';
             return `<pre><code>${this.escapeHtml(this.toLua(matrix, layout))}</code></pre>`;
@@ -122,17 +132,22 @@ const ClipboardFormatter = {
         if(!matrix || !matrix.length) return '<table></table>';
         const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
         const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
-        return `<table border="1"><thead>${rowHtml(matrix[0], 'th')}</thead><tbody>${matrix.slice(1).map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
+        const header = includeHeaders ? `<thead>${rowHtml(matrix[0], 'th')}</thead>` : '';
+        const rows = includeHeaders ? matrix.slice(1) : matrix;
+        return `<table border="1">${header}<tbody>${rows.map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
-    toText(matrix, format='default') {
+    toText(matrix, format='default', includeHeaders=true) {
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        const effectiveHeaders = isLua || includeHeaders !== false;
+        const rows = effectiveHeaders ? matrix : (matrix || []).slice(1);
         switch(format) {
-            case 'csv': return this.toDelimited(matrix, ',');
-            case 'markdown': return this.toMarkdown(matrix);
-            case 'ascii': return this.toAscii(matrix);
+            case 'csv': return this.toDelimited(rows, ',');
+            case 'markdown': return this.toMarkdown(matrix, effectiveHeaders);
+            case 'ascii': return this.toAscii(matrix, effectiveHeaders);
             case 'lua-inline': return this.toLua(matrix, 'inline');
             case 'lua-expanded': return this.toLua(matrix, 'expanded');
             case 'default':
-            default: return this.toDelimited(matrix, '\t');
+            default: return this.toDelimited(rows, '\t');
         }
     },
     label(format='default') {

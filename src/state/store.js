@@ -8,7 +8,7 @@ const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'lua-inline', 'lua-expanded']);
 
 const Store = {
-    state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
+    state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', copyWithHeaders:true, spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
     lastSaveError: null,
     storageBytes: 0,
     migratedFrom: null,
@@ -44,6 +44,7 @@ const Store = {
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!Array.isArray(this.state.globalViews)) this.state.globalViews = [];
         if(!COPY_FORMATS.includes(this.state.copyFormat)) this.state.copyFormat = 'default';
+        if(typeof this.state.copyWithHeaders !== 'boolean') this.state.copyWithHeaders = true;
         if(typeof this.state.spreadsheetSafe !== 'boolean') this.state.spreadsheetSafe = true;
         if(typeof this.state.persistRaw !== 'boolean') this.state.persistRaw = true;
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
@@ -303,6 +304,10 @@ const Store = {
     },
     setCopyFormat(format='default') {
         this.state.copyFormat = COPY_FORMATS.includes(format) ? format : 'default';
+        this.save();
+    },
+    setCopyWithHeaders(enabled=true) {
+        this.state.copyWithHeaders = enabled !== false;
         this.save();
     },
     setPersistRaw(enabled=true) {
@@ -599,6 +604,12 @@ const Store = {
             case 'ui:copyFormat': {
                 this.setCopyFormat(payload && payload.format);
                 this._notify('ui:copyFormatChanged', { format: this.state.copyFormat });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'ui:copyHeaders': {
+                this.setCopyWithHeaders(payload && payload.enabled);
+                this._notify('ui:copyHeadersChanged', { enabled: this.state.copyWithHeaders });
                 this._notify('state:changed', {});
                 return true;
             }
