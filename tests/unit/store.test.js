@@ -255,6 +255,8 @@ describe('Store — transition protocol', () => {
     assert.ok(createdEvents.length >= 1, 'tab:created should be emitted');
     assert.ok(changedEvents.length >= 1, 'state:changed should be emitted');
     assert.equal(createdEvents[0].payload.id, doc.id);
+    assert.equal(createdEvents[0].payload.previousActiveId, 'b');
+    assert.equal(createdEvents[0].payload.activeChanged, true);
 
     unsub();
   });
@@ -273,6 +275,7 @@ describe('Store — transition protocol', () => {
     const activatedEvents = events.filter(e => e.evt === 'tab:activated');
     assert.ok(activatedEvents.length >= 1, 'tab:activated should be emitted');
     assert.equal(activatedEvents[0].payload.id, 'a');
+    assert.equal(activatedEvents[0].payload.previousId, 'b');
 
     unsub();
   });
@@ -308,6 +311,29 @@ describe('Store — transition protocol', () => {
     const lastId = Store.state.docs[0].id;
     const result = Store.transition('tab:remove', { id: lastId });
     assert.equal(result, 'last_doc');
+  });
+
+  it('tab:remove reports active-tab changes through the canonical event', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    const result = Store.transition('tab:remove', { id: 'b' });
+    assert.equal(result, true);
+    assert.equal(Store.state.activeId, 'a');
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const removed = events.find(item => item.evt === 'tab:removed');
+    assert.ok(removed, 'tab:removed should be emitted');
+    assert.equal(removed.payload.previousActiveId, 'b');
+    assert.equal(removed.payload.activeId, 'a');
+    assert.equal(removed.payload.activeChanged, true);
+    unsub();
+  });
+
+  it('does not report a missing id as last_doc', () => {
+    Store.state.docs = [{ id: 'only', title: 'Only', raw: '', ui: {} }];
+    Store.state.activeId = 'only';
+    assert.equal(Store.removeDoc('missing'), false);
   });
 
   it('filter:global updates ui.globalFilter and emits filter:changed', async () => {

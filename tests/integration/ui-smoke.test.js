@@ -36,6 +36,55 @@ describe('App bootstrap', () => {
     const { JoinEditor } = OTA.require('join-editor');
     assert.equal(JoinEditor.getTableData('missing'), null);
   });
+
+  it('reloads the active document when an existing tab is activated', async () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { Store } = OTA.require('store');
+    const { TableRegistry } = OTA.require('table-registry');
+    Store.state.docs = [
+      { id: 'a', title: 'First', raw: 'id,name\n1,Alice', ui: {} },
+      { id: 'b', title: 'Second', raw: 'id,name\n2,Bob', ui: {} },
+    ];
+    Store.state.activeId = 'a';
+    App.loadDoc();
+
+    Store.transition('tab:activate', { id: 'b' });
+    await new Promise(resolve => setTimeout(resolve, 20));
+
+    assert.equal(document.getElementById('rawInput').value, 'id,name\n2,Bob');
+    assert.equal(TableRegistry.getRaw()[0].rows[0][1], 'Bob');
+  });
+
+  it('clears the previous table registry when parsing the active document fails', () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { Store } = OTA.require('store');
+    const { Parser } = OTA.require('parser-facade');
+    const { TableRegistry } = OTA.require('table-registry');
+    const targetSelect = document.getElementById('targetTableSelect');
+    targetSelect.options = [];
+    targetSelect.add = option => targetSelect.options.push(option);
+    Store.state.docs = [{ id: 'a', title: 'First', raw: '', ui: {} }];
+    Store.state.activeId = 'a';
+    TableRegistry.setResult({
+      tables: [{ name: 'Old', headers: ['id'], rows: [['1']] }],
+      format: 'csv', label: 'CSV', diagnostics: [], candidates: [],
+    });
+    const previousParse = Parser.parse;
+    const previousConsoleError = console.error;
+    Parser.parse = () => { throw new Error('forced parse failure'); };
+    console.error = () => {};
+    try {
+      document.getElementById('rawInput').value = 'broken input';
+      App.run(false);
+      assert.equal(TableRegistry.getRaw().length, 0);
+      assert.equal(TableRegistry.getFormat(), 'error');
+    } finally {
+      Parser.parse = previousParse;
+      console.error = previousConsoleError;
+    }
+  });
 });
 
 describe('Selection.buildLuaClipboardMatrix', () => {

@@ -134,4 +134,26 @@ describe('SourceController — dispatch integration', () => {
 
     unsub();
   });
+
+  it('keeps an async file import attached to its initiating tab', () => {
+    Store.state.docs.push({ id: 'b', title: 'Other', raw: 'other', ui: {} });
+    let reader;
+    const previousFileReader = globalThis.FileReader;
+    globalThis.FileReader = class MockFileReader {
+      readAsText() { reader = this; }
+    };
+
+    try {
+      SourceController.loadFile({ name: 'import.csv', size: 20 });
+      Store.state.activeId = 'b';
+      reader.onload({ target: { result: 'id,name\n1,Alice' } });
+
+      assert.equal(Store.state.docs.find(doc => doc.id === 'a').raw, 'id,name\n1,Alice');
+      assert.equal(Store.state.docs.find(doc => doc.id === 'b').raw, 'other');
+      assert.equal(Store.state.docs.find(doc => doc.id === 'a').ui.importFormat, 'csv');
+    } finally {
+      if (previousFileReader === undefined) delete globalThis.FileReader;
+      else globalThis.FileReader = previousFileReader;
+    }
+  });
 });

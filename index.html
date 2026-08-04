@@ -1646,9 +1646,9 @@ const Store = {
         return doc;
     },
     removeDoc(id) {
-        if(this.state.docs.length<=1) return 'last_doc';
         const idx = this.state.docs.findIndex(d=>d.id===id);
         if(idx < 0) return false;
+        if(this.state.docs.length<=1) return 'last_doc';
         this.state.docs.splice(idx,1);
         if(this.state.activeId===id) this.state.activeId = this.state.docs[Math.max(0,idx-1)].id;
         this.save();
@@ -1796,8 +1796,14 @@ const Store = {
         switch (action) {
             // ── Tabs ──
             case 'tab:create': {
+                const previousId = this.state.activeId;
                 const doc = this.addDoc(payload || {});
-                this._notify('tab:created', { id: doc.id });
+                this._notify('tab:created', {
+                    id: doc.id,
+                    previousActiveId: previousId,
+                    activeId: doc.id,
+                    activeChanged: previousId !== doc.id,
+                });
                 this._notify('state:changed', {});
                 return doc;
             }
@@ -1814,9 +1820,15 @@ const Store = {
                 return true;
             }
             case 'tab:remove': {
+                const previousActiveId = this.state.activeId;
                 const result = this.removeDoc(payload && payload.id);
                 if (result === true) {
-                    this._notify('tab:removed', { id: payload.id });
+                    this._notify('tab:removed', {
+                        id: payload.id,
+                        previousActiveId,
+                        activeId: this.state.activeId,
+                        activeChanged: previousActiveId !== this.state.activeId,
+                    });
                     this._notify('state:changed', {});
                 }
                 return result;
@@ -6609,7 +6621,7 @@ const SourceController = {
     // ── Init ──
 
     /**
-     * Bind DOM events and subscribe to Store changes.
+     * Bind source-editor DOM events.
      * Called once from App.init().
      */
     init() {
@@ -6619,12 +6631,6 @@ const SourceController = {
         this._bindInputResizer();
         this._bindFilePicker();
 
-        // Subscribe to store events the source controller cares about
-        Store.onChange((event, payload) => {
-            if (event === 'tab:activated' || event === 'tab:created') {
-                this._restoreSource();
-            }
-        });
     },
 
     // ── Main editor ──
@@ -6727,44 +6733,50 @@ const SourceController = {
 
         // Update lastPaste for HTML files
         const detected = SourceController.detectFormat(file.name);
-        if (detected === 'html-table') {
-            SourceController._lastPaste = null; // will be set after reading
-        }
+        const targetDocId = Store.state.activeId;
 
         const reader = new FileReader();
         reader.onerror = () => Toast.show('无法读取该文件', true);
         reader.onload = (event) => {
             const text = String(event.target.result || '').replace(/^\uFEFF/, '');
+            const targetDoc = Store.state.docs.find(doc => doc.id === targetDocId);
+            if (!targetDoc) {
+                Toast.show('导入目标页签已关闭，已取消导入', true);
+                return;
+            }
 
-            if (detected === 'html-table') {
+            Store.normalizeDoc(targetDoc, Store.state.docs.indexOf(targetDoc));
+            targetDoc.raw = text;
+            if (detected !== 'auto' && (!targetDoc.ui.importFormat || targetDoc.ui.importFormat === 'auto')) {
+                targetDoc.ui.importFormat = detected;
+            }
+
+            if (detected === 'html-table' && Store.state.activeId === targetDocId) {
                 SourceController._lastPaste = { html: text, plain: text, docId: Store.state.activeId };
-            } else {
+            } else if (Store.state.activeId === targetDocId) {
                 SourceController._lastPaste = null;
             }
 
-            // Update main editor
-            const rawInput = $('rawInput');
-            if (rawInput) rawInput.value = text;
-
-            dispatch('source:changed', { text: text });
-
-            // Auto-detect format from extension
-            if (detected !== 'auto') {
+            if (Store.state.activeId === targetDocId) {
+                // Update main editor only when the initiating tab is still active.
+                const rawInput = $('rawInput');
+                if (rawInput) rawInput.value = text;
                 const formatSelect = $('formatSelect');
-                if (formatSelect && formatSelect.value === 'auto') {
-                    formatSelect.value = detected;
-                    Store.curr().ui.importFormat = detected;
+                if (formatSelect && detected !== 'auto' && formatSelect.value === 'auto') formatSelect.value = detected;
+                dispatch('source:changed', { text: text });
+                Store.save();
+                Toast.show(`已导入 ${file.name}`);
+
+                // Trigger parse only for the visible initiating tab.
+                if (typeof document !== 'undefined' && document.dispatchEvent) {
+                    document.dispatchEvent(new CustomEvent('ota:sourceFileLoaded', {
+                        detail: { text, format: detected, fileName: file.name }
+                    }));
                 }
-            }
-
-            Store.save();
-            Toast.show(`已导入 ${file.name}`);
-
-            // Trigger parse via custom event — App listens for this
-            if (typeof document !== 'undefined' && document.dispatchEvent) {
-                document.dispatchEvent(new CustomEvent('ota:sourceFileLoaded', {
-                    detail: { text, format: detected, fileName: file.name }
-                }));
+            } else {
+                // Keep the import attached to its initiating tab without disturbing the visible tab.
+                Store.save();
+                Toast.show(`已导入 ${file.name} 到页签“${targetDoc.title || 'Analysis'}”`);
             }
         };
         reader.readAsText(file);
@@ -6959,16 +6971,6 @@ const SourceController = {
                 Store.save();
             }
         }, 650);
-    },
-
-    // ── Tab switch → restore source ──
-
-    _restoreSource() {
-        const doc = Store.curr();
-        this.clearAutoParse();
-        const rawInput = $('rawInput');
-        if (rawInput) rawInput.value = doc.raw || '';
-        SourceController.clearLastPaste();
     },
 
     // ── Input resizer (drag handle) ──
@@ -7780,19 +7782,12 @@ const TabController = {
             if (e.target.classList.contains('doc-tab-close')) {
                 e.stopPropagation();
                 const t = e.target.closest('.doc-tab');
-                const removed = t && Store.removeDoc(t.dataset.id);
-                if (removed === true) {
-                    dispatch('tab:removed', { id: t.dataset.id });
-                    TabController.render();
-                    // Trigger full doc reload via custom event
-                    TabController._emit('tabsChanged');
-                } else if (removed === 'last_doc') {
-                    Toast.show('至少保留一个页签', true);
-                }
+                if (t) TabController.remove(t.dataset.id);
                 return;
             }
             const t = e.target.closest('.doc-tab');
             if (!t) return;
+            TabController._persistCurrentSource();
             dispatch('tab:activate', { id: t.dataset.id });
         };
 
@@ -7805,7 +7800,10 @@ const TabController = {
             e.preventDefault();
             e.stopPropagation();
             const id = tab.dataset.id;
-            if (Store.state.activeId !== id) dispatch('tab:activate', { id: id });
+            if (Store.state.activeId !== id) {
+                TabController._persistCurrentSource();
+                dispatch('tab:activate', { id: id });
+            }
             setTimeout(() => TabController.startRename(id), 0);
         };
 
@@ -7817,6 +7815,7 @@ const TabController = {
             const index = tabs.indexOf(tab);
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
+                TabController._persistCurrentSource();
                 dispatch('tab:activate', { id: tab.dataset.id });
             }
             if (e.key === 'F2') {
@@ -7824,19 +7823,18 @@ const TabController = {
                 e.stopPropagation();
                 TabController.startRename(tab.dataset.id);
             }
-            if (e.key === 'Delete' && Store.state.docs.length > 1) {
+            if (e.key === 'Delete') {
                 e.preventDefault();
-                if (Store.removeDoc(tab.dataset.id)) {
-                    dispatch('tab:removed', { id: tab.dataset.id });
-                    TabController.render();
-                    TabController._emit('tabsChanged');
-                }
+                TabController.remove(tab.dataset.id);
             }
             if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
                 e.preventDefault();
                 const offset = e.key === 'ArrowRight' ? 1 : -1;
                 const next = tabs[(index + offset + tabs.length) % tabs.length];
-                if (next) dispatch('tab:activate', { id: next.dataset.id });
+                if (next) {
+                    TabController._persistCurrentSource();
+                    dispatch('tab:activate', { id: next.dataset.id });
+                }
             }
         };
 
@@ -7897,11 +7895,10 @@ const TabController = {
             e.preventDefault();
             const place = tab.classList.contains('drag-over-after') || e.target === container ? 'after' : 'before';
             const sourceId = TabController.dragSourceId;
-            Store.moveDoc(sourceId, tab.dataset.id, place);
+            const moved = dispatch('tab:reorder', { sourceId, targetId: tab.dataset.id, place });
             TabController._clearAllMarkers();
             TabController.dragSourceId = null;
-            TabController.render();
-            dispatch('tab:reordered', { sourceId, targetId: tab.dataset.id, place });
+            if (!moved) TabController.render();
         });
 
         container.addEventListener('dragend', () => {
@@ -7965,11 +7962,29 @@ const TabController = {
     /** Create a new tab via the "add tab" button. */
     createNew(e) {
         if (e) { e.preventDefault(); e.stopPropagation(); }
+        TabController._persistCurrentSource();
+        dispatch('tab:create');
+    },
+
+    /** Remove a tab through the canonical command path. */
+    remove(id) {
+        const doc = Store.state.docs.find(item => item.id === id);
+        if (!doc) return false;
+        if (Store.state.docs.length <= 1) {
+            Toast.show('至少保留一个页签', true);
+            return 'last_doc';
+        }
+        if (typeof confirm === 'function' && !confirm(`确定关闭页签“${doc.title || 'Analysis'}”？\n该页签的数据和分析规则将被删除。`)) return false;
+
+        TabController._persistCurrentSource();
+        const result = dispatch('tab:remove', { id });
+        if (result === 'last_doc') Toast.show('至少保留一个页签', true);
+        return result;
+    },
+
+    _persistCurrentSource() {
         const input = $('rawInput');
         if (input) Store.curr().raw = input.value;
-        dispatch('tab:create');
-        TabController.render();
-        TabController._emit('tabsChanged');
     },
 
     // ── Internal helpers ──
@@ -8418,11 +8433,7 @@ const App = {
         if(!force && Store.state.activeId === id) return false;
         const input = $('rawInput');
         if(input) Store.curr().raw = input.value;
-        Store.state.activeId = id;
-        Store.save();
-        this.renderTabs();
-        this.loadDoc();
-        return true;
+        return dispatch('tab:activate', { id, force });
     },
     init() {
         document.title = `Offline Table Analyzer v${APP_VERSION}`;
@@ -8437,7 +8448,14 @@ const App = {
                     break;
                 case 'tab:created':
                 case 'tab:activated':
+                    this.renderTabs();
+                    this.loadDoc();
+                    break;
                 case 'tab:removed':
+                    this.renderTabs();
+                    if (payload && payload.activeChanged) this.loadDoc();
+                    break;
+                case 'tab:reordered':
                     this.renderTabs();
                     break;
                 case 'parse:completed':
@@ -9117,6 +9135,18 @@ validflag Time      Level   Message                 Code
         } catch(e) {
             console.error(e);
             const msg = e.message || String(e);
+            TableRegistry.setResult({
+                tables: [],
+                format: 'error',
+                label: '解析失败',
+                diagnostics: [{ severity: 'error', code: 'PARSE_ERROR', message: msg }],
+                candidates: [],
+            });
+            CellEditController.setRawTables([]);
+            this.updateImportSummary();
+            this.updSelects();
+            this.updChips();
+            this.renderPreview();
             // Map common errors to user-friendly Chinese messages
             const friendly =
                 /超过.*25.*MB|MAX_IMPORT/i.test(msg)   ? '数据过大，请将输入控制在 25 MB 以内' :

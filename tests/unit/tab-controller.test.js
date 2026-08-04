@@ -96,3 +96,34 @@ describe('TabController — startRename', () => {
     // Should not throw
   });
 });
+
+// ---------------------------------------------------------------------------
+describe('TabController — canonical mutations', () => {
+  it('removes through tab:remove and activates the adjacent tab', () => {
+    const previousConfirm = globalThis.confirm;
+    globalThis.confirm = () => true;
+    try {
+      const result = TabController.remove('b');
+      assert.equal(result, true);
+      assert.equal(Store.state.docs.map(doc => doc.id).join(''), 'ac');
+      assert.equal(Store.state.activeId, 'a');
+    } finally {
+      if (previousConfirm === undefined) delete globalThis.confirm;
+      else globalThis.confirm = previousConfirm;
+    }
+  });
+
+  it('does not remove the final tab', () => {
+    const previousConfirm = globalThis.confirm;
+    globalThis.confirm = () => true;
+    try {
+      Store.state.docs = [{ id: 'only', title: 'Only', raw: '', ui: {} }];
+      Store.state.activeId = 'only';
+      assert.equal(TabController.remove('only'), 'last_doc');
+      assert.equal(Store.state.docs.length, 1);
+    } finally {
+      if (previousConfirm === undefined) delete globalThis.confirm;
+      else globalThis.confirm = previousConfirm;
+    }
+  });
+});

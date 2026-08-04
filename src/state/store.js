@@ -238,9 +238,9 @@ const Store = {
         return doc;
     },
     removeDoc(id) {
-        if(this.state.docs.length<=1) return 'last_doc';
         const idx = this.state.docs.findIndex(d=>d.id===id);
         if(idx < 0) return false;
+        if(this.state.docs.length<=1) return 'last_doc';
         this.state.docs.splice(idx,1);
         if(this.state.activeId===id) this.state.activeId = this.state.docs[Math.max(0,idx-1)].id;
         this.save();
@@ -388,8 +388,14 @@ const Store = {
         switch (action) {
             // ── Tabs ──
             case 'tab:create': {
+                const previousId = this.state.activeId;
                 const doc = this.addDoc(payload || {});
-                this._notify('tab:created', { id: doc.id });
+                this._notify('tab:created', {
+                    id: doc.id,
+                    previousActiveId: previousId,
+                    activeId: doc.id,
+                    activeChanged: previousId !== doc.id,
+                });
                 this._notify('state:changed', {});
                 return doc;
             }
@@ -406,9 +412,15 @@ const Store = {
                 return true;
             }
             case 'tab:remove': {
+                const previousActiveId = this.state.activeId;
                 const result = this.removeDoc(payload && payload.id);
                 if (result === true) {
-                    this._notify('tab:removed', { id: payload.id });
+                    this._notify('tab:removed', {
+                        id: payload.id,
+                        previousActiveId,
+                        activeId: this.state.activeId,
+                        activeChanged: previousActiveId !== this.state.activeId,
+                    });
                     this._notify('state:changed', {});
                 }
                 return result;

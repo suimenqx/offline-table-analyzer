@@ -77,7 +77,7 @@ const SourceController = {
     // ── Init ──
 
     /**
-     * Bind DOM events and subscribe to Store changes.
+     * Bind source-editor DOM events.
      * Called once from App.init().
      */
     init() {
@@ -87,12 +87,6 @@ const SourceController = {
         this._bindInputResizer();
         this._bindFilePicker();
 
-        // Subscribe to store events the source controller cares about
-        Store.onChange((event, payload) => {
-            if (event === 'tab:activated' || event === 'tab:created') {
-                this._restoreSource();
-            }
-        });
     },
 
     // ── Main editor ──
@@ -195,44 +189,50 @@ const SourceController = {
 
         // Update lastPaste for HTML files
         const detected = SourceController.detectFormat(file.name);
-        if (detected === 'html-table') {
-            SourceController._lastPaste = null; // will be set after reading
-        }
+        const targetDocId = Store.state.activeId;
 
         const reader = new FileReader();
         reader.onerror = () => Toast.show('无法读取该文件', true);
         reader.onload = (event) => {
             const text = String(event.target.result || '').replace(/^\uFEFF/, '');
+            const targetDoc = Store.state.docs.find(doc => doc.id === targetDocId);
+            if (!targetDoc) {
+                Toast.show('导入目标页签已关闭，已取消导入', true);
+                return;
+            }
 
-            if (detected === 'html-table') {
+            Store.normalizeDoc(targetDoc, Store.state.docs.indexOf(targetDoc));
+            targetDoc.raw = text;
+            if (detected !== 'auto' && (!targetDoc.ui.importFormat || targetDoc.ui.importFormat === 'auto')) {
+                targetDoc.ui.importFormat = detected;
+            }
+
+            if (detected === 'html-table' && Store.state.activeId === targetDocId) {
                 SourceController._lastPaste = { html: text, plain: text, docId: Store.state.activeId };
-            } else {
+            } else if (Store.state.activeId === targetDocId) {
                 SourceController._lastPaste = null;
             }
 
-            // Update main editor
-            const rawInput = $('rawInput');
-            if (rawInput) rawInput.value = text;
-
-            dispatch('source:changed', { text: text });
-
-            // Auto-detect format from extension
-            if (detected !== 'auto') {
+            if (Store.state.activeId === targetDocId) {
+                // Update main editor only when the initiating tab is still active.
+                const rawInput = $('rawInput');
+                if (rawInput) rawInput.value = text;
                 const formatSelect = $('formatSelect');
-                if (formatSelect && formatSelect.value === 'auto') {
-                    formatSelect.value = detected;
-                    Store.curr().ui.importFormat = detected;
+                if (formatSelect && detected !== 'auto' && formatSelect.value === 'auto') formatSelect.value = detected;
+                dispatch('source:changed', { text: text });
+                Store.save();
+                Toast.show(`已导入 ${file.name}`);
+
+                // Trigger parse only for the visible initiating tab.
+                if (typeof document !== 'undefined' && document.dispatchEvent) {
+                    document.dispatchEvent(new CustomEvent('ota:sourceFileLoaded', {
+                        detail: { text, format: detected, fileName: file.name }
+                    }));
                 }
-            }
-
-            Store.save();
-            Toast.show(`已导入 ${file.name}`);
-
-            // Trigger parse via custom event — App listens for this
-            if (typeof document !== 'undefined' && document.dispatchEvent) {
-                document.dispatchEvent(new CustomEvent('ota:sourceFileLoaded', {
-                    detail: { text, format: detected, fileName: file.name }
-                }));
+            } else {
+                // Keep the import attached to its initiating tab without disturbing the visible tab.
+                Store.save();
+                Toast.show(`已导入 ${file.name} 到页签“${targetDoc.title || 'Analysis'}”`);
             }
         };
         reader.readAsText(file);
@@ -427,16 +427,6 @@ const SourceController = {
                 Store.save();
             }
         }, 650);
-    },
-
-    // ── Tab switch → restore source ──
-
-    _restoreSource() {
-        const doc = Store.curr();
-        this.clearAutoParse();
-        const rawInput = $('rawInput');
-        if (rawInput) rawInput.value = doc.raw || '';
-        SourceController.clearLastPaste();
     },
 
     // ── Input resizer (drag handle) ──

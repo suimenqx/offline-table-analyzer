@@ -28,19 +28,12 @@ const TabController = {
             if (e.target.classList.contains('doc-tab-close')) {
                 e.stopPropagation();
                 const t = e.target.closest('.doc-tab');
-                const removed = t && Store.removeDoc(t.dataset.id);
-                if (removed === true) {
-                    dispatch('tab:removed', { id: t.dataset.id });
-                    TabController.render();
-                    // Trigger full doc reload via custom event
-                    TabController._emit('tabsChanged');
-                } else if (removed === 'last_doc') {
-                    Toast.show('至少保留一个页签', true);
-                }
+                if (t) TabController.remove(t.dataset.id);
                 return;
             }
             const t = e.target.closest('.doc-tab');
             if (!t) return;
+            TabController._persistCurrentSource();
             dispatch('tab:activate', { id: t.dataset.id });
         };
 
@@ -53,7 +46,10 @@ const TabController = {
             e.preventDefault();
             e.stopPropagation();
             const id = tab.dataset.id;
-            if (Store.state.activeId !== id) dispatch('tab:activate', { id: id });
+            if (Store.state.activeId !== id) {
+                TabController._persistCurrentSource();
+                dispatch('tab:activate', { id: id });
+            }
             setTimeout(() => TabController.startRename(id), 0);
         };
 
@@ -65,6 +61,7 @@ const TabController = {
             const index = tabs.indexOf(tab);
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
+                TabController._persistCurrentSource();
                 dispatch('tab:activate', { id: tab.dataset.id });
             }
             if (e.key === 'F2') {
@@ -72,19 +69,18 @@ const TabController = {
                 e.stopPropagation();
                 TabController.startRename(tab.dataset.id);
             }
-            if (e.key === 'Delete' && Store.state.docs.length > 1) {
+            if (e.key === 'Delete') {
                 e.preventDefault();
-                if (Store.removeDoc(tab.dataset.id)) {
-                    dispatch('tab:removed', { id: tab.dataset.id });
-                    TabController.render();
-                    TabController._emit('tabsChanged');
-                }
+                TabController.remove(tab.dataset.id);
             }
             if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
                 e.preventDefault();
                 const offset = e.key === 'ArrowRight' ? 1 : -1;
                 const next = tabs[(index + offset + tabs.length) % tabs.length];
-                if (next) dispatch('tab:activate', { id: next.dataset.id });
+                if (next) {
+                    TabController._persistCurrentSource();
+                    dispatch('tab:activate', { id: next.dataset.id });
+                }
             }
         };
 
@@ -145,11 +141,10 @@ const TabController = {
             e.preventDefault();
             const place = tab.classList.contains('drag-over-after') || e.target === container ? 'after' : 'before';
             const sourceId = TabController.dragSourceId;
-            Store.moveDoc(sourceId, tab.dataset.id, place);
+            const moved = dispatch('tab:reorder', { sourceId, targetId: tab.dataset.id, place });
             TabController._clearAllMarkers();
             TabController.dragSourceId = null;
-            TabController.render();
-            dispatch('tab:reordered', { sourceId, targetId: tab.dataset.id, place });
+            if (!moved) TabController.render();
         });
 
         container.addEventListener('dragend', () => {
@@ -213,11 +208,29 @@ const TabController = {
     /** Create a new tab via the "add tab" button. */
     createNew(e) {
         if (e) { e.preventDefault(); e.stopPropagation(); }
+        TabController._persistCurrentSource();
+        dispatch('tab:create');
+    },
+
+    /** Remove a tab through the canonical command path. */
+    remove(id) {
+        const doc = Store.state.docs.find(item => item.id === id);
+        if (!doc) return false;
+        if (Store.state.docs.length <= 1) {
+            Toast.show('至少保留一个页签', true);
+            return 'last_doc';
+        }
+        if (typeof confirm === 'function' && !confirm(`确定关闭页签“${doc.title || 'Analysis'}”？\n该页签的数据和分析规则将被删除。`)) return false;
+
+        TabController._persistCurrentSource();
+        const result = dispatch('tab:remove', { id });
+        if (result === 'last_doc') Toast.show('至少保留一个页签', true);
+        return result;
+    },
+
+    _persistCurrentSource() {
         const input = $('rawInput');
         if (input) Store.curr().raw = input.value;
-        dispatch('tab:create');
-        TabController.render();
-        TabController._emit('tabsChanged');
     },
 
     // ── Internal helpers ──

@@ -16,11 +16,7 @@ const App = {
         if(!force && Store.state.activeId === id) return false;
         const input = $('rawInput');
         if(input) Store.curr().raw = input.value;
-        Store.state.activeId = id;
-        Store.save();
-        this.renderTabs();
-        this.loadDoc();
-        return true;
+        return dispatch('tab:activate', { id, force });
     },
     init() {
         document.title = `Offline Table Analyzer v${APP_VERSION}`;
@@ -35,7 +31,14 @@ const App = {
                     break;
                 case 'tab:created':
                 case 'tab:activated':
+                    this.renderTabs();
+                    this.loadDoc();
+                    break;
                 case 'tab:removed':
+                    this.renderTabs();
+                    if (payload && payload.activeChanged) this.loadDoc();
+                    break;
+                case 'tab:reordered':
                     this.renderTabs();
                     break;
                 case 'parse:completed':
@@ -727,6 +730,18 @@ validflag Time      Level   Message                 Code
         } catch(e) {
             console.error(e);
             const msg = e.message || String(e);
+            TableRegistry.setResult({
+                tables: [],
+                format: 'error',
+                label: '解析失败',
+                diagnostics: [{ severity: 'error', code: 'PARSE_ERROR', message: msg }],
+                candidates: [],
+            });
+            CellEditController.setRawTables([]);
+            this.updateImportSummary();
+            this.updSelects();
+            this.updChips();
+            this.renderPreview();
             // Map common errors to user-friendly Chinese messages
             const friendly =
                 /超过.*25.*MB|MAX_IMPORT/i.test(msg)   ? '数据过大，请将输入控制在 25 MB 以内' :
