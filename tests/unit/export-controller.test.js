@@ -56,6 +56,24 @@ describe('ExportController — setContext', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('ExportController — _getPreviewExportTables', () => {
+  it('rebuilds preview data when rendered context is empty', () => {
+    const tables = [
+      { name: 'Inventory', headers: ['id', 'product'], rows: [['1001', 'Widget_A'], ['1002', 'Widget_B']] },
+    ];
+    TableRegistry.setRaw(tables);
+    ExportController.setContext({ rendered: [] });
+
+    const result = ExportController._getPreviewExportTables();
+    assert.deepEqual(result, [{
+      name: 'Inventory',
+      headers: ['id', 'product'],
+      rows: [['1001', 'Widget_A'], ['1002', 'Widget_B']],
+    }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 describe('ExportController — _getFullExportTables', () => {
   it('returns tables with all columns when exportCols is all', () => {
     const tables = [

@@ -7996,7 +7996,7 @@ const KeyboardController = {
 });
 
 /* @module ui/export-controller.js: file exports and workspace backup */
-OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry"], ({$, Toast}, {Store, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}) => {
+OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine"], ({$, Toast}, {Store, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}) => {
 /* ExportController — file exports, workspace/config backup, copy format.
 
    Responsibilities:
@@ -8169,11 +8169,31 @@ const ExportController = {
         return [...tables, ...joins].map(table => ExportController._projectTableForExport(table, shownOnly));
     },
 
+    _getPreviewProcessedTables() {
+        const ui = Store.curr().ui;
+        let tables = TableRegistry.getRaw();
+        if (ui.displayTables) tables = tables.filter(t => ui.displayTables.includes(t.name));
+        const joins = ExportController._getEnabledJoinTables(true);
+        return [...tables, ...joins].map((table, tIdx) => {
+            const rules = (ui.rules && ui.rules[table.name]) || {};
+            const res = FilterEngine.processTable(
+                table,
+                rules,
+                ui,
+                ui.globalFilter || '',
+                ui.enableHighlight !== false,
+                ui.onlyHighlighted || false
+            );
+            res.rows.forEach((row, index) => { row._resultIndex = index; });
+            return { table, res, tIdx };
+        });
+    },
+
     _getPreviewExportTables() {
-        return ExportController._rendered.map(r => ({
-            name: r.name || 'Sheet',
-            headers: r.headers,
-            rows: r.rows.map(row => row.d)
+        return ExportController._getPreviewProcessedTables().map(({table, res}) => ({
+            name: table.name || 'Sheet',
+            headers: res.headers,
+            rows: res.rows.map(row => row.d)
         }));
     },
 
