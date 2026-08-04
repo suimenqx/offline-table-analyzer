@@ -50,7 +50,7 @@
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
                         <div class="source-actions">
-                            <button class="primary" id="parseBtn" type="button">解析数据</button>
+                            <button class="sm" id="parseBtn" type="button" title="立即解析当前数据（Ctrl/⌘ + Enter）">立即解析</button>
                             <button id="importSourceBtn" type="button" title="导入 CSV、TSV、TXT、HTML 或 Markdown 文件">选择文件</button>
                             <button id="clearBtn" type="button" title="清空当前数据源">清空</button>
                             <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,text/html">
@@ -77,6 +77,11 @@
                                 <option value="none">无表头</option>
                             </select>
                         </div>
+                        <label class="auto-parse-toggle" title="输入稳定后自动刷新预览；大于 1 MB 的数据需要手动解析">
+                            <input type="checkbox" id="autoParseToggle" checked>
+                            <span>自动解析</span>
+                            <span class="muted">输入稳定后刷新预览</span>
+                        </label>
                         <div class="parse-status" id="parseStatus" role="status" aria-live="polite">
                             <span class="parse-status-dot" aria-hidden="true"></span>
                             <span class="parse-status-text" id="parseStatusText">等待输入数据</span>
@@ -246,7 +251,7 @@
                 <span class="storage-meter status-secondary" title="浏览器本地存储占用估算"><span id="storageMeterFill"></span></span>
             </div>
             <div class="statusbar-group">
-                <span class="status-item status-secondary" id="keyboardHint">Ctrl/⌘ + Enter 解析 · 双击单元格编辑</span>
+                <span class="status-item status-secondary" id="keyboardHint">Ctrl/⌘ + Enter 立即解析 · 双击单元格编辑</span>
                 <button class="text-button" id="clearLocalDataBtn" type="button">清除本地数据</button>
             </div>
         </footer>
@@ -298,7 +303,7 @@
                     <option value="first-row">首行表头</option>
                     <option value="none">无表头</option>
                 </select>
-                <button class="sm" id="sourceEditorParseBtn">解析</button>
+                <button class="sm" id="sourceEditorParseBtn">立即解析</button>
                 <button class="primary sm" id="sourceEditorDoneBtn">完成</button>
                 <button class="icon-btn sm" id="sourceEditorCloseBtn" title="关闭">×</button>
             </div>
@@ -307,7 +312,7 @@
             <textarea id="rawInputLarge" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..."></textarea>
         </div>
         <div class="source-editor-foot">
-            <span class="muted">Ctrl/⌘ + Enter 解析；Esc、完成或关闭按钮都会同步内容并返回。</span>
+            <span class="muted">自动解析开启时，输入稳定后会刷新预览；Ctrl/⌘ + Enter 可立即解析。</span>
             <span class="muted" id="sourceEditorStats">0 字符</span>
         </div>
     </div>

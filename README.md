@@ -84,8 +84,8 @@ Additional import capabilities:
 1. Download or clone this repository.
 2. Open `index.html` in a current desktop browser.
 3. Paste data, drop a supported text file, or choose **Load sample**.
-4. Select a format/header strategy if automatic detection needs correction.
-5. Choose **Parse data**.
+4. By default, parsing runs automatically after the input settles; select a format/header strategy if automatic detection needs correction.
+5. For sources larger than 1 MB, or when auto-parse is disabled, choose **Parse now**.
 
 No server is required. A local static server is useful only during development.
 

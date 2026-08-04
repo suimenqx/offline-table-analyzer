@@ -173,7 +173,7 @@ const Store = {
         return imported.length;
     },
     createDefaultUI() {
-        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, tablePages:{}, previewTable:"", pageSize:100, cellEdits:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto", exportOnlyChecked:false, exportCols:'all' };
+        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, tablePages:{}, previewTable:"", pageSize:100, cellEdits:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto", autoParse:true, exportOnlyChecked:false, exportCols:'all' };
     },
     normalizeDoc(doc, idx=0) {
         if(!doc.id) doc.id = this.generateDocId();
@@ -191,6 +191,7 @@ const Store = {
         if(!doc.ui.sidebarTab) doc.ui.sidebarTab = 'data';
         if(!doc.ui.importFormat) doc.ui.importFormat = 'auto';
         if(!doc.ui.importHeaderMode) doc.ui.importHeaderMode = 'auto';
+        if(typeof doc.ui.autoParse !== 'boolean') doc.ui.autoParse = true;
         return doc;
     },
     generateDocId() {
@@ -565,6 +566,12 @@ const Store = {
             case 'ui:sidebarTab': {
                 this.updateUI('sidebarTab', payload && payload.tab || 'data');
                 this._notify('ui:sidebarChanged', { tab: payload && payload.tab });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'ui:autoParse': {
+                this.updateUI('autoParse', payload && payload.enabled !== false);
+                this._notify('ui:autoParseChanged', { enabled: this.curr().ui.autoParse });
                 this._notify('state:changed', {});
                 return true;
             }

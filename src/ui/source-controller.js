@@ -15,6 +15,8 @@ OTA.define('source-controller', ["runtime", "store", "dispatch"], ({$, createEl,
 */
 
 const SourceController = {
+    AUTO_PARSE_MAX_BYTES: 1024 * 1024,
+    AUTO_PARSE_DELAY: 500,
     // ── Timers (held here rather than on App) ──
     _persistTimer: null,
     _statsTimer: null,
@@ -35,6 +37,41 @@ const SourceController = {
         if (/\.html?$/.test(name)) return 'html-table';
         if (/\.(md|markdown)$/.test(name)) return 'pipe-table';
         return 'auto';
+    },
+
+    isAutoParseEnabled() {
+        return Store.curr().ui.autoParse !== false;
+    },
+
+    getAutoParseState(text='') {
+        if (!this.isAutoParseEnabled()) return 'manual';
+        return String(text || '').length * 2 >= this.AUTO_PARSE_MAX_BYTES ? 'large' : 'pending';
+    },
+
+    notifyParseState(state) {
+        if (typeof document === 'undefined' || !document.dispatchEvent || typeof CustomEvent !== 'function') return;
+        document.dispatchEvent(new CustomEvent('ota:sourceParseState', { detail: { state } }));
+    },
+
+    clearAutoParse() {
+        clearTimeout(this._autoParseTimer);
+        this._autoParseTimer = null;
+    },
+
+    scheduleAutoParse({ text='', syncToMain=false } = {}) {
+        this.clearAutoParse();
+        const state = this.getAutoParseState(text);
+        this.notifyParseState(state);
+        if (state !== 'pending') return false;
+
+        this._autoParseTimer = setTimeout(() => {
+            this._autoParseTimer = null;
+            if (syncToMain) this._syncToMain();
+            if (typeof document !== 'undefined' && document.dispatchEvent) {
+                document.dispatchEvent(new CustomEvent('ota:sourceAutoParse'));
+            }
+        }, this.AUTO_PARSE_DELAY);
+        return true;
     },
 
     // ── Init ──
@@ -91,16 +128,9 @@ const SourceController = {
                 Store.save();
             }, 650);
 
-            // Debounced auto-parse: fire parse when input stabilises (≤1 MB)
-            clearTimeout(SourceController._autoParseTimer);
-            const text = rawInput.value;
-            if (text.length * 2 < 1024 * 1024) {
-                SourceController._autoParseTimer = setTimeout(() => {
-                    if (typeof document !== 'undefined' && document.dispatchEvent) {
-                        document.dispatchEvent(new CustomEvent('ota:sourceAutoParse'));
-                    }
-                }, 500);
-            }
+            // Debounced auto-parse: fire when input stabilises, unless disabled
+            // or the source is large enough to require an explicit parse.
+            SourceController.scheduleAutoParse({ text: rawInput.value });
         });
     },
 
@@ -157,6 +187,7 @@ const SourceController = {
      */
     loadFile(file) {
         if (!file) return;
+        this.clearAutoParse();
         if (file.size > MAX_IMPORT_BYTES) {
             Toast.show('文件超过 25 MB 安全限制', true);
             return;
@@ -230,6 +261,7 @@ const SourceController = {
         // Wire parse button — emits a custom event that App listens to
         if (parseBtn) {
             parseBtn.onclick = () => {
+                SourceController.clearAutoParse();
                 SourceController._syncToMain();
                 if (typeof document !== 'undefined' && document.dispatchEvent) {
                     document.dispatchEvent(new CustomEvent('ota:sourceParseRequested', {}));
@@ -242,6 +274,7 @@ const SourceController = {
             rawLarge.oninput = () => {
                 SourceController._syncStats();
                 SourceController._syncPersist();
+                SourceController.scheduleAutoParse({ text: rawLarge.value, syncToMain: true });
             };
             rawLarge.addEventListener('paste', (e) => {
                 const data = e.clipboardData;
@@ -271,6 +304,8 @@ const SourceController = {
         const formatLarge = $('formatSelectLarge');
         if (formatLarge) {
             formatLarge.onchange = (e) => {
+                SourceController.clearAutoParse();
+                SourceController._syncToMain();
                 const main = $('formatSelect');
                 if (main) main.value = e.target.value;
                 // Notify App to update import format
@@ -283,6 +318,8 @@ const SourceController = {
         const headerLarge = $('headerModeSelectLarge');
         if (headerLarge) {
             headerLarge.onchange = (e) => {
+                SourceController.clearAutoParse();
+                SourceController._syncToMain();
                 const main = $('headerModeSelect');
                 if (main) main.value = e.target.value;
                 if (typeof document !== 'undefined' && document.dispatchEvent) {
@@ -316,6 +353,12 @@ const SourceController = {
     },
 
     close() {
+        const mainInput = $('rawInput');
+        const largeInput = $('rawInputLarge');
+        const textChanged = Boolean(mainInput && largeInput && mainInput.value !== largeInput.value);
+        const hadPendingAutoParse = Boolean(this._autoParseTimer);
+        const nextText = largeInput ? largeInput.value : '';
+        this.clearAutoParse();
         const modal = $('sourceEditorModal');
         if (modal) {
             modal.classList.remove('active');
@@ -325,6 +368,7 @@ const SourceController = {
         document.body.classList.remove('source-editor-open');
 
         SourceController._syncToMain();
+        if (textChanged || hadPendingAutoParse) this.scheduleAutoParse({ text: nextText });
 
         // Restore focus
         if (SourceController._returnFocus && typeof SourceController._returnFocus.focus === 'function') {
@@ -389,6 +433,7 @@ const SourceController = {
 
     _restoreSource() {
         const doc = Store.curr();
+        this.clearAutoParse();
         const rawInput = $('rawInput');
         if (rawInput) rawInput.value = doc.raw || '';
         SourceController.clearLastPaste();

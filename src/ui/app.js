@@ -2,6 +2,7 @@ OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade",
 /* Main App */
 const App = {
     raw: [], rendered: [],
+    sourceParseState: 'ready',
     tabDrag: { sourceId:null },
     // Shared utilities (imported from runtime)
     escapeHtml,
@@ -69,6 +70,9 @@ const App = {
             document.addEventListener('ota:sourceFileLoaded', () => { this.run(); });
             document.addEventListener('ota:sourceParseRequested', () => { this.run(); });
             document.addEventListener('ota:sourceAutoParse', () => { this.run(); });
+            document.addEventListener('ota:sourceParseState', (e) => {
+                this.updateSourceParseState(e.detail && e.detail.state);
+            });
             document.addEventListener('ota:formatChanged', (e) => {
                 if (e.detail && e.detail.format) this.setImportFormat(e.detail.format);
             });
@@ -237,16 +241,32 @@ const App = {
         const text = $('parseStatusText');
         const details = $('diagnosticsBtn');
         const result = TableRegistry.getLastResult();
+        this.sourceParseState = 'ready';
         const diagnostics = result.diagnostics || [];
         const rowCount = (result.tables || []).reduce((sum, table) => sum + (table.rows || []).length, 0);
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
             if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${diagnostics.length} 项提示` : ''}`;
+            else if ($('rawInput') && $('rawInput').value.trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
         }
         if(details) details.classList.toggle('hidden', !(result.candidates && result.candidates.length) && diagnostics.length === 0);
         this.updateWorkspaceSummary();
+    },
+
+    updateSourceParseState(state) {
+        if (!state || state === 'ready') return;
+        this.sourceParseState = state;
+        const status = $('parseStatus');
+        const text = $('parseStatusText');
+        const details = $('diagnosticsBtn');
+        if (status) status.className = 'parse-status warning';
+        if (details) details.classList.add('hidden');
+        if (!text) return;
+        if (state === 'pending') text.textContent = '输入已修改 · 自动解析中…';
+        else if (state === 'large') text.textContent = '数据较大 · 请点击“立即解析”';
+        else text.textContent = '自动解析已关闭 · 点击“立即解析”';
     },
 
     syncImportControls() {
@@ -261,6 +281,8 @@ const App = {
             const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
             headerSelect.disabled = isCli;
         }
+        const autoParseToggle = $('autoParseToggle');
+        if (autoParseToggle) autoParseToggle.checked = d.ui.autoParse !== false;
         if (SourceController._syncControls) SourceController._syncControls();
     },
 
@@ -405,8 +427,12 @@ const App = {
             addTabBtn.type = 'button';
             addTabBtn.onclick = e => TabController.createNew(e);
         }
-        const doParse = () => this.run();
+        const doParse = () => {
+            SourceController.clearAutoParse();
+            this.run();
+        };
         const doClear = () => {
+            SourceController.clearAutoParse();
             $('rawInput').value='';
             SourceController.clearLastPaste();
             Store.curr().ui.cellEdits = {};
@@ -418,8 +444,17 @@ const App = {
         if(formatSelect) formatSelect.onchange = e => this.setImportFormat(e.target.value);
         const headerModeSelect = $('headerModeSelect');
         if(headerModeSelect) headerModeSelect.onchange = e => this.setHeaderMode(e.target.value);
+        const autoParseToggle = $('autoParseToggle');
+        if (autoParseToggle) autoParseToggle.onchange = e => {
+            const enabled = e.target.checked;
+            dispatch('ui:autoParse', { enabled });
+            SourceController.clearAutoParse();
+            if (enabled) SourceController.scheduleAutoParse({ text: $('rawInput').value });
+            else this.updateSourceParseState('manual');
+        };
         
         const loadSample = () => {
+            SourceController.clearAutoParse();
             this.invalidateCellEdits();
             $('rawInput').value = `table-data Inventory
 validflag ID      Product       Category    Stock   Price
@@ -628,6 +663,7 @@ validflag Time      Level   Message                 Code
 
     run(render=true) {
         try {
+            SourceController.clearAutoParse();
             const started = performance.now();
             const sourceText = $('rawInput').value;
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');

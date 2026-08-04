@@ -68,6 +68,14 @@ describe('Store — tab renaming', () => {
   });
 });
 
+describe('Store — auto-parse preference', () => {
+  it('defaults auto-parse to enabled and persists changes', () => {
+    assert.equal(Store.curr().ui.autoParse, true);
+    assert.equal(Store.transition('ui:autoParse', { enabled: false }), true);
+    assert.equal(Store.curr().ui.autoParse, false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 describe('Store — tab reordering', () => {
   it('moves tab before target', () => {

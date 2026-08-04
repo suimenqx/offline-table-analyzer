@@ -79,6 +79,23 @@ describe('SourceController.detectFormat', () => {
   });
 });
 
+describe('SourceController auto-parse policy', () => {
+  it('auto-parses small input by default', () => {
+    Store.curr().ui.autoParse = true;
+    assert.equal(SourceController.getAutoParseState('id,name\n1,Alice'), 'pending');
+  });
+
+  it('reports manual mode when auto-parse is disabled', () => {
+    Store.curr().ui.autoParse = false;
+    assert.equal(SourceController.getAutoParseState('id,name\n1,Alice'), 'manual');
+  });
+
+  it('requires explicit parsing for sources at or above 1 MB', () => {
+    Store.curr().ui.autoParse = true;
+    assert.equal(SourceController.getAutoParseState('x'.repeat(512 * 1024)), 'large');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // getLastPaste / clearLastPaste
 // ---------------------------------------------------------------------------

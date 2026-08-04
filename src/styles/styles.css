@@ -425,6 +425,9 @@
         .source-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 7px; align-items: center; }
         .source-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .78fr); gap: 7px; margin-top: 8px; }
         .source-options .format-select { width: 100%; }
+        .auto-parse-toggle { display: flex; align-items: center; gap: 7px; margin-top: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-mid); font-size: 11px; cursor: pointer; user-select: none; }
+        .auto-parse-toggle input { margin: 0; accent-color: var(--primary); }
+        .auto-parse-toggle .muted { margin-left: auto; font-size: 10px; }
         .source-utilities { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 8px; }
         .source-utilities button { flex: 1 1 auto; }
         .parse-status { display: flex; align-items: center; gap: 7px; min-height: 30px; margin-top: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-mid); font-size: 11px; }

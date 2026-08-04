@@ -434,6 +434,9 @@
         .source-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 7px; align-items: center; }
         .source-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .78fr); gap: 7px; margin-top: 8px; }
         .source-options .format-select { width: 100%; }
+        .auto-parse-toggle { display: flex; align-items: center; gap: 7px; margin-top: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-mid); font-size: 11px; cursor: pointer; user-select: none; }
+        .auto-parse-toggle input { margin: 0; accent-color: var(--primary); }
+        .auto-parse-toggle .muted { margin-left: auto; font-size: 10px; }
         .source-utilities { display: flex; flex-wrap: wrap; gap: 4px; padding-top: 8px; }
         .source-utilities button { flex: 1 1 auto; }
         .parse-status { display: flex; align-items: center; gap: 7px; min-height: 30px; margin-top: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-mid); font-size: 11px; }
@@ -574,7 +577,7 @@
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
                         <div class="source-actions">
-                            <button class="primary" id="parseBtn" type="button">解析数据</button>
+                            <button class="sm" id="parseBtn" type="button" title="立即解析当前数据（Ctrl/⌘ + Enter）">立即解析</button>
                             <button id="importSourceBtn" type="button" title="导入 CSV、TSV、TXT、HTML 或 Markdown 文件">选择文件</button>
                             <button id="clearBtn" type="button" title="清空当前数据源">清空</button>
                             <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,text/html">
@@ -601,6 +604,11 @@
                                 <option value="none">无表头</option>
                             </select>
                         </div>
+                        <label class="auto-parse-toggle" title="输入稳定后自动刷新预览；大于 1 MB 的数据需要手动解析">
+                            <input type="checkbox" id="autoParseToggle" checked>
+                            <span>自动解析</span>
+                            <span class="muted">输入稳定后刷新预览</span>
+                        </label>
                         <div class="parse-status" id="parseStatus" role="status" aria-live="polite">
                             <span class="parse-status-dot" aria-hidden="true"></span>
                             <span class="parse-status-text" id="parseStatusText">等待输入数据</span>
@@ -770,7 +778,7 @@
                 <span class="storage-meter status-secondary" title="浏览器本地存储占用估算"><span id="storageMeterFill"></span></span>
             </div>
             <div class="statusbar-group">
-                <span class="status-item status-secondary" id="keyboardHint">Ctrl/⌘ + Enter 解析 · 双击单元格编辑</span>
+                <span class="status-item status-secondary" id="keyboardHint">Ctrl/⌘ + Enter 立即解析 · 双击单元格编辑</span>
                 <button class="text-button" id="clearLocalDataBtn" type="button">清除本地数据</button>
             </div>
         </footer>
@@ -822,7 +830,7 @@
                     <option value="first-row">首行表头</option>
                     <option value="none">无表头</option>
                 </select>
-                <button class="sm" id="sourceEditorParseBtn">解析</button>
+                <button class="sm" id="sourceEditorParseBtn">立即解析</button>
                 <button class="primary sm" id="sourceEditorDoneBtn">完成</button>
                 <button class="icon-btn sm" id="sourceEditorCloseBtn" title="关闭">×</button>
             </div>
@@ -831,7 +839,7 @@
             <textarea id="rawInputLarge" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..."></textarea>
         </div>
         <div class="source-editor-foot">
-            <span class="muted">Ctrl/⌘ + Enter 解析；Esc、完成或关闭按钮都会同步内容并返回。</span>
+            <span class="muted">自动解析开启时，输入稳定后会刷新预览；Ctrl/⌘ + Enter 可立即解析。</span>
             <span class="muted" id="sourceEditorStats">0 字符</span>
         </div>
     </div>
@@ -1517,7 +1525,7 @@ const Store = {
         return imported.length;
     },
     createDefaultUI() {
-        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, tablePages:{}, previewTable:"", pageSize:100, cellEdits:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto", exportOnlyChecked:false, exportCols:'all' };
+        return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, tablePages:{}, previewTable:"", pageSize:100, cellEdits:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto", autoParse:true, exportOnlyChecked:false, exportCols:'all' };
     },
     normalizeDoc(doc, idx=0) {
         if(!doc.id) doc.id = this.generateDocId();
@@ -1535,6 +1543,7 @@ const Store = {
         if(!doc.ui.sidebarTab) doc.ui.sidebarTab = 'data';
         if(!doc.ui.importFormat) doc.ui.importFormat = 'auto';
         if(!doc.ui.importHeaderMode) doc.ui.importHeaderMode = 'auto';
+        if(typeof doc.ui.autoParse !== 'boolean') doc.ui.autoParse = true;
         return doc;
     },
     generateDocId() {
@@ -1909,6 +1918,12 @@ const Store = {
             case 'ui:sidebarTab': {
                 this.updateUI('sidebarTab', payload && payload.tab || 'data');
                 this._notify('ui:sidebarChanged', { tab: payload && payload.tab });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'ui:autoParse': {
+                this.updateUI('autoParse', payload && payload.enabled !== false);
+                this._notify('ui:autoParseChanged', { enabled: this.curr().ui.autoParse });
                 this._notify('state:changed', {});
                 return true;
             }
@@ -6445,6 +6460,8 @@ OTA.define('source-controller', ["runtime", "store", "dispatch"], ({$, createEl,
 */
 
 const SourceController = {
+    AUTO_PARSE_MAX_BYTES: 1024 * 1024,
+    AUTO_PARSE_DELAY: 500,
     // ── Timers (held here rather than on App) ──
     _persistTimer: null,
     _statsTimer: null,
@@ -6465,6 +6482,41 @@ const SourceController = {
         if (/\.html?$/.test(name)) return 'html-table';
         if (/\.(md|markdown)$/.test(name)) return 'pipe-table';
         return 'auto';
+    },
+
+    isAutoParseEnabled() {
+        return Store.curr().ui.autoParse !== false;
+    },
+
+    getAutoParseState(text='') {
+        if (!this.isAutoParseEnabled()) return 'manual';
+        return String(text || '').length * 2 >= this.AUTO_PARSE_MAX_BYTES ? 'large' : 'pending';
+    },
+
+    notifyParseState(state) {
+        if (typeof document === 'undefined' || !document.dispatchEvent || typeof CustomEvent !== 'function') return;
+        document.dispatchEvent(new CustomEvent('ota:sourceParseState', { detail: { state } }));
+    },
+
+    clearAutoParse() {
+        clearTimeout(this._autoParseTimer);
+        this._autoParseTimer = null;
+    },
+
+    scheduleAutoParse({ text='', syncToMain=false } = {}) {
+        this.clearAutoParse();
+        const state = this.getAutoParseState(text);
+        this.notifyParseState(state);
+        if (state !== 'pending') return false;
+
+        this._autoParseTimer = setTimeout(() => {
+            this._autoParseTimer = null;
+            if (syncToMain) this._syncToMain();
+            if (typeof document !== 'undefined' && document.dispatchEvent) {
+                document.dispatchEvent(new CustomEvent('ota:sourceAutoParse'));
+            }
+        }, this.AUTO_PARSE_DELAY);
+        return true;
     },
 
     // ── Init ──
@@ -6521,16 +6573,9 @@ const SourceController = {
                 Store.save();
             }, 650);
 
-            // Debounced auto-parse: fire parse when input stabilises (≤1 MB)
-            clearTimeout(SourceController._autoParseTimer);
-            const text = rawInput.value;
-            if (text.length * 2 < 1024 * 1024) {
-                SourceController._autoParseTimer = setTimeout(() => {
-                    if (typeof document !== 'undefined' && document.dispatchEvent) {
-                        document.dispatchEvent(new CustomEvent('ota:sourceAutoParse'));
-                    }
-                }, 500);
-            }
+            // Debounced auto-parse: fire when input stabilises, unless disabled
+            // or the source is large enough to require an explicit parse.
+            SourceController.scheduleAutoParse({ text: rawInput.value });
         });
     },
 
@@ -6587,6 +6632,7 @@ const SourceController = {
      */
     loadFile(file) {
         if (!file) return;
+        this.clearAutoParse();
         if (file.size > MAX_IMPORT_BYTES) {
             Toast.show('文件超过 25 MB 安全限制', true);
             return;
@@ -6660,6 +6706,7 @@ const SourceController = {
         // Wire parse button — emits a custom event that App listens to
         if (parseBtn) {
             parseBtn.onclick = () => {
+                SourceController.clearAutoParse();
                 SourceController._syncToMain();
                 if (typeof document !== 'undefined' && document.dispatchEvent) {
                     document.dispatchEvent(new CustomEvent('ota:sourceParseRequested', {}));
@@ -6672,6 +6719,7 @@ const SourceController = {
             rawLarge.oninput = () => {
                 SourceController._syncStats();
                 SourceController._syncPersist();
+                SourceController.scheduleAutoParse({ text: rawLarge.value, syncToMain: true });
             };
             rawLarge.addEventListener('paste', (e) => {
                 const data = e.clipboardData;
@@ -6701,6 +6749,8 @@ const SourceController = {
         const formatLarge = $('formatSelectLarge');
         if (formatLarge) {
             formatLarge.onchange = (e) => {
+                SourceController.clearAutoParse();
+                SourceController._syncToMain();
                 const main = $('formatSelect');
                 if (main) main.value = e.target.value;
                 // Notify App to update import format
@@ -6713,6 +6763,8 @@ const SourceController = {
         const headerLarge = $('headerModeSelectLarge');
         if (headerLarge) {
             headerLarge.onchange = (e) => {
+                SourceController.clearAutoParse();
+                SourceController._syncToMain();
                 const main = $('headerModeSelect');
                 if (main) main.value = e.target.value;
                 if (typeof document !== 'undefined' && document.dispatchEvent) {
@@ -6746,6 +6798,12 @@ const SourceController = {
     },
 
     close() {
+        const mainInput = $('rawInput');
+        const largeInput = $('rawInputLarge');
+        const textChanged = Boolean(mainInput && largeInput && mainInput.value !== largeInput.value);
+        const hadPendingAutoParse = Boolean(this._autoParseTimer);
+        const nextText = largeInput ? largeInput.value : '';
+        this.clearAutoParse();
         const modal = $('sourceEditorModal');
         if (modal) {
             modal.classList.remove('active');
@@ -6755,6 +6813,7 @@ const SourceController = {
         document.body.classList.remove('source-editor-open');
 
         SourceController._syncToMain();
+        if (textChanged || hadPendingAutoParse) this.scheduleAutoParse({ text: nextText });
 
         // Restore focus
         if (SourceController._returnFocus && typeof SourceController._returnFocus.focus === 'function') {
@@ -6819,6 +6878,7 @@ const SourceController = {
 
     _restoreSource() {
         const doc = Store.curr();
+        this.clearAutoParse();
         const rawInput = $('rawInput');
         if (rawInput) rawInput.value = doc.raw || '';
         SourceController.clearLastPaste();
@@ -8198,6 +8258,7 @@ OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade",
 /* Main App */
 const App = {
     raw: [], rendered: [],
+    sourceParseState: 'ready',
     tabDrag: { sourceId:null },
     // Shared utilities (imported from runtime)
     escapeHtml,
@@ -8265,6 +8326,9 @@ const App = {
             document.addEventListener('ota:sourceFileLoaded', () => { this.run(); });
             document.addEventListener('ota:sourceParseRequested', () => { this.run(); });
             document.addEventListener('ota:sourceAutoParse', () => { this.run(); });
+            document.addEventListener('ota:sourceParseState', (e) => {
+                this.updateSourceParseState(e.detail && e.detail.state);
+            });
             document.addEventListener('ota:formatChanged', (e) => {
                 if (e.detail && e.detail.format) this.setImportFormat(e.detail.format);
             });
@@ -8433,16 +8497,32 @@ const App = {
         const text = $('parseStatusText');
         const details = $('diagnosticsBtn');
         const result = TableRegistry.getLastResult();
+        this.sourceParseState = 'ready';
         const diagnostics = result.diagnostics || [];
         const rowCount = (result.tables || []).reduce((sum, table) => sum + (table.rows || []).length, 0);
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
             if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${diagnostics.length} 项提示` : ''}`;
+            else if ($('rawInput') && $('rawInput').value.trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
         }
         if(details) details.classList.toggle('hidden', !(result.candidates && result.candidates.length) && diagnostics.length === 0);
         this.updateWorkspaceSummary();
+    },
+
+    updateSourceParseState(state) {
+        if (!state || state === 'ready') return;
+        this.sourceParseState = state;
+        const status = $('parseStatus');
+        const text = $('parseStatusText');
+        const details = $('diagnosticsBtn');
+        if (status) status.className = 'parse-status warning';
+        if (details) details.classList.add('hidden');
+        if (!text) return;
+        if (state === 'pending') text.textContent = '输入已修改 · 自动解析中…';
+        else if (state === 'large') text.textContent = '数据较大 · 请点击“立即解析”';
+        else text.textContent = '自动解析已关闭 · 点击“立即解析”';
     },
 
     syncImportControls() {
@@ -8457,6 +8537,8 @@ const App = {
             const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
             headerSelect.disabled = isCli;
         }
+        const autoParseToggle = $('autoParseToggle');
+        if (autoParseToggle) autoParseToggle.checked = d.ui.autoParse !== false;
         if (SourceController._syncControls) SourceController._syncControls();
     },
 
@@ -8592,8 +8674,12 @@ const App = {
             addTabBtn.type = 'button';
             addTabBtn.onclick = e => TabController.createNew(e);
         }
-        const doParse = () => this.run();
+        const doParse = () => {
+            SourceController.clearAutoParse();
+            this.run();
+        };
         const doClear = () => {
+            SourceController.clearAutoParse();
             $('rawInput').value='';
             SourceController.clearLastPaste();
             Store.curr().ui.cellEdits = {};
@@ -8605,8 +8691,17 @@ const App = {
         if(formatSelect) formatSelect.onchange = e => this.setImportFormat(e.target.value);
         const headerModeSelect = $('headerModeSelect');
         if(headerModeSelect) headerModeSelect.onchange = e => this.setHeaderMode(e.target.value);
+        const autoParseToggle = $('autoParseToggle');
+        if (autoParseToggle) autoParseToggle.onchange = e => {
+            const enabled = e.target.checked;
+            dispatch('ui:autoParse', { enabled });
+            SourceController.clearAutoParse();
+            if (enabled) SourceController.scheduleAutoParse({ text: $('rawInput').value });
+            else this.updateSourceParseState('manual');
+        };
         
         const loadSample = () => {
+            SourceController.clearAutoParse();
             this.invalidateCellEdits();
             $('rawInput').value = `table-data Inventory
 validflag ID      Product       Category    Stock   Price
@@ -8812,6 +8907,7 @@ validflag Time      Level   Message                 Code
 
     run(render=true) {
         try {
+            SourceController.clearAutoParse();
             const started = performance.now();
             const sourceText = $('rawInput').value;
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
