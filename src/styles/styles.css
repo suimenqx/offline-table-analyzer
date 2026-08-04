@@ -283,6 +283,21 @@
         .join-chip.drop-before { border-top: 2px solid var(--primary); }
         .join-chip.drop-after { border-bottom: 2px solid var(--primary); }
         .join-chip.selected { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+
+        /* ── Column Sort Modal (drag-to-reorder list) ── */
+        .col-sort-row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; transition: background 0.1s, box-shadow 0.15s; border: 2px solid transparent; border-bottom: 1px solid var(--border-light); user-select: none; }
+        .col-sort-row:last-child { border-bottom: none; }
+        .col-sort-row:hover { background: var(--bg-hover); }
+        .col-sort-handle { flex-shrink: 0; width: 18px; text-align: center; color: var(--text-tertiary); cursor: grab; font-size: 12px; letter-spacing: -2px; line-height: 1; padding: 2px 0; border-radius: 3px; transition: color 0.1s; }
+        .col-sort-handle:hover { color: var(--text-mid); background: var(--bg-elevated); }
+        .col-sort-handle:active { cursor: grabbing; }
+        .col-sort-label { display: flex; align-items: center; gap: 6px; cursor: pointer; flex: 1; min-width: 0; font-size: 13px; }
+        .col-sort-label input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
+        .col-sort-label span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* drag states */
+        .col-sort-row.col-sort-dragging { opacity: 0.35; background: var(--primary-soft); }
+        .col-sort-row.col-sort-drop-before { border-top: 2px solid var(--primary); border-radius: 0; }
+        .col-sort-row.col-sort-drop-after { border-bottom: 2px solid var(--primary); border-radius: 0; }
         .join-alias { height: 22px; font-size: 11px; width: 120px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border-light); background: var(--bg-card); box-shadow: none; }
         .join-alias:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
         .je-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }

@@ -100,7 +100,10 @@ const ModalController = {
     },
 
     /**
-     * Show the "select columns" modal for a table.
+     * Show the "select and order columns" modal for a table.
+     * Each column row has a drag handle (⋮⋮), a checkbox, and the column name.
+     * Drag handles reorder; checkboxes include/exclude; search filters the list.
+     *
      * @param {string} tableName
      * @param {string[]} allHeaders  All available column headers
      * @param {Object} rules  Current UI rules for this table
@@ -114,43 +117,239 @@ const ModalController = {
         const cur = (rule.focus && rule.focus.length > 0) ? rule.focus : allHeaders;
         const isFocusActive = (rule.focus && rule.focus.length > 0);
 
+        // Display order: focus order if active, otherwise natural order.
+        // Include any headers not in the focus list at the end (new columns).
+        const displayOrder = [];
+        const seen = new Set();
+        (isFocusActive ? cur : allHeaders).forEach(col => {
+            if (allHeaders.includes(col) && !seen.has(col)) {
+                displayOrder.push(col);
+                seen.add(col);
+            }
+        });
+        // Append any headers not yet in the display order
+        allHeaders.forEach(col => {
+            if (!seen.has(col)) displayOrder.push(col);
+        });
+
         const html = `
-            <div style="margin-bottom:10px; display:flex; gap:8px;">
+            <div style="margin-bottom:10px; display:flex; gap:8px; align-items:center;">
                 <input id="colSearch" placeholder="搜索列名..." style="flex:1;">
-                <button class="sm" id="colAll">全选</button>
-                <button class="sm" id="colNone">全不选</button>
+                <button class="sm" id="colAll" type="button">全选</button>
+                <button class="sm" id="colNone" type="button">全不选</button>
+                <button class="sm" id="colReset" type="button" title="重置为解析时的原始顺序并全选">↺ 重置</button>
             </div>
-            <div id="colList" style="max-height:400px; overflow-y:auto; border:1px solid var(--border-light); padding:8px; border-radius:4px;">
-                ${allHeaders.map(c => `<label class="checkbox-row" data-val="${escapeHtml(c.toLowerCase())}"><input type="checkbox" value="${escapeHtml(c)}" ${!isFocusActive || cur.includes(c) ? 'checked' : ''}><span>${escapeHtml(c)}</span></label>`).join('')}
+            <div style="margin-bottom:6px; font-size:11px; color:var(--text-tertiary);">
+                <span>⋮⋮ 拖拽排序</span>
+                <span style="margin:0 8px;">·</span>
+                <span>☑ 控制可见列</span>
+                <span style="margin:0 8px;">·</span>
+                <span id="colInfo"></span>
             </div>
-            <div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">应用</button></div>
+            <div id="colList" style="max-height:400px; overflow-y:auto; border:1px solid var(--border-light); padding:4px; border-radius:6px; background:var(--bg-elevated);">
+                ${displayOrder.map(c => {
+                    const safe = escapeHtml(c);
+                    const checked = !isFocusActive || cur.includes(c) ? 'checked' : '';
+                    return `
+                <div class="col-sort-row" data-col="${safe}">
+                    <span class="col-sort-handle" draggable="true" title="拖拽排序">⋮⋮</span>
+                    <label class="col-sort-label">
+                        <input type="checkbox" value="${safe}" ${checked}>
+                        <span>${safe}</span>
+                    </label>
+                </div>`;
+                }).join('')}
+            </div>
+            <div style="margin-top:16px; display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:11px; color:var(--text-tertiary);">提示：搜索时拖拽暂不可用，清除搜索后恢复</span>
+                <button class="primary" id="saveMod" type="button">应用</button>
+            </div>
         `;
-        ModalController.show(`选择列: ${tableName}`, html);
+        ModalController.show(`排序列: ${tableName}`, html);
 
         const list = document.getElementById('colList');
         const search = document.getElementById('colSearch');
-        if (search && list) {
-            search.oninput = () => {
-                const v = search.value.toLowerCase();
-                Array.from(list.children).forEach(r => {
-                    r.style.display = r.dataset.val.includes(v) ? 'flex' : 'none';
-                });
-            };
-        }
-        const allBtn = document.getElementById('colAll');
-        const noneBtn = document.getElementById('colNone');
-        if (allBtn && list) allBtn.onclick = () => Array.from(list.children).forEach(r => {
-            if (r.style.display !== 'none') r.querySelector('input').checked = true;
-        });
-        if (noneBtn && list) noneBtn.onclick = () => Array.from(list.children).forEach(r => {
-            if (r.style.display !== 'none') r.querySelector('input').checked = false;
+        const info = document.getElementById('colInfo');
+
+        const updateInfo = () => {
+            const checked = list.querySelectorAll('.col-sort-row input:checked').length;
+            if (info) info.textContent = `已选 ${checked} / ${allHeaders.length} 列`;
+        };
+        updateInfo();
+
+        // ── Drag-and-drop: only the handle is draggable ──
+        let dragSrc = null;
+
+        const clearIndicators = () => {
+            list.querySelectorAll('.col-sort-row').forEach(r => {
+                r.classList.remove('col-sort-drop-before', 'col-sort-drop-after');
+            });
+        };
+
+        const bindDragHandle = (handle) => {
+            handle.addEventListener('dragstart', (e) => {
+                // Ignore drag if search is filtering
+                if (search && search.value.trim()) {
+                    e.preventDefault();
+                    return;
+                }
+                dragSrc = handle.parentElement;
+                dragSrc.classList.add('col-sort-dragging');
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', dragSrc.dataset.col);
+            });
+
+            handle.addEventListener('dragend', () => {
+                if (dragSrc) dragSrc.classList.remove('col-sort-dragging');
+                dragSrc = null;
+                clearIndicators();
+            });
+        };
+
+        const bindDropRow = (row) => {
+            row.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (!dragSrc || dragSrc === row) return;
+                // Don't show indicator between items of different visibility
+                if (row.style.display === 'none' || dragSrc.style.display === 'none') return;
+                clearIndicators();
+                const rect = row.getBoundingClientRect();
+                const mid = rect.top + rect.height / 2;
+                row.classList.add(e.clientY < mid ? 'col-sort-drop-before' : 'col-sort-drop-after');
+            });
+
+            row.addEventListener('dragleave', () => {
+                row.classList.remove('col-sort-drop-before', 'col-sort-drop-after');
+            });
+
+            row.addEventListener('drop', (e) => {
+                e.preventDefault();
+                row.classList.remove('col-sort-drop-before', 'col-sort-drop-after');
+                if (!dragSrc || dragSrc === row) return;
+                const rect = row.getBoundingClientRect();
+                const mid = rect.top + rect.height / 2;
+                if (e.clientY < mid) {
+                    list.insertBefore(dragSrc, row);
+                } else {
+                    list.insertBefore(dragSrc, row.nextSibling);
+                }
+                // Reset drag state
+                if (dragSrc) dragSrc.classList.remove('col-sort-dragging');
+                dragSrc = null;
+            });
+        };
+
+        // Bind to existing items
+        list.querySelectorAll('.col-sort-handle').forEach(bindDragHandle);
+        list.querySelectorAll('.col-sort-row').forEach(bindDropRow);
+
+        // Allow dropping at the end of the list (empty area)
+        list.addEventListener('dragover', (e) => {
+            if (!dragSrc) return;
+            e.preventDefault();
+            const visibleRows = [...list.querySelectorAll('.col-sort-row')].filter(r => r.style.display !== 'none' && r !== dragSrc);
+            const lastRow = visibleRows[visibleRows.length - 1];
+            if (lastRow) {
+                const lastRect = lastRow.getBoundingClientRect();
+                if (e.clientY > lastRect.bottom) {
+                    clearIndicators();
+                    lastRow.classList.add('col-sort-drop-after');
+                }
+            }
         });
 
+        list.addEventListener('drop', (e) => {
+            if (!dragSrc) return;
+            e.preventDefault();
+            const visibleRows = [...list.querySelectorAll('.col-sort-row')].filter(r => r.style.display !== 'none' && r !== dragSrc);
+            const lastRow = visibleRows[visibleRows.length - 1];
+            if (lastRow) {
+                const lastRect = lastRow.getBoundingClientRect();
+                if (e.clientY > lastRect.bottom) {
+                    list.appendChild(dragSrc);
+                }
+            }
+        });
+
+        // Checkbox changes update the counter
+        list.addEventListener('change', (e) => {
+            if (e.target.type === 'checkbox') updateInfo();
+        });
+
+        // ── Search filter ──
+        let dragHandlesDisabled = false;
+        if (search && list) {
+            search.oninput = () => {
+                const v = search.value.toLowerCase().trim();
+                const isFiltering = v.length > 0;
+                list.querySelectorAll('.col-sort-row').forEach(row => {
+                    const match = !isFiltering || row.dataset.col.toLowerCase().includes(v);
+                    row.style.display = match ? '' : 'none';
+                    const handle = row.querySelector('.col-sort-handle');
+                    if (handle) {
+                        handle.draggable = !isFiltering;
+                        handle.title = isFiltering ? '清除搜索后可拖拽排序' : '拖拽排序';
+                        handle.style.opacity = isFiltering ? '0.4' : '';
+                        handle.style.cursor = isFiltering ? 'default' : 'grab';
+                    }
+                });
+                if (isFiltering && !dragHandlesDisabled) {
+                    dragHandlesDisabled = true;
+                } else if (!isFiltering) {
+                    dragHandlesDisabled = false;
+                }
+            };
+        }
+
+        // ── Buttons ──
+        const allBtn = document.getElementById('colAll');
+        const noneBtn = document.getElementById('colNone');
+        const resetBtn = document.getElementById('colReset');
+
+        if (allBtn) allBtn.onclick = () => {
+            list.querySelectorAll('.col-sort-row').forEach(row => {
+                if (row.style.display !== 'none') {
+                    row.querySelector('input').checked = true;
+                }
+            });
+            updateInfo();
+        };
+
+        if (noneBtn) noneBtn.onclick = () => {
+            list.querySelectorAll('.col-sort-row').forEach(row => {
+                if (row.style.display !== 'none') {
+                    row.querySelector('input').checked = false;
+                }
+            });
+            updateInfo();
+        };
+
+        if (resetBtn) resetBtn.onclick = () => {
+            // Reorder to match allHeaders, check all
+            const rowMap = new Map();
+            list.querySelectorAll('.col-sort-row').forEach(r => rowMap.set(r.dataset.col, r));
+            const fragment = document.createDocumentFragment();
+            allHeaders.forEach(col => {
+                const row = rowMap.get(col);
+                if (row) {
+                    row.querySelector('input').checked = true;
+                    fragment.appendChild(row);
+                }
+            });
+            list.appendChild(fragment);
+            updateInfo();
+        };
+
+        // ── Save ──
         ModalController._bindSaveBtn(() => {
-            const v = Array.from(list.querySelectorAll('input:checked')).map(c => c.value);
-            Store.updateRule(tableName, 'focus', v);
-            const focusInput = $('focusColsInput');
-            if (focusInput) focusInput.value = v.join(', ');
+            const checked = [];
+            list.querySelectorAll('.col-sort-row').forEach(row => {
+                const cb = row.querySelector('input');
+                if (cb && cb.checked) checked.push(cb.value);
+            });
+            Store.updateRule(tableName, 'focus', checked);
+            const focusInput = document.getElementById('focusColsInput');
+            if (focusInput) focusInput.value = checked.join(', ');
             ModalController.close();
             dispatch('preview:renderRequested', {});
         });
