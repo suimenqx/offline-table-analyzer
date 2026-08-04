@@ -1,5 +1,5 @@
 /**
- * ExportController 测试套件 — export helpers / context management
+ * ExportController 测试套件 — export helpers
  */
 import { describe, it, beforeEach } from 'node:test';
 import { strict as assert } from 'node:assert/strict';
@@ -41,28 +41,12 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-describe('ExportController — setContext', () => {
-  it('stores raw tables', () => {
-    const tables = [{ name: 'T1', headers: ['A'], rows: [['1']] }];
-    TableRegistry.setRaw(tables);
-    assert.equal(TableRegistry.getRaw(), tables);
-  });
-
-  it('updates rendered data', () => {
-    const rendered = [{ name: 'T1', headers: ['A'], rows: [{ d: ['1'] }] }];
-    ExportController.setContext({ rendered });
-    assert.equal(ExportController._rendered, rendered);
-  });
-});
-
-// ---------------------------------------------------------------------------
 describe('ExportController — _getPreviewExportTables', () => {
-  it('rebuilds preview data when rendered context is empty', () => {
+  it('rebuilds preview data from the current table registry', () => {
     const tables = [
       { name: 'Inventory', headers: ['id', 'product'], rows: [['1001', 'Widget_A'], ['1002', 'Widget_B']] },
     ];
     TableRegistry.setRaw(tables);
-    ExportController.setContext({ rendered: [] });
 
     const result = ExportController._getPreviewExportTables();
     assert.deepEqual(result, [{
@@ -70,6 +54,15 @@ describe('ExportController — _getPreviewExportTables', () => {
       headers: ['id', 'product'],
       rows: [['1001', 'Widget_A'], ['1002', 'Widget_B']],
     }]);
+  });
+
+  it('applies current preview filters without relying on a rendered cache', () => {
+    TableRegistry.setRaw([{ name: 'T1', headers: ['status'], rows: [['ok'], ['hold']] }]);
+    Store.curr().ui.globalFilter = 'status=ok';
+
+    const result = ExportController._getPreviewExportTables();
+
+    assert.deepEqual(result[0].rows, [['ok']]);
   });
 });
 

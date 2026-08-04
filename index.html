@@ -8006,19 +8006,11 @@ OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "d
    - Copy format selection
    - Export helper methods (getFullExportTables, projectTableForExport, etc.)
 
-   App must call setContext({ raw, rendered, joinTables }) after each parse.
+   Preview exports are rebuilt from the current TableRegistry and UI state so
+   they always use the same data as the visible preview.
 */
 
 const ExportController = {
-    _rendered: [],
-    _joinTables: [],
-
-    /** Called by App after each parse to keep transient references fresh. */
-    setContext(ctx) {
-        if (ctx.rendered) ExportController._rendered = ctx.rendered;
-        if (ctx.joinTables !== undefined) ExportController._joinTables = ctx.joinTables;
-    },
-
     /**
      * Bind export buttons. Called once from App.init().
      */
@@ -8607,6 +8599,8 @@ const App = {
 
     getFullExportTables() { return ExportController._getFullExportTables(); },
 
+    getPreviewProcessedTables() { return ExportController._getPreviewProcessedTables(); },
+
     getPreviewExportTables() { return ExportController._getPreviewExportTables(); },
 
     invalidateCellEdits() {
@@ -8936,7 +8930,6 @@ validflag Time      Level   Message                 Code
             TableRegistry.setResult(result);
             Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
             CellEditController.setRawTables(result.tables);
-            ExportController.setContext({ raw: result.tables });
             this.applyStoredCellEdits();
             this.updateImportSummary();
             const elapsed = Math.round(performance.now() - started);
@@ -9032,17 +9025,8 @@ validflag Time      Level   Message                 Code
         }
         
         const ui = Store.curr().ui;
-        let list = TableRegistry.getRaw();
-        if(ui.displayTables) list = list.filter(t=>ui.displayTables.includes(t.name));
-        
-        let joins = [];
-        if(ui.enabledViews) {
-            joins = ui.enabledViews.map(v => {
-                const cfg = Store.state.globalViews.find(g=>g.view===v);
-                return cfg ? Joiner.run(TableRegistry.getRaw(), cfg, Store.state.globalViews) : null;
-            }).filter(x=>x);
-        }
-        const combined = [...list, ...joins];
+        const processedTables = this.getPreviewProcessedTables();
+        const combined = processedTables.map(({ table }) => table);
         if(!combined.length) {
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
@@ -9052,11 +9036,6 @@ validflag Time      Level   Message                 Code
             return;
         }
 
-        const processedTables = combined.map((table, tIdx) => {
-            const res = this.proc(table, ui);
-            res.rows.forEach((row, index) => { row._resultIndex = index; });
-            return { table, res, tIdx };
-        });
         // Keep filtered results for full preview export and column configuration,
         // while only materializing one table's DOM in large-table mode.
         this.rendered = processedTables.map(({table, res}) => ({name:table.name, ...res}));

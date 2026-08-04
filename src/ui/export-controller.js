@@ -8,19 +8,11 @@ OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "d
    - Copy format selection
    - Export helper methods (getFullExportTables, projectTableForExport, etc.)
 
-   App must call setContext({ raw, rendered, joinTables }) after each parse.
+   Preview exports are rebuilt from the current TableRegistry and UI state so
+   they always use the same data as the visible preview.
 */
 
 const ExportController = {
-    _rendered: [],
-    _joinTables: [],
-
-    /** Called by App after each parse to keep transient references fresh. */
-    setContext(ctx) {
-        if (ctx.rendered) ExportController._rendered = ctx.rendered;
-        if (ctx.joinTables !== undefined) ExportController._joinTables = ctx.joinTables;
-    },
-
     /**
      * Bind export buttons. Called once from App.init().
      */

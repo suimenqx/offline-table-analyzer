@@ -332,6 +332,8 @@ const App = {
 
     getFullExportTables() { return ExportController._getFullExportTables(); },
 
+    getPreviewProcessedTables() { return ExportController._getPreviewProcessedTables(); },
+
     getPreviewExportTables() { return ExportController._getPreviewExportTables(); },
 
 
@@ -672,7 +674,6 @@ validflag Time      Level   Message                 Code
             TableRegistry.setResult(result);
             Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
             CellEditController.setRawTables(result.tables);
-            ExportController.setContext({ raw: result.tables });
             this.applyStoredCellEdits();
             this.updateImportSummary();
             const elapsed = Math.round(performance.now() - started);
@@ -768,17 +769,8 @@ validflag Time      Level   Message                 Code
         }
         
         const ui = Store.curr().ui;
-        let list = TableRegistry.getRaw();
-        if(ui.displayTables) list = list.filter(t=>ui.displayTables.includes(t.name));
-        
-        let joins = [];
-        if(ui.enabledViews) {
-            joins = ui.enabledViews.map(v => {
-                const cfg = Store.state.globalViews.find(g=>g.view===v);
-                return cfg ? Joiner.run(TableRegistry.getRaw(), cfg, Store.state.globalViews) : null;
-            }).filter(x=>x);
-        }
-        const combined = [...list, ...joins];
+        const processedTables = this.getPreviewProcessedTables();
+        const combined = processedTables.map(({ table }) => table);
         if(!combined.length) {
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
@@ -788,11 +780,6 @@ validflag Time      Level   Message                 Code
             return;
         }
 
-        const processedTables = combined.map((table, tIdx) => {
-            const res = this.proc(table, ui);
-            res.rows.forEach((row, index) => { row._resultIndex = index; });
-            return { table, res, tIdx };
-        });
         // Keep filtered results for full preview export and column configuration,
         // while only materializing one table's DOM in large-table mode.
         this.rendered = processedTables.map(({table, res}) => ({name:table.name, ...res}));
