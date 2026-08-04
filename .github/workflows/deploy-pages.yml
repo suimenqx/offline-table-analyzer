@@ -24,13 +24,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build release
+        run: node tools/build-release.cjs
+
+      - name: Validate release
+        run: node tools/validate-release.cjs
+
       - name: Setup Pages
         uses: actions/configure-pages@v4
+
+      - name: Prepare site
+        run: |
+          mkdir -p _site
+          cp index.html _site/
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "."
+          path: _site
 
       - name: Deploy to GitHub Pages
         id: deployment
