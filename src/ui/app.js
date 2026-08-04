@@ -308,12 +308,19 @@ const App = {
     setCopyFormat(format='default') {
         Store.setCopyFormat(format);
         this.syncCopyFormatControl();
+        this.syncCopyHeaderControl();
         Toast.show(`复制格式：${ClipboardFormatter.label(Store.state.copyFormat)}`);
     },
 
     syncCopyFormatControl() {
+        const format = Store.state.copyFormat || 'default';
         const el = $('copyFormatSelect');
-        if(el) el.value = Store.state.copyFormat || 'default';
+        if(el) el.value = format;
+        const label = $('copySettingsLabel');
+        if(label) {
+            const display = format === 'default' ? 'TSV' : ClipboardFormatter.label(format);
+            label.textContent = `复制: ${display}`;
+        }
     },
 
     syncCopyHeaderControl() {
@@ -321,15 +328,27 @@ const App = {
         if(!el) return;
         const format = Store.state.copyFormat || 'default';
         const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        el.checked = isLua || Store.state.copyWithHeaders !== false;
+        const includeHeaders = isLua || Store.state.copyWithHeaders !== false;
+        el.checked = includeHeaders;
         el.disabled = isLua;
-        const label = el.closest ? el.closest('.copy-header-toggle') : null;
-        if(label) {
-            label.classList.toggle('is-disabled', isLua);
-            label.title = isLua
+        const row = el.closest ? el.closest('.copy-settings-row') : null;
+        const hint = $('copyHeaderHint');
+        if(row) {
+            row.classList.toggle('is-disabled', isLua);
+            row.title = isLua
                 ? 'Lua 格式使用表头作为字段名，因此始终包含表头'
                 : '复制选中区域时是否包含列名';
         }
+        if(hint) hint.textContent = isLua ? 'Lua 字段名依赖表头' : '复制选中区域时包含列名';
+
+        const trigger = $('copySettingsBtn');
+        const dot = $('copyHeaderStateDot');
+        const customized = !isLua && !includeHeaders;
+        if(trigger) {
+            trigger.classList.toggle('is-customized', customized);
+            trigger.title = customized ? '复制设置：不含表头' : '复制设置';
+        }
+        if(dot) dot.classList.toggle('hidden', !customized);
     },
 
     getParseOptions() {

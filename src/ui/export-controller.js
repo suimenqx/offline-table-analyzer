@@ -17,6 +17,43 @@ const ExportController = {
      * Bind export buttons. Called once from App.init().
      */
     init() {
+        // Copy settings popover
+        const copyPreferences = $('copyPreferences');
+        const copySettingsBtn = $('copySettingsBtn');
+        const copySettingsPopover = $('copySettingsPopover');
+        const copySettingsCloseBtn = $('copySettingsCloseBtn');
+        const setCopySettingsOpen = (open) => {
+            if(!copySettingsPopover || !copySettingsBtn) return;
+            copySettingsPopover.classList.toggle('hidden', !open);
+            copySettingsBtn.setAttribute('aria-expanded', String(open));
+            if(open) {
+                const select = $('copyFormatSelect');
+                if(select && typeof select.focus === 'function') setTimeout(() => select.focus(), 0);
+            }
+        };
+        if(copySettingsBtn && copySettingsPopover) {
+            copySettingsBtn.onclick = (e) => {
+                e.stopPropagation();
+                setCopySettingsOpen(copySettingsPopover.classList.contains('hidden'));
+            };
+            if(copySettingsCloseBtn) copySettingsCloseBtn.onclick = () => setCopySettingsOpen(false);
+            if(typeof document !== 'undefined' && document.addEventListener) {
+                document.addEventListener('click', (e) => {
+                    const inside = copyPreferences && typeof copyPreferences.contains === 'function'
+                        ? copyPreferences.contains(e.target) : false;
+                    if(!copySettingsPopover.classList.contains('hidden') && !inside) {
+                        setCopySettingsOpen(false);
+                    }
+                });
+                document.addEventListener('keydown', (e) => {
+                    if(e.key === 'Escape' && !copySettingsPopover.classList.contains('hidden')) {
+                        setCopySettingsOpen(false);
+                        copySettingsBtn.focus();
+                    }
+                });
+            }
+        }
+
         // Copy format selector
         const copyFormatSelect = $('copyFormatSelect');
         if (copyFormatSelect) {

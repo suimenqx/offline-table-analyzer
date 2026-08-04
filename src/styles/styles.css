@@ -446,18 +446,31 @@
         .doc-tab.active { color: var(--text-strong); background: var(--bg-elevated); border-color: var(--border); }
         .workspace-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
         .workspace-actions .action-divider { height: 22px; width: 1px; background: var(--border); margin: 0 2px; }
-        .copy-preferences { display: inline-flex; align-items: center; gap: 6px; }
-        .copy-header-toggle { display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 7px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-mid); font-size: 11px; font-weight: 650; cursor: pointer; user-select: none; transition: background .12s ease, border-color .12s ease, color .12s ease; }
-        .copy-header-toggle:hover { background: var(--bg-hover); color: var(--text-strong); }
-        .copy-header-toggle input { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
-        .copy-header-toggle input:focus-visible + .copy-header-switch { outline: 2px solid var(--primary); outline-offset: 2px; }
+        .copy-preferences { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+        .copy-settings-trigger { display: inline-flex; align-items: center; gap: 6px; height: 28px; min-width: 112px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 12px; font-weight: 650; white-space: nowrap; }
+        .copy-settings-trigger:hover { background: var(--bg-hover); border-color: var(--border-strong); color: var(--text-strong); }
+        .copy-settings-trigger.is-customized { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); background: var(--primary-soft); }
+        .copy-settings-icon { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+        .copy-settings-chevron { margin-left: auto; color: var(--text-weak); font-size: 14px; line-height: 1; transform: translateY(-1px); }
+        .copy-settings-dot { width: 5px; height: 5px; margin-left: -2px; border-radius: 50%; background: var(--primary); }
+        .copy-settings-popover { position: absolute; top: calc(100% + 8px); right: 0; z-index: var(--z-float); display: flex; flex-direction: column; gap: 10px; width: 240px; padding: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); }
+        .copy-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-strong); font-size: 12px; }
+        .copy-settings-head .icon-btn { width: 24px; height: 24px; border-radius: 6px; font-size: 16px; }
+        .copy-settings-field { display: flex; flex-direction: column; gap: 5px; margin: 0; color: var(--text-mid); font-size: 11px; font-weight: 700; }
+        .copy-settings-field .copy-format-select { width: 100%; min-width: 0; }
+        .copy-settings-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; margin: 0; padding: 8px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-mid); cursor: pointer; user-select: none; }
+        .copy-settings-row:hover { background: var(--bg-hover); }
+        .copy-settings-row-label { color: var(--text-strong); font-size: 12px; font-weight: 700; }
+        .copy-settings-row-hint { min-width: 0; overflow: hidden; color: var(--text-weak); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+        .copy-settings-row input { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+        .copy-settings-row input:focus-visible + .copy-header-switch { outline: 2px solid var(--primary); outline-offset: 2px; }
         .copy-header-switch { position: relative; width: 24px; height: 14px; border-radius: 999px; background: var(--border-strong); transition: background .12s ease; }
         .copy-header-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .18); transition: transform .12s ease; }
-        .copy-header-toggle input:checked + .copy-header-switch { background: var(--primary); }
-        .copy-header-toggle input:checked + .copy-header-switch::after { transform: translateX(10px); }
-        .copy-header-toggle input:disabled + .copy-header-switch { background: var(--text-weak); opacity: .55; }
-        .copy-header-toggle.is-disabled { cursor: default; }
-        .copy-header-toggle.is-disabled > span:first-child { color: var(--text-weak); }
+        .copy-settings-row input:checked + .copy-header-switch { background: var(--primary); }
+        .copy-settings-row input:checked + .copy-header-switch::after { transform: translateX(10px); }
+        .copy-settings-row input:disabled + .copy-header-switch { background: var(--text-weak); opacity: .55; }
+        .copy-settings-row.is-disabled { cursor: default; }
+        .copy-settings-row.is-disabled .copy-settings-row-label, .copy-settings-row.is-disabled .copy-settings-row-hint { color: var(--text-weak); }
         .workspace-subbar { min-height: 44px; padding: 7px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg-card) 72%, var(--bg-app)); }
         .workspace-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .workspace-summary strong { font-size: 12px; }
@@ -519,8 +532,9 @@
             .top-nav { padding: 7px 9px; }
             .workspace-actions { gap: 3px; }
             .copy-preferences { gap: 3px; }
-            .copy-header-toggle { padding: 0 5px; }
-            .workspace-actions .copy-format-select, .workspace-actions .export-secondary { display: none; }
+            .copy-settings-trigger { min-width: 0; padding: 0 7px; }
+            .copy-settings-popover { position: fixed; top: 58px; right: 9px; width: min(240px, calc(100vw - 18px)); }
+            .workspace-actions .export-secondary { display: none; }
             .workspace-subbar { padding: 7px 10px; }
             .preview-table-picker { max-width: 52vw; }
             #previewTableSelect { min-width: 120px; max-width: 180px; }

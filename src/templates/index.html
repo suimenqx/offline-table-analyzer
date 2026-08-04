@@ -210,20 +210,41 @@
                 <button class="icon-btn sm optional-action" id="undoEditBtn" type="button" title="撤销单元格编辑" disabled aria-label="撤销单元格编辑">↶</button>
                 <button class="icon-btn sm optional-action" id="redoEditBtn" type="button" title="重做单元格编辑" disabled aria-label="重做单元格编辑">↷</button>
                 <button class="icon-btn sm" id="themeBtn" type="button" title="切换明暗主题" aria-label="切换明暗主题">◐</button>
-                <div class="copy-preferences" aria-label="复制设置">
-                    <select id="copyFormatSelect" class="copy-format-select" title="复制表格时的纯文本格式，全局生效">
-                        <option value="default">复制: TSV</option>
-                        <option value="csv">复制: CSV</option>
-                        <option value="markdown">复制: Markdown</option>
-                        <option value="ascii">复制: ASCII</option>
-                        <option value="lua-inline">复制: Lua 单行</option>
-                        <option value="lua-expanded">复制: Lua 展开</option>
-                    </select>
-                    <label class="copy-header-toggle" title="复制选中区域时是否包含列名">
-                        <span>表头</span>
-                        <input id="copyHeadersToggle" type="checkbox" checked aria-label="复制时包含表头">
-                        <span class="copy-header-switch" aria-hidden="true"></span>
-                    </label>
+                <div class="copy-preferences" id="copyPreferences">
+                    <button class="copy-settings-trigger" id="copySettingsBtn" type="button" aria-haspopup="dialog" aria-controls="copySettingsPopover" aria-expanded="false" title="复制设置">
+                        <svg class="copy-settings-icon" viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M4 6h16M4 12h16M4 18h16" />
+                            <circle cx="9" cy="6" r="2" />
+                            <circle cx="15" cy="12" r="2" />
+                            <circle cx="11" cy="18" r="2" />
+                        </svg>
+                        <span id="copySettingsLabel">复制: TSV</span>
+                        <span class="copy-settings-chevron" aria-hidden="true">⌄</span>
+                        <span class="copy-settings-dot hidden" id="copyHeaderStateDot" aria-hidden="true"></span>
+                    </button>
+                    <div class="copy-settings-popover hidden" id="copySettingsPopover" role="dialog" aria-label="复制设置">
+                        <div class="copy-settings-head">
+                            <strong>复制设置</strong>
+                            <button class="icon-btn sm" id="copySettingsCloseBtn" type="button" title="关闭复制设置" aria-label="关闭复制设置">×</button>
+                        </div>
+                        <label class="copy-settings-field" for="copyFormatSelect">
+                            <span>格式</span>
+                            <select id="copyFormatSelect" class="copy-format-select" title="复制表格时的纯文本格式，全局生效">
+                                <option value="default">复制: TSV</option>
+                                <option value="csv">复制: CSV</option>
+                                <option value="markdown">复制: Markdown</option>
+                                <option value="ascii">复制: ASCII</option>
+                                <option value="lua-inline">复制: Lua 单行</option>
+                                <option value="lua-expanded">复制: Lua 展开</option>
+                            </select>
+                        </label>
+                        <label class="copy-settings-row" title="复制选中区域时是否包含列名">
+                            <span class="copy-settings-row-label">包含表头</span>
+                            <span class="copy-settings-row-hint" id="copyHeaderHint">复制选中区域时包含列名</span>
+                            <input id="copyHeadersToggle" type="checkbox" checked aria-label="复制时包含表头">
+                            <span class="copy-header-switch" aria-hidden="true"></span>
+                        </label>
+                    </div>
                 </div>
                 <button class="sm export-secondary" id="exportFullBtn" type="button" title="导出当前页签的全量数据">全量 Excel</button>
                 <button class="primary sm" id="exportPrevBtn" type="button" title="导出当前筛选后的预览结果">导出预览</button>
