@@ -58,7 +58,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed page data from `QueryService` and renders filterable `<table>` elements. |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
-| `SourceController` | Source text input, file drag-and-drop import, fullscreen editor lifecycle, input resizer, format detection from file extension |
+| `SourceController` | Source text input, file drag-and-drop import, fullscreen editor lifecycle, input resizer, format detection from file extension, and ephemeral clipboard/source-format snapshots |
 | `CellEditController` | Inline cell editing with Enter/Tab/Escape/blur, non-destructive overlay persistence, 100-step undo/redo stacks |
 | `FilterController` | Per-column "contains" filter popover positioned near column headers, apply/clear/close actions |
 | `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
@@ -124,6 +124,12 @@ Parsing starts from the unchanged source text and reapplies the overlay. This pr
 
 When the source text, imported file, parser format, or header mode changes, the overlay and session edit history are invalidated. This prevents row-indexed corrections from being applied to a different parsed record.
 
+### Ephemeral paste/source snapshot
+
+`SourceController` keeps the most recent paste or HTML-file source in a session-only snapshot rather than in `Store`. The snapshot records the active document id, available clipboard MIME types, bounded previews for diagnostic display, parser inputs (`text/plain` and `text/html`), rich-text/custom format metadata, and file/item metadata. It is cleared when the source no longer matches the captured plain text, when the active tab changes, or when the source is cleared.
+
+The source editor continues to display plain text. `App.getParseOptions()` reuses the matching HTML payload for the existing HTML-table priority path, while the optional “粘贴源” diagnostic opens escaped code previews and reports the format actually selected. No clipboard payload is persisted to workspace storage, and raw HTML is never rendered by the diagnostic view.
+
 ### Normalized table
 
 ```text
@@ -163,7 +169,7 @@ reused accidentally.
 
 ```text
 paste / drop / file / fullscreen editor
-  → source text + optional clipboard HTML
+  → source text + ephemeral source-format snapshot + optional clipboard HTML
   → ImportEngine format scoring or manual adapter
   → adapter parse (TextLayout supplies position-aware aligned parsing)
   → HeaderResolver and TableUtils normalization
@@ -191,6 +197,7 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 
 - Preview values use `textContent`.
 - Dynamic names used in templates pass through a single escaping helper; select options use DOM `Option` objects.
+- Clipboard/source diagnostics display all captured text formats as escaped code text; HTML, scripts, RTF, custom MIME payloads, and file metadata are never executed or persisted.
 - Workspace import: `kind` must be `'ota-workspace'` or `'table-tool-tabs'`, depth limit 12 levels, max 100 docs, max 2000 keys per object, prototype poison keys (`__proto__`, `prototype`, `constructor`) rejected. Config import: `kind` must be `'table-tool-config'`, file size capped at 5 MB.
 - Table/view names that map to JavaScript prototype keys are rejected or replaced.
 - JOIN compound keys use typed JSON tuples.
@@ -208,9 +215,9 @@ All test files use Node's built-in test runner and live under `tests/`:
 - `tests/unit/parser.test.js` and `parser-facade.test.js`: all 12 parser adapters, malformed input, diagnostics, normalization, and legacy compatibility.
 - `tests/unit/filter-engine.test.js`, `joiner.test.js`, and `query-service.test.js`: filtering, JOIN semantics, the shared preview result contract, and bounded-cache invalidation.
 - `tests/unit/clipboard.test.js` and `export-controller.test.js`: copy formats, HTML clipboard payloads, formula protection, Lua serialization, and export projections.
-- `tests/unit/store.test.js`, `dispatch.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, command/event behavior, and tab lifecycle.
+- `tests/unit/store.test.js`, `dispatch.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, clipboard/source snapshot capture, command/event behavior, and tab lifecycle.
 - `tests/unit/modal-controller.test.js`, `filter-controller.test.js`, and `cell-edit-controller.test.js`: dialog, filter, and correction-controller contracts.
-- `tests/integration/build.test.js`, `ui-smoke.test.js`, and `accessibility.test.js`: deterministic release construction, bootstrap behavior, render coalescing, keyboard/UI contracts, live regions, and responsive markers.
+- `tests/integration/build.test.js`, `ui-smoke.test.js`, and `accessibility.test.js`: deterministic release construction, bootstrap behavior, render coalescing, paste-source diagnostics, keyboard/UI contracts, live regions, and responsive markers.
 - `tools/validate-release.cjs`: version consistency, single inline script, offline assets/APIs, and required community files.
 - `tools/validate-architecture.cjs`: Store command boundary, offline and large-data boundaries, schema/version consistency, manifest completeness, and deterministic `index.html` output.
 

@@ -42,6 +42,7 @@ beforeEach(() => {
   Store.loadFailed = false;
   Store.lastSaveError = null;
   Store._listeners = null;
+  SourceController._lastPaste = null;
 });
 
 // ---------------------------------------------------------------------------
@@ -108,6 +109,56 @@ describe('SourceController paste metadata', () => {
     SourceController._lastPaste = { html: '<table>', plain: 'x', docId: 'a' };
     SourceController.clearLastPaste();
     assert.equal(SourceController.getLastPaste(), null);
+  });
+
+  it('captures plain, HTML, rich-text, custom types, items, and file metadata', () => {
+    const values = {
+      'text/plain': 'id\tname\n1\tAlice',
+      'text/html': '<table><tr><td>Alice</td></tr></table>',
+      'text/rtf': '{\\rtf1\\ansi Alice}',
+      'application/x-source-app': '{"kind":"table"}',
+    };
+    const snapshot = SourceController.captureClipboard({
+      types: Object.keys(values),
+      getData(type) { return values[type] || ''; },
+      items: [{ kind: 'string', type: 'text/html' }, { kind: 'file', type: 'image/png' }],
+      files: [{ name: 'chart.png', type: 'image/png', size: 128 }],
+    });
+
+    assert.equal(snapshot.kind, 'clipboard');
+    assert.deepEqual(snapshot.types, Object.keys(values));
+    assert.equal(snapshot.plain, values['text/plain']);
+    assert.equal(snapshot.html, values['text/html']);
+    assert.equal(snapshot.hasHtmlTable, true);
+    assert.equal(snapshot.files[0].name, 'chart.png');
+    assert.equal(snapshot.items[1].type, 'image/png');
+    assert.ok(snapshot.formats.some(item => item.type === 'text/rtf'));
+    assert.ok(snapshot.formats.some(item => item.type === 'application/x-source-app'));
+  });
+
+  it('bounds diagnostic previews without truncating parser inputs', () => {
+    const html = '<table><tr><td>1</td></tr></table>';
+    const rtf = 'x'.repeat(SourceController.CLIPBOARD_PREVIEW_LIMIT + 10);
+    const snapshot = SourceController.captureClipboard({
+      types: ['text/plain', 'text/html', 'text/rtf'],
+      getData(type) {
+        return type === 'text/html' ? html : type === 'text/rtf' ? rtf : '1';
+      },
+    });
+    const rtfFormat = snapshot.formats.find(item => item.type === 'text/rtf');
+    assert.equal(rtfFormat.preview.length, SourceController.CLIPBOARD_PREVIEW_LIMIT);
+    assert.equal(rtfFormat.truncated, true);
+    assert.equal(snapshot.html, html);
+  });
+
+  it('only returns a source snapshot while the editor still matches the pasted plain text', () => {
+    SourceController.captureClipboard({
+      types: ['text/plain'],
+      getData() { return 'id,name\n1,Alice'; },
+    });
+    assert.ok(SourceController.getCurrentPaste('id,name\n1,Alice'));
+    assert.equal(SourceController.getCurrentPaste('id,name\n1,Bob'), null);
+    assert.equal(SourceController.getCurrentPaste(''), null);
   });
 });
 

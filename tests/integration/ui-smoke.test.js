@@ -212,3 +212,43 @@ describe('Runtime API surface', () => {
     }
   });
 });
+
+describe('Paste source diagnostics', () => {
+  it('shows escaped source formats without executing pasted HTML', () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { SourceController } = OTA.require('source-controller');
+    const { TableRegistry } = OTA.require('table-registry');
+    const plain = 'id\tname\n1\tAlice';
+    const html = '<table><tr><td>Alice</td></tr></table><script>alert(1)</script>';
+    document.getElementById('rawInput').value = plain;
+    SourceController.setPasteSnapshot(SourceController.createSourceSnapshot({
+      plain,
+      html,
+      types: ['text/plain', 'text/html'],
+      formats: [
+        SourceController.createSourceFormat('text/plain', plain),
+        SourceController.createSourceFormat('text/html', html),
+      ],
+    }));
+    TableRegistry.setResult({ format: 'html-table', tables: [], diagnostics: [], candidates: [] });
+
+    const sourceButton = document.getElementById('pasteSourceBtn');
+    App.updatePasteSourceButton();
+    assert.equal(sourceButton.classList.contains('hidden'), false);
+
+    let modalTitle = '';
+    let modalBody = '';
+    const originalModal = App.modal;
+    App.modal = (title, body) => { modalTitle = title; modalBody = body; };
+    try {
+      App.showPasteSource();
+    } finally {
+      App.modal = originalModal;
+    }
+    assert.equal(modalTitle, '粘贴源诊断');
+    assert.ok(modalBody.includes('&lt;table&gt;'));
+    assert.ok(modalBody.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+    assert.ok(!modalBody.includes('<table>'));
+  });
+});

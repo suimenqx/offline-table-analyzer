@@ -17,6 +17,9 @@ OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controll
 const SourceController = {
     AUTO_PARSE_MAX_BYTES: 1024 * 1024,
     AUTO_PARSE_DELAY: 500,
+    CLIPBOARD_PREVIEW_LIMIT: 200000,
+    CLIPBOARD_KNOWN_TYPES: ['text/plain', 'text/html', 'text/rtf', 'text/csv', 'text/uri-list'],
+    _lastPaste: null,
     // ── Timers (held here rather than on App) ──
     _persistTimer: null,
     _statsTimer: null,
@@ -55,6 +58,101 @@ const SourceController = {
     clearAutoParse() {
         clearTimeout(this._autoParseTimer);
         this._autoParseTimer = null;
+    },
+
+    notifyPasteSourceChanged() {
+        if (typeof document === 'undefined' || !document.dispatchEvent || typeof CustomEvent !== 'function') return;
+        document.dispatchEvent(new CustomEvent('ota:pasteSourceChanged', {
+            detail: {
+                hasSource: Boolean(this._lastPaste),
+                docId: this._lastPaste && this._lastPaste.docId,
+            },
+        }));
+    },
+
+    readClipboardText(data, type) {
+        if (!data || typeof data.getData !== 'function') return '';
+        try { return String(data.getData(type) || ''); } catch (_) { return ''; }
+    },
+
+    createSourceFormat(type, value='') {
+        const text = String(value || '');
+        return {
+            type,
+            length: text.length,
+            preview: text.slice(0, this.CLIPBOARD_PREVIEW_LIMIT),
+            truncated: text.length > this.CLIPBOARD_PREVIEW_LIMIT,
+        };
+    },
+
+    createSourceSnapshot({ kind='clipboard', docId=Store.state.activeId, plain='', html='', types=[], formats=[], files=[], items=[], fileName='' } = {}) {
+        const safePlain = String(plain || '');
+        const safeHtml = String(html || '');
+        const typeSet = new Set((Array.isArray(types) ? types : []).map(type => String(type || '')).filter(Boolean));
+        if (safePlain && !typeSet.has('text/plain')) typeSet.add('text/plain');
+        if (safeHtml && !typeSet.has('text/html')) typeSet.add('text/html');
+        const knownFormats = Array.isArray(formats) ? formats.slice() : [];
+        const knownTypes = new Set(knownFormats.map(item => item && item.type).filter(Boolean));
+        if (safePlain && !knownTypes.has('text/plain')) knownFormats.push(this.createSourceFormat('text/plain', safePlain));
+        if (safeHtml && !knownTypes.has('text/html')) knownFormats.push(this.createSourceFormat('text/html', safeHtml));
+        return {
+            kind,
+            docId,
+            fileName: String(fileName || ''),
+            plain: safePlain,
+            html: safeHtml,
+            types: Array.from(typeSet),
+            formats: knownFormats,
+            files: Array.isArray(files) ? files.slice() : [],
+            items: Array.isArray(items) ? items.slice() : [],
+            hasHtmlTable: /<table[\s>]/i.test(safeHtml) && /<tr[\s>]/i.test(safeHtml),
+        };
+    },
+
+    setPasteSnapshot(snapshot) {
+        this._lastPaste = snapshot || null;
+        this.notifyPasteSourceChanged();
+        return this._lastPaste;
+    },
+
+    /**
+     * Capture all useful clipboard metadata during the user paste event.
+     * Only bounded previews of non-parser formats are retained; text/plain
+     * and text/html remain available in full for the existing parse path.
+     */
+    captureClipboard(data, docId=Store.state.activeId) {
+        if (!data) return this.setPasteSnapshot(null);
+        const declaredTypes = Array.from(data.types || []).map(type => String(type || '')).filter(Boolean);
+        const candidateTypes = new Set([...declaredTypes, ...this.CLIPBOARD_KNOWN_TYPES]);
+        const formats = [];
+        candidateTypes.forEach(type => {
+            if (type.toLowerCase() === 'files') return;
+            const value = this.readClipboardText(data, type);
+            if (value || declaredTypes.includes(type)) formats.push(this.createSourceFormat(type, value));
+        });
+        const files = Array.from(data.files || []).map(file => ({
+            name: String(file && file.name || ''),
+            type: String(file && file.type || ''),
+            size: Number(file && file.size) || 0,
+        }));
+        const items = Array.from(data.items || []).map(item => ({
+            kind: String(item && item.kind || ''),
+            type: String(item && item.type || ''),
+        })).filter(item => item.kind || item.type);
+        const plain = this.readClipboardText(data, 'text/plain');
+        const html = this.readClipboardText(data, 'text/html');
+        if (!formats.length && !files.length && !items.length) return this.setPasteSnapshot(null);
+        return this.setPasteSnapshot(this.createSourceSnapshot({
+            kind: 'clipboard', docId, plain, html, types: declaredTypes, formats, files, items,
+        }));
+    },
+
+    /** Return the current source snapshot only when it still matches the editor. */
+    getCurrentPaste(text='') {
+        const snapshot = this._lastPaste;
+        if (!snapshot || snapshot.docId !== Store.state.activeId) return null;
+        if (String(snapshot.plain || '').trim() !== String(text || '').trim()) return null;
+        return snapshot;
     },
 
     scheduleAutoParse({ text='', syncToMain=false } = {}) {
@@ -96,21 +194,14 @@ const SourceController = {
 
         // Input changes → dispatch source:changed
         rawInput.oninput = () => {
-            dispatch('source:changed', { text: rawInput.value, preservePaste:Boolean(SourceController._lastPaste && SourceController._lastPaste.docId === Store.state.activeId && String(SourceController._lastPaste.plain || '').trim() === rawInput.value.trim()) });
+            dispatch('source:changed', { text: rawInput.value, preservePaste:Boolean(SourceController.getCurrentPaste(rawInput.value)) });
         };
 
         // Paste with HTML detection
         rawInput.addEventListener('paste', (e) => {
             const data = e.clipboardData;
             if (!data) return;
-            const html = data.getData('text/html');
-            const plain = data.getData('text/plain');
-            if (html && /<table[\s>]/i.test(html)) {
-                // Store paste metadata on the controller; App can read it via getLastPaste()
-                SourceController._lastPaste = { html, plain, docId: Store.state.activeId };
-            } else {
-                SourceController._lastPaste = null;
-            }
+            SourceController.captureClipboard(data);
         });
 
         // Source transitions already schedule persistence; this listener only
@@ -122,14 +213,15 @@ const SourceController = {
         });
     },
 
-    /** Return the last HTML paste, if any. */
+    /** Return the last ephemeral clipboard/file source snapshot, if any. */
     getLastPaste() {
         return SourceController._lastPaste || null;
     },
 
     /** Clear stored paste metadata. */
     clearLastPaste() {
-        SourceController._lastPaste = null;
+        if (!SourceController._lastPaste) return;
+        SourceController.setPasteSnapshot(null);
     },
 
     // ── File import ──
@@ -195,10 +287,16 @@ const SourceController = {
                 return;
             }
 
-            if (detected === 'html-table' && Store.state.activeId === targetDocId) {
-                SourceController._lastPaste = { html: text, plain: text, docId: Store.state.activeId };
-            } else if (Store.state.activeId === targetDocId) {
-                SourceController._lastPaste = null;
+            if (Store.state.activeId === targetDocId) {
+                SourceController.setPasteSnapshot(SourceController.createSourceSnapshot({
+                    kind: 'file',
+                    docId: Store.state.activeId,
+                    fileName: file.name,
+                    plain: text,
+                    html: detected === 'html-table' ? text : '',
+                    types: [detected === 'html-table' ? 'text/html' : 'text/plain'],
+                    formats: [SourceController.createSourceFormat(detected === 'html-table' ? 'text/html' : 'text/plain', text)],
+                }));
             }
 
             if (Store.state.activeId === targetDocId) {
@@ -266,13 +364,7 @@ const SourceController = {
             rawLarge.addEventListener('paste', (e) => {
                 const data = e.clipboardData;
                 if (!data) return;
-                const html = data.getData('text/html');
-                const plain = data.getData('text/plain');
-                if (html && /<table[\s>]/i.test(html)) {
-                    SourceController._lastPaste = { html, plain, docId: Store.state.activeId };
-                } else {
-                    SourceController._lastPaste = null;
-                }
+                SourceController.captureClipboard(data);
             });
             rawLarge.onkeydown = (e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -368,7 +460,7 @@ const SourceController = {
 
         const text = largeInput.value;
         mainInput.value = text;
-        dispatch('source:changed', { text: text, preservePaste:Boolean(SourceController._lastPaste && SourceController._lastPaste.docId === Store.state.activeId && String(SourceController._lastPaste.plain || '').trim() === text.trim()) });
+        dispatch('source:changed', { text: text, preservePaste:Boolean(SourceController.getCurrentPaste(text)) });
     },
 
     /** Reflect format/header controls from main → fullscreen. */

@@ -60,6 +60,7 @@ const App = {
                     if (!payload || payload.docId === Store.state.activeId) {
                         CellEditController.reset();
                         if(!payload || payload.preservePaste !== true) SourceController.clearLastPaste();
+                        this.updatePasteSourceButton();
                         this.updateWorkspaceSummary();
                     }
                     break;
@@ -113,6 +114,9 @@ const App = {
             document.addEventListener('ota:sourceAutoParse', () => { this.run(); });
             document.addEventListener('ota:sourceParseState', (e) => {
                 this.updateSourceParseState(e.detail && e.detail.state);
+            });
+            document.addEventListener('ota:pasteSourceChanged', () => {
+                this.updatePasteSourceButton();
             });
             document.addEventListener('ota:formatChanged', (e) => {
                 if (e.detail && e.detail.format) this.setImportFormat(e.detail.format);
@@ -340,7 +344,21 @@ const App = {
             else text.textContent = '等待输入数据';
         }
         if(details) details.classList.toggle('hidden', !(result.candidates && result.candidates.length) && diagnostics.length === 0);
+        this.updatePasteSourceButton();
         this.updateWorkspaceSummary();
+    },
+
+    updatePasteSourceButton() {
+        const button = $('pasteSourceBtn');
+        if(!button) return;
+        const text = $('rawInput') ? $('rawInput').value : '';
+        const snapshot = SourceController.getCurrentPaste(text);
+        if(snapshot) button.classList.remove('hidden');
+        else button.classList.add('hidden');
+        if(snapshot) {
+            const count = (snapshot.types || []).length;
+            button.title = `${snapshot.kind === 'file' ? '查看导入文件' : '查看粘贴源'} · ${count} 种剪贴板格式`;
+        }
     },
 
     updateSourceParseState(state) {
@@ -438,13 +456,41 @@ const App = {
     getParseOptions() {
         const d = Store.curr();
         const text = $('rawInput').value;
-        const last = SourceController.getLastPaste() || {};
-        const html = last.html && last.plain && last.docId === Store.state.activeId && text.trim() === last.plain.trim() ? last.html : '';
+        const last = SourceController.getCurrentPaste(text) || {};
+        const html = last.html || '';
         const formatEl = $('formatSelect');
         const headerEl = $('headerModeSelect');
         const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
         const headerMode = (headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
         return { html, format, headerMode };
+    },
+
+    showPasteSource() {
+        const text = $('rawInput') ? $('rawInput').value : '';
+        const snapshot = SourceController.getCurrentPaste(text);
+        if(!snapshot) {
+            Toast.show('当前没有与输入内容对应的粘贴源', true);
+            this.updatePasteSourceButton();
+            return;
+        }
+        const result = TableRegistry.getLastResult() || {};
+        const usesHtml = Boolean(snapshot.html && snapshot.hasHtmlTable && result.format === 'html-table');
+        const selectedType = usesHtml ? 'text/html' : snapshot.plain ? 'text/plain' : '未确定';
+        const selectedLabel = usesHtml ? 'HTML 表格' : selectedType === 'text/plain' ? '纯文本' : '未确定';
+        const sourceLabel = snapshot.kind === 'file'
+            ? `文件导入${snapshot.fileName ? `：${this.escapeHtml(snapshot.fileName)}` : ''}`
+            : '用户粘贴';
+        const typeRows = (snapshot.types || []).map(type => `<span class="clipboard-type">${this.escapeHtml(type)}</span>`).join('');
+        const itemRows = (snapshot.items || []).map(item => `<div class="muted">项目：${this.escapeHtml(item.kind || '未知')} · ${this.escapeHtml(item.type || '未声明类型')}</div>`).join('');
+        const fileRows = (snapshot.files || []).map(file => `<div class="muted">文件：${this.escapeHtml(file.name || '(未命名)')} · ${this.escapeHtml(file.type || '未知类型')} · ${Number(file.size || 0).toLocaleString()} 字节</div>`).join('');
+        const formats = (snapshot.formats || []).map(format => {
+            const label = format.type === 'text/plain' ? '纯文本' : format.type === 'text/html' ? 'HTML' : format.type === 'text/rtf' ? 'RTF' : format.type;
+            const note = `${Number(format.length || 0).toLocaleString()} 字符${format.truncated ? ' · 仅显示前 200,000 字符' : ''}`;
+            const preview = format.preview ? this.escapeHtml(format.preview) : '(空内容)';
+            return `<section class="clipboard-format-block"><div class="clipboard-format-title"><strong>${this.escapeHtml(label)}</strong><span class="muted">${this.escapeHtml(format.type)} · ${note}</span></div><pre class="clipboard-source-preview">${preview}</pre></section>`;
+        }).join('');
+        const meta = `<div class="clipboard-source-meta"><div><strong>来源：</strong>${sourceLabel}</div><div><strong>实际解析：</strong>${this.escapeHtml(selectedLabel)} <span class="muted">(${this.escapeHtml(selectedType)})</span></div><div><strong>HTML 表格：</strong>${snapshot.hasHtmlTable ? '是' : '否'}</div><div><strong>可用格式：</strong>${typeRows || '<span class="muted">未声明</span>'}</div>${itemRows}${fileRows}</div>`;
+        this.modal('粘贴源诊断', `${meta}<div class="clipboard-source-warning">原始内容仅以代码文本显示，不会执行其中的 HTML、脚本或其他格式。</div><div class="clipboard-source-formats">${formats || '<div class="muted">没有可显示的文本格式内容</div>'}</div>`);
     },
 
 
@@ -563,6 +609,8 @@ const App = {
         };
         $('parseBtn').onclick = doParse;
         $('clearBtn').onclick = doClear;
+        const pasteSourceBtn = $('pasteSourceBtn');
+        if(pasteSourceBtn) pasteSourceBtn.onclick = () => this.showPasteSource();
         const formatSelect = $('formatSelect');
         if(formatSelect) formatSelect.onchange = e => this.setImportFormat(e.target.value);
         const headerModeSelect = $('headerModeSelect');
@@ -741,6 +789,7 @@ validflag Time      Level   Message                 Code
         if($('sidebar')) this.setSidebarTab(d.ui.sidebarTab || 'data');
         this.syncCopyFormatControl();
         this.syncCopyHeaderControl();
+        this.updatePasteSourceButton();
         this.run(false);
         this.renderPreview();
         this.updateStorageStatus();
