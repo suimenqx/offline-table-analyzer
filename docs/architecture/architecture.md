@@ -55,7 +55,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 
 | Module | Responsibility |
 | --- | --- |
-| `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed rows from `FilterEngine` and renders filterable `<table>` elements. |
+| `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed page data from `QueryService` and renders filterable `<table>` elements. |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
 | `SourceController` | Source text input, file drag-and-drop import, fullscreen editor lifecycle, input resizer, format detection from file extension |
@@ -64,7 +64,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
 | `TabController` | Tab bar rendering, inline rename (F2/dblclick), drag-and-drop reorder, keyboard navigation (arrows/Enter/Delete) |
 | `ExportController` | XLSX export (raw/full/preview), workspace JSON backup/restore, config JSON export/import with title-based matching, copy format selection |
-| `App` | UI orchestration, parsing, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading. Delegates filtering to `FilterEngine` and table DOM building to `TableBuilder`. |
+| `App` | UI orchestration, parsing, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading. Delegates derived preview queries to `QueryService` and table DOM building to `TableBuilder`. |
 
 The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor.md); the complete acceptance checklist is in [Refactor requirements](../planning/refactor-requirements.md).
 
@@ -137,6 +137,28 @@ diagnostics[]
 
 All downstream operations consume this shape regardless of the original source format.
 
+### Command, revision, and rendering contract
+
+`Store` is the only owner of persistent workspace state. UI controllers read through
+`Store.getState()` / `Store.getDocument()` and send mutations through
+`dispatch(action, payload)`, which delegates to `Store.transition()`. The transition
+returns a command result and emits a domain event plus `state:changed`; UI code does
+not call `Store.save()` or assign to persisted state directly. The architecture
+validator checks this boundary for every file under `src/ui/`.
+
+The store maintains three derived invalidation counters:
+
+- `revision` increments for every accepted state transition;
+- `viewRevision` increments when global JOIN views change;
+- `queryRevision` increments when views, query controls, UI state, or the parsed
+  dataset changes.
+
+Change notifications are queued and delivered together on the next event-loop tick.
+`App.requestRender()` coalesces the resulting render requests into one preview render.
+`QueryService` includes the document/source/view/query revisions and the raw-table
+identity in its bounded cache key, so a result from another source or query cannot be
+reused accidentally.
+
 ## 4. Data flow
 
 ```text
@@ -146,10 +168,8 @@ paste / drop / file / fullscreen editor
   → adapter parse (TextLayout supplies position-aware aligned parsing)
   → HeaderResolver and TableUtils normalization
   → diagnostics + normalized tables
-  → QueryService: JOIN resolution + FilterEngine filtering/highlighting/focus + bounded cache
   → persisted correction overlay + edit undo/redo
-  → filters/highlights/focus columns
-  → optional JOIN views (dependency cycle check → execution)
+  → QueryService: JOIN resolution + FilterEngine filtering/highlighting/focus + bounded cache
   → paginated DOM preview (large datasets materialize one selected table)
   → selected visual rectangle
   → ClipboardFormatter text/HTML payload or preview XLSX / full XLSX / workspace JSON / config JSON
@@ -183,15 +203,17 @@ Parsing, filtering, JOINs, and XLSX generation currently run on the main thread.
 
 ## 8. Testing architecture
 
-All test scripts reside under `tests/`:
+All test files use Node's built-in test runner and live under `tests/`:
 
-- `run-parser-tests.js`: parser formats (all 12 adapters), malformed input, diagnostics, normalization, and aligned-table separator variants.
-- `run-build-tests.js`: source manifest completeness, deterministic release output, single-script packaging, and generated syntax.
-- `run-startup-tests.js`: browser-like DOM/storage smoke test for the module graph and application bootstrap.
-- `run-copy-tests.js`: copy formats (CSV/TSV/Markdown/ASCII/Lua/HTML/text), Lua literals and layouts, row-header restoration, multiline cells, HTML escaping, formula protection, and workspace format persistence.
-- `run-tab-tests.js`: tab rules, Store migration shape, temporary mode, quota failures, workspace imports, config import/export.
-- `run-join-tests.js`: all JOIN types, compound-key collisions, missing fields, duplicate headers, dependency cycle detection.
-- `run-ui-tests.js`: full-script syntax and static interaction/accessibility contracts.
-- `validate-release.js`: version consistency, single inline script, offline assets/APIs, required community files.
+- `tests/unit/parser.test.js` and `parser-facade.test.js`: all 12 parser adapters, malformed input, diagnostics, normalization, and legacy compatibility.
+- `tests/unit/filter-engine.test.js`, `joiner.test.js`, and `query-service.test.js`: filtering, JOIN semantics, the shared preview result contract, and bounded-cache invalidation.
+- `tests/unit/clipboard.test.js` and `export-controller.test.js`: copy formats, HTML clipboard payloads, formula protection, Lua serialization, and export projections.
+- `tests/unit/store.test.js`, `dispatch.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, command/event behavior, and tab lifecycle.
+- `tests/unit/modal-controller.test.js`, `filter-controller.test.js`, and `cell-edit-controller.test.js`: dialog, filter, and correction-controller contracts.
+- `tests/integration/build.test.js`, `ui-smoke.test.js`, and `accessibility.test.js`: deterministic release construction, bootstrap behavior, render coalescing, keyboard/UI contracts, live regions, and responsive markers.
+- `tools/validate-release.cjs`: version consistency, single inline script, offline assets/APIs, and required community files.
+- `tools/validate-architecture.cjs`: Store command boundary, offline and large-data boundaries, schema/version consistency, manifest completeness, and deterministic `index.html` output.
+
+`npm test` rebuilds the release and runs every `tests/**/*.test.js` file. Release delivery additionally requires `npm run validate:release` and `npm run validate:architecture`.
 
 The static UI contract suite is intentionally not described as full E2E coverage. Browser interaction remains part of release QA and is a roadmap target for automated CI.

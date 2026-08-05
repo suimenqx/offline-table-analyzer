@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are provided for the latest v20 release line.
+Security fixes are provided for the latest v22 release line.
 
 ## Reporting a vulnerability
 
@@ -28,4 +28,3 @@ Include:
 ## Not a secure vault
 
 Browser local storage is not encrypted. Do not treat the application as a secrets manager. Use temporary-data mode and clear browser data when working on a shared device.
-

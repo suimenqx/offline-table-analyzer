@@ -132,9 +132,10 @@ Read [PRIVACY_POLICY.md](PRIVACY_POLICY.md) before using the tool with sensitive
 Runtime dependencies are intentionally zero. Node.js is used only for validation.
 
 ```bash
-npm test              # runs all 7 test suites
+npm test              # rebuilds the release and runs all unit/integration tests
 npm run build:release # rebuilds the single-file release from src/
 npm run validate:release  # release readiness check
+npm run validate:architecture # architecture and deterministic-build check
 ```
 
 The test suite covers parser formats, copy serialization, state/storage behavior, JOIN correctness, syntax checks, UI contracts, accessibility markers, and offline release constraints.

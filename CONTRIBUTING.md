@@ -19,6 +19,7 @@ Node.js 20 or newer is recommended. There are no runtime or package dependencies
 ```bash
 npm test
 npm run validate:release
+npm run validate:architecture
 ```
 
 Open `index.html` directly for manual testing. A static server may be used when a browser restricts local-file APIs.
@@ -29,10 +30,10 @@ Open `index.html` directly for manual testing. A static server may be used when 
 - Add parser fixtures for format changes and edge cases.
 - Add JOIN tests for matching semantics and null/empty behavior.
 - Test light/dark themes, keyboard navigation, and at least one narrow viewport for UI changes.
+- Run `npm test`, `npm run validate:release`, and `npm run validate:architecture` before submitting a change.
 - Update `CHANGELOG.md` under an Unreleased section.
 - Do not commit generated downloads, screenshots containing sensitive data, or duplicated release HTML files.
 
 ## Commit style
 
 Short conventional prefixes are encouraged: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, and `chore:`.
-

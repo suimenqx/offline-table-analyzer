@@ -163,7 +163,7 @@ DOM event
 - 同一人连续演进：直接在 `main` 上提交，每个阶段保持独立可回退。
 - 不创建主题分支或 PR；生成的 `index.html` 只由构建脚本更新。
 - 回退优先使用 `git revert`；不要用 destructive reset 覆盖已发布变更。
-- 发布前运行 `npm run build:release` + `npm run validate:release` + 全量测试。
+- 发布前运行 `npm run build:release` + `npm test` + `npm run validate:release` + `npm run validate:architecture`。
 
 ## 9. 架构风险与决策门槛
 

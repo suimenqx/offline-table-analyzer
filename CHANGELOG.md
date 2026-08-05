@@ -2,6 +2,25 @@
 
 All notable changes are documented here. The project follows semantic versioning from v20 onward.
 
+## 22.0.0 — 2026-08-05
+
+### Architecture and state reliability
+
+- Reorganized the runtime into 41 deterministic source modules while preserving the single-file, offline release generated from `src/`.
+- Added the `Store.transition` / `dispatch` command boundary, batched `onChange` events, state/view/query revisions, and architecture validation that prevents UI controllers from writing Store state directly.
+- Added per-document `sourceRevision` and parse metadata; source, parser, and header changes invalidate row-indexed corrections and stale asynchronous parse results are rejected.
+- Added explicit schema migration coverage and deterministic version injection across package, runtime, backup, and release output.
+
+### Shared query and user feedback
+
+- Added the pure `QueryService` contract shared by preview and preview export, including JOIN/filter/focus processing, pagination metadata, raw-table identity, and bounded cache invalidation.
+- Added visible analysis state, active filter/JOIN chips, format-candidate explanations, correction/JOIN feedback, dialog focus trapping/restoration, live-region coverage, and narrow-screen accessibility checks.
+
+### Verification and documentation
+
+- Expanded unit and integration coverage for state lifecycle, source isolation, query caching, UI smoke behavior, accessibility, and deterministic release construction.
+- Added architecture validation alongside release validation and synchronized the architecture, requirements, roadmap, user guide, README, security policy, and changelog with v22 behavior.
+
 ## 21.0.0 — 2026-07-20
 
 ### Architecture: domain module purification

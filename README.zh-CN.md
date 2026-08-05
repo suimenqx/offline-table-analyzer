@@ -132,9 +132,10 @@ Offline Table Analyzer 是一个隐私优先、完全离线的表格整理与分
 运行时零依赖，Node.js 仅用于测试与验证。
 
 ```bash
-npm test              # 运行全部 7 个测试套件
+npm test              # 重建发布文件并运行全部单元/集成测试
 npm run build:release # 从 src/ 重建单文件发布产物
 npm run validate:release  # 发布就绪检查
+npm run validate:architecture # 架构边界与确定性构建检查
 ```
 
 测试套件覆盖解析器格式、复制序列化、状态/存储行为、JOIN 正确性、语法检查、UI 约定、无障碍标记和离线发布约束。

@@ -223,6 +223,10 @@ Click any column header in a preview table to open a small popover. Enter text t
 
 ---
 
+### 5.9 Active analysis state and chips
+
+The preview sub-bar shows the current counts for active filters, enabled JOIN views, cell corrections, and the Store state revision. The **active chips** beside it list each global, table, highlight/focus, column filter, and enabled JOIN view. Click a chip to remove that individual filter or view immediately.
+
 ## 6. Highlight mode
 
 - **Enable highlight** — Toggle the checkbox to turn visual highlighting on/off. When off, rows are not styled even if the highlight rule matches.

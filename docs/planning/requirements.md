@@ -141,8 +141,8 @@ The defining constraints are:
 - Include README, license, privacy, security, contribution, conduct, changelog, architecture, user guide, roadmap, CI, and issue templates.
 - One authoritative application file (`index.html`).
 - Production test hooks and historical duplicate HTML files removed.
-- Five test suites (`run-parser-tests`, `run-copy-tests`, `run-tab-tests`, `run-join-tests`, `run-ui-tests`) plus one release validator (`validate-release.js`).
-- CI runs on ubuntu-latest, windows-latest, and macos-latest.
+- Node's built-in test runner executes all unit and integration files under `tests/**/*.test.js`; release validation is provided by `npm run validate:release`, and architecture validation is provided by `npm run validate:architecture`.
+- CI runs the test matrix on `ubuntu-latest` with Node 20, 22, and 24, plus a Node 20 release-validation job.
 
 ## 4. v20 additions delivered
 
@@ -214,9 +214,9 @@ The defining constraints are:
 - Parse status indicator with ready/warning/error visual states.
 
 ### Repository and testing
-- Five test suites: parser, copy, Store/tab, JOIN, UI syntax.
-- One release validator checking version, script count, network-free, accessibility, and file presence.
-- CI on ubuntu-latest, windows-latest, and macos-latest via GitHub Actions.
+- Unit and integration tests cover parser, copy/export, Store/dispatch/source/tab lifecycle, JOIN, QueryService, UI controllers, build determinism, bootstrap, and accessibility contracts.
+- `validate-release.cjs` checks version, script count, network-free output, accessibility markers, and required files; `validate-architecture.cjs` checks the Store command boundary, offline/large-data boundaries, schema/version consistency, manifest completeness, and deterministic output.
+- GitHub Actions runs tests on `ubuntu-latest` with Node 20, 22, and 24, plus a Node 20 release-validation job.
 - Repository metadata: README, LICENSE, changelog, architecture, user guide, roadmap, security, privacy, contribution, conduct, issue templates, pull request template.
 
 ### Sample data
@@ -240,4 +240,4 @@ The defining constraints are:
 - Native-app packaging.
 - Web Workers, IndexedDB, virtual scrolling, and streaming export; the product remains a bounded single-file offline workbench.
 
-These are evaluated in the roadmap only after the v20 reliability baseline remains stable.
+These remain deferred in the roadmap while the v20 schema and v22 reliability baseline are maintained.
