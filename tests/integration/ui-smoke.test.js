@@ -85,6 +85,28 @@ describe('App bootstrap', () => {
       console.error = previousConsoleError;
     }
   });
+
+  it('coalesces multiple render requests from one state batch', async () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    await new Promise(resolve => setTimeout(resolve, 20));
+    const original = App.renderPreview;
+    let renders = 0;
+    App.renderPreview = () => { renders++; };
+    App._renderQueued = false;
+    App._renderPending = false;
+    try {
+      App.requestRender();
+      App.requestRender();
+      App.requestRender();
+      await new Promise(resolve => setTimeout(resolve, 15));
+      assert.equal(renders, 1);
+    } finally {
+      App.renderPreview = original;
+      App._renderQueued = false;
+      App._renderPending = false;
+    }
+  });
 });
 
 describe('Selection.buildLuaClipboardMatrix', () => {

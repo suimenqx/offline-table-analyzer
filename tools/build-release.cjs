@@ -5,6 +5,8 @@ const root = path.join(__dirname, '..');
 const sourceDir = path.join(root, 'src');
 const templatePath = path.join(sourceDir, 'templates', 'index.html');
 const outputPath = path.join(root, 'index.html');
+const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const APP_VERSION = packageJson.version;
 
 // Module load order: each entry is [path-relative-to-src/, description]
 // Dependencies flow top→bottom; modules in the same directory are at the same layer.
@@ -48,6 +50,7 @@ const MODULES = [
 
   // ── Data transform ──
   ['transform/joiner.js',         'JOIN execution and dependency safety'],
+  ['core/query-service.js',       'shared preview query/result pipeline'],
 
   // ── Shared data access (breaks circular dep between app ↔ join-editor) ──
   ['core/table-registry.js',      'shared table/column metadata access'],
@@ -78,7 +81,7 @@ function renderRelease() {
   const template = readUtf8(templatePath);
   const styles = readUtf8(path.join(sourceDir, 'styles', 'styles.css')).trim();
   const modules = MODULES.map(([relPath, label]) => {
-    const source = readUtf8(path.join(sourceDir, relPath)).trim();
+    const source = readUtf8(path.join(sourceDir, relPath)).replaceAll('__OTA_APP_VERSION__', APP_VERSION).trim();
     const filename = path.basename(relPath);
     return `/* @module ${relPath}: ${label} */\n${source}`;
   }).join('\n\n');
@@ -87,6 +90,8 @@ function renderRelease() {
     throw new Error('Release template must contain {{STYLES}} and {{MODULES}} placeholders');
   }
   return template
+    .replaceAll('{{APP_VERSION}}', APP_VERSION)
+    .replaceAll('{{APP_MAJOR_VERSION}}', APP_VERSION.split('.').slice(0, 2).join('.'))
     .replace('{{STYLES}}', styles)
     .replace('{{MODULES}}', modules)
     .replace(/\n{3,}/g, '\n\n');
@@ -103,4 +108,4 @@ if (require.main === module) {
   console.log(`Release built from ${MODULES.length} source modules: ${path.relative(root, outputPath)}`);
 }
 
-module.exports = { MODULES, renderRelease, buildRelease };
+module.exports = { MODULES, APP_VERSION, renderRelease, buildRelease };

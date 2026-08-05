@@ -1,4 +1,4 @@
-OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}) => {
+OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager","dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}, {dispatch}) => {
 /* Join Editor - v2: improved UX */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '', selectedOrderIdx: -1 },
@@ -803,6 +803,7 @@ const JoinEditor = {
     /* ── Open / Close / Save ── */
     open(editIdx = -1) {
         const p = $('joinModal'); p.classList.remove('hidden');
+        ModalController.activate(p);
         document.body.classList.add('modal-open');
         this.state.editIdx = editIdx;
         this.metaCache = {};
@@ -873,6 +874,7 @@ const JoinEditor = {
             if(!confirm('有未保存修改，确定关闭？')) return;
         }
         $('joinModal').classList.add('hidden');
+        ModalController.deactivate($('joinModal'));
         document.body.classList.remove('modal-open');
     },
 
@@ -903,14 +905,12 @@ const JoinEditor = {
             updatedAt: Date.now()
         };
 
-        if(this.state.editIdx > -1) Store.state.globalViews[this.state.editIdx] = nv;
-        else Store.state.globalViews.push(nv);
-
-        Store.save();
+        dispatch('view:upsert', { index:this.state.editIdx > -1 ? this.state.editIdx : undefined, view:nv });
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
         this.setDirty(false);
         $('joinModal').classList.add('hidden');
+        ModalController.deactivate($('joinModal'));
         document.body.classList.remove('modal-open');
         Toast.show(this.state.editIdx > -1 ? '视图已更新' : '视图已创建');
     },

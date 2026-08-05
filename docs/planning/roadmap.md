@@ -1,8 +1,8 @@
 # Roadmap
 
-v21 delivered the first wave of architecture modularisation: domain logic extraction (`FilterEngine`, `TableBuilder`), a stable public filtering API, and build-manifest growth to 30 modules.
+v21 delivered the first wave of architecture modularisation: domain logic extraction (`FilterEngine`, `TableBuilder`) and a stable public filtering API.
 
-v22 completes the controller extraction: a command/event protocol (`Store.transition` / `onChange` / `dispatch`) and 7 independently-testable UI controllers (`SourceController`, `CellEditController`, `FilterController`, `ModalController`, `TabController`, `ExportController`, plus the `dispatch` command bus). App.js shrank from 1,721 to 918 lines.
+v22 completes the current reliability pass: a command/event protocol (`Store.transition` / `onChange` / `dispatch`), source-revision isolation, the pure `QueryService` preview pipeline, 41 deterministic source modules, accessible status/chips/dialog behavior, and architecture validation.
 
 ## 22.x — reliability and browser coverage (current)
 
@@ -12,13 +12,9 @@ v22 completes the controller extraction: a command/event protocol (`Store.transi
 - Improved focus trapping and screen-reader announcements for complex dialogs.
 - Additional malformed HTML/CSV fixtures and fuzz tests.
 
-## 23+ — large-data architecture
+## Deferred architecture
 
-- IndexedDB document/source storage with transactional migrations.
-- Web Worker parsing and rule execution with cancellation and progress.
-- Virtual scrolling after pagination benchmarks identify a clear benefit.
-- Streaming or chunked large exports.
-- Saved filter/JOIN presets and correction audit history.
+Large-data capabilities such as IndexedDB, Web Workers, virtual scrolling, and streaming exports are explicitly outside the current product scope. The next work remains bounded to browser regression coverage, parser correctness, and maintainable offline UI behavior.
 
 ## Later candidates
 
@@ -34,4 +30,3 @@ v22 completes the controller extraction: a command/event protocol (`Store.transi
 ## Out of scope
 
 Accounts, remote synchronization, telemetry, server databases, and cloud connectors conflict with the default offline/private product model and are not planned for the core release.
-

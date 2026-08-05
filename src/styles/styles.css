@@ -475,6 +475,10 @@
         .workspace-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .workspace-summary strong { font-size: 12px; }
         .workspace-summary span { color: var(--text-weak); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .workspace-state { color: var(--text-weak); font-size: 10px; white-space: nowrap; }
+        .active-filter-chips { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: auto hidden; }
+        .filter-chip { border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-mid); border-radius: 999px; padding: 2px 7px; font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
+        .filter-chip:hover, .filter-chip:focus-visible { border-color: var(--primary); color: var(--primary); }
         .subbar-actions { display: flex; align-items: center; gap: 6px; }
         .preview-table-picker { display: none; align-items: center; gap: 6px; min-width: 0; }
         .preview-table-picker.active { display: inline-flex; }
@@ -536,6 +540,8 @@
             .copy-settings-popover { position: fixed; top: 58px; right: 9px; width: min(240px, calc(100vw - 18px)); }
             .workspace-actions .export-secondary { display: none; }
             .workspace-subbar { padding: 7px 10px; }
+            .workspace-state { display: none; }
+            .active-filter-chips { max-width: 34vw; }
             .preview-table-picker { max-width: 52vw; }
             #previewTableSelect { min-width: 120px; max-width: 180px; }
             #toggleSidebarMobileBtn { display: inline-flex; }

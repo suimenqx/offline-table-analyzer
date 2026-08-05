@@ -16,6 +16,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `runtime` | DOM query helpers (`$`, `createEl`), `Tooltip`, `Toast` |
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
 | `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
+| `QueryService` | Pure derived-result pipeline for JOIN resolution, filtering, focus projection, pagination metadata, and bounded result caching. |
 | `dispatch` (`src/core/dispatch.js`) | Thin command bus: `dispatch(action, payload)` delegates to `Store.transition`. |
 
 ### State (`src/state/`)
@@ -73,6 +74,8 @@ The refactor decision, module manifest, dependency rules, migration phases, and 
 
 ```text
 schemaVersion: 20
+appVersion: 22.0.0
+revision / viewRevision / queryRevision
 docs[]
 activeId
 theme
@@ -90,6 +93,8 @@ lastSavedAt
 id
 title
 raw
+sourceRevision
+lastParse: { docId, sourceRevision, format, completedAt }
 ui:
   displayTables
   enabledViews
@@ -141,7 +146,7 @@ paste / drop / file / fullscreen editor
   → adapter parse (TextLayout supplies position-aware aligned parsing)
   → HeaderResolver and TableUtils normalization
   → diagnostics + normalized tables
-  → FilterEngine: token-based filtering, highlighting, column projection
+  → QueryService: JOIN resolution + FilterEngine filtering/highlighting/focus + bounded cache
   → persisted correction overlay + edit undo/redo
   → filters/highlights/focus columns
   → optional JOIN views (dependency cycle check → execution)
@@ -156,7 +161,7 @@ The full processed result remains in memory for export, while only the selected 
 
 ## 5. Persistence and migration
 
-`ota_v20_workspace` is the authoritative browser key. On startup, the Store first tries this key, then the legacy `v16_4_store`. A legacy key is removed only after the v20 payload is written successfully. `clearLocalData()` also removes the legacy `v16_4_inputHeight` key.
+`ota_v20_workspace` is the authoritative browser key. On startup, the Store first tries this key, then the legacy `v16_4_store`. Every payload passes the explicit schema migration chain to schema 20; a legacy key is removed only after the v20 payload is written successfully. `clearLocalData()` also removes the legacy `v16_4_inputHeight` key.
 
 Writes are guarded. Quota or security failures update visible status and do not discard the in-memory workspace. If a saved JSON payload cannot be read, automatic writes are blocked so the unreadable value is not silently replaced; users may restore a backup or explicitly clear local data.
 
@@ -174,9 +179,7 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 
 ## 7. Performance model
 
-Parsing, filtering, JOINs, and XLSX generation currently run on the main thread. Since v21, filtering logic is centralised in the pure `FilterEngine` module, making it amenable to future off-main-thread execution. DOM cost is reduced through pagination and source-save debouncing. Input size is capped at 25 MB.
-
-Web Workers, IndexedDB document storage, streaming export, and virtual scrolling remain architectural follow-ups when real benchmarks justify their complexity.
+Parsing, filtering, JOINs, and XLSX generation currently run on the main thread. The current product scope intentionally keeps the existing 25 MB limit, pagination, and single-file model; Worker, IndexedDB, streaming export, and virtual scrolling capabilities are not part of this implementation plan.
 
 ## 8. Testing architecture
 

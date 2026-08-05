@@ -7,10 +7,11 @@ import { createStorageMock } from '../mocks/storage.js';
 import { createDOMSandbox } from '../mocks/dom.js';
 import { loadModules } from '../helpers/load-modules.mjs';
 
-let storage, dom, Store;
+let storage, dom, Store, migrateWorkspacePayload;
 
 // 首次加载所有模块（触发缓存）
 const { OTA } = loadModules([], {});
+({ Store, migrateWorkspacePayload } = OTA.require('store'));
 
 function resetStore() {
   storage.reset();
@@ -232,6 +233,53 @@ describe('Store — workspace import', () => {
     assert.throws(() => Store.importWorkspace({
       kind: 'ota-workspace', schemaVersion: 999, docs: [{}],
     }));
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('Store — source lifecycle and migration contract', () => {
+  it('increments sourceRevision and clears edits before a new parse result can apply', async () => {
+    const doc = Store.curr();
+    doc.raw = 'old';
+    doc.ui.cellEdits = { '$T1': { 0: { 0: 'edited' } } };
+    const before = Store.revision;
+    const events = [];
+    const unsub = Store.onChange((event, payload) => events.push({ event, payload }));
+
+    Store.transition('source:replace', { text:'new', format:'csv' });
+    assert.equal(doc.sourceRevision, 1);
+    assert.deepEqual(doc.ui.cellEdits, {});
+    assert.equal(doc.lastParse, null);
+    assert.ok(Store.revision > before);
+
+    Store.transition('parse:completed', { docId:doc.id, sourceRevision:doc.sourceRevision, format:'csv', tables:[] });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const sourceEvent = events.find(item => item.event === 'source:textChanged');
+    const parseEvent = events.find(item => item.event === 'parse:completed');
+    assert.equal(sourceEvent.payload.sourceRevision, 1);
+    assert.equal(parseEvent.payload.sourceRevision, 1);
+    assert.equal(doc.lastParse.sourceRevision, 1);
+    unsub();
+  });
+
+  it('migrates schema-less legacy payloads through the explicit schema pipeline', () => {
+    const migrated = migrateWorkspacePayload({ docs:[{ id:'legacy', title:'Legacy', raw:'x', ui:{} }] });
+    assert.equal(migrated.schemaVersion, 20);
+    assert.equal(migrated.docs.length, 1);
+    assert.deepEqual(migrateWorkspacePayload({ schemaVersion:20, docs:[] }).schemaVersion, 20);
+    assert.throws(() => migrateWorkspacePayload({ schemaVersion:21, docs:[] }));
+  });
+
+  it('rejects a parse result whose source revision is no longer current', async () => {
+    const doc = Store.curr();
+    Store.transition('source:replace', { text:'current' });
+    const accepted = Store.transition('parse:completed', { docId:doc.id, sourceRevision:doc.sourceRevision, format:'csv', tables:[] });
+    assert.equal(accepted, true);
+    Store.transition('source:replace', { text:'newer' });
+    const rejected = Store.transition('parse:completed', { docId:doc.id, sourceRevision:1, format:'csv', tables:[] });
+    assert.equal(rejected, false);
+    assert.equal(doc.lastParse, null);
+    await new Promise(resolve => setTimeout(resolve, 10));
   });
 });
 

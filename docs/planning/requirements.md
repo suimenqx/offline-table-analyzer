@@ -76,7 +76,7 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Schema version `20`, application version `21.0.0`.
+- Schema version `20`, application version `22.0.0`.
 - Single key `ota_v20_workspace`; migrate legacy `v16_4_store` once and remove it only after a successful v20 write.
 - Catch `QuotaExceededError` in `save()` and report the specific failure in the status bar; in-memory data remains usable.
 - Show saved/failed state, estimated storage use (`json.length * 2` for UTF-16 approximation), and a usage meter in the status bar.
@@ -222,13 +222,15 @@ The defining constraints are:
 ### Sample data
 - Three built-in CLI sample tables: Inventory (products/stock), Orders (customer orders), SystemLogs (log entries).
 
-### v21.0.0 architecture improvements
+### v22.0.0 architecture improvements
 - Extracted `FilterEngine` (pure filtering/highlighting/column-projection) and `TableBuilder` (preview table DOM construction) as independent modules.
 - `App.proc()` reduced from ~100 lines to 7-line delegation to `FilterEngine`.
-- Build manifest expanded to 30 source modules.
-- All six test suites and release validation continue to pass without regression.
+- Added `Store.transition` revision/source lifecycle metadata, explicit schema migrations, and UI command-boundary validation.
+- Added the pure `QueryService` pipeline so preview and preview export share JOIN/filter/focus results and bounded cache keys.
+- Added status/chip visibility, format-candidate explanations, dialog focus trapping, and deterministic version injection.
+- Build manifest contains 41 source modules; all tests, architecture validation, and release validation pass without regression.
 
-## 5. Explicit non-goals for v20–v21
+## 5. Explicit non-goals for v20–v22
 
 - XLSX import.
 - Remote URLs, database connectors, accounts, sharing, or synchronization.
@@ -236,5 +238,6 @@ The defining constraints are:
 - SQL, pivot tables, charts, or dashboards.
 - Guaranteed durable storage beyond browser storage behavior.
 - Native-app packaging.
+- Web Workers, IndexedDB, virtual scrolling, and streaming export; the product remains a bounded single-file offline workbench.
 
 These are evaluated in the roadmap only after the v20 reliability baseline remains stable.

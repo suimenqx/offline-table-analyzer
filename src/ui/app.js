@@ -4,6 +4,21 @@ const App = {
     raw: [], rendered: [],
     sourceParseState: 'ready',
     tabDrag: { sourceId:null },
+    _renderQueued: false,
+    _renderPending: false,
+    requestRender() {
+        this._renderPending = true;
+        if(this._renderQueued) return;
+        this._renderQueued = true;
+        const flush = () => {
+            this._renderQueued = false;
+            if(!this._renderPending) return;
+            this._renderPending = false;
+            this.renderPreview();
+        };
+        if(typeof setTimeout === 'function') setTimeout(flush, 0);
+        else flush();
+    },
     // Shared utilities (imported from runtime)
     escapeHtml,
     formatBytes,
@@ -15,7 +30,7 @@ const App = {
         if(!Store.state.docs.some(d => d.id === id)) return false;
         if(!force && Store.state.activeId === id) return false;
         const input = $('rawInput');
-        if(input) Store.curr().raw = input.value;
+        if(input) dispatch('source:replace', { text:input.value });
         return dispatch('tab:activate', { id, force });
     },
     init() {
@@ -41,20 +56,39 @@ const App = {
                 case 'tab:reordered':
                     this.renderTabs();
                     break;
+                case 'source:textChanged':
+                    if (!payload || payload.docId === Store.state.activeId) {
+                        CellEditController.reset();
+                        if(!payload || payload.preservePaste !== true) SourceController.clearLastPaste();
+                        this.updateWorkspaceSummary();
+                    }
+                    break;
+                case 'parse:stale':
+                    Toast.show('解析结果已过期，请重新解析当前数据源', true);
+                    break;
+                case 'ui:changed':
+                    if (!payload || payload.replaced || ['globalFilter','columnFilters','rules','displayTables','enabledViews','previewModes','pageSize','previewTable','tablePages'].includes(payload.key)) this.requestRender();
+                    this.updateWorkspaceSummary();
+                    break;
+                case 'views:changed':
+                    this.updSelects();
+                    this.updChips();
+                    this.requestRender();
+                    break;
                 case 'parse:completed':
                     this.updSelects();
-                    this.renderPreview();
                     this.updChips();
+                    this.requestRender();
                     if (payload && payload.elapsed > 800) {
                         Toast.show(`\u89e3\u6790\u5b8c\u6210 \u00b7 ${payload.elapsed} ms`);
                     }
                     break;
                 case 'filter:changed':
-                    this.renderPreview();
+                    this.requestRender();
                     break;
                 case 'preview:changed':
                 case 'preview:renderRequested':
-                    this.renderPreview();
+                    this.requestRender();
                     break;
                 case 'workspace:saved':
                     this.updateStorageStatus(payload || {});
@@ -93,7 +127,7 @@ const App = {
             document.addEventListener('ota:joinChanged', () => {
                 this.updSelects();
                 this.updChips();
-                this.renderPreview();
+                this.requestRender();
             });
             document.addEventListener('ota:joinParseRequested', () => {
                 this.run();
@@ -154,10 +188,9 @@ const App = {
 
     setTablePreviewMode(tableName, mode) {
         const ui = Store.curr().ui;
-        if(!ui.previewModes) ui.previewModes = {};
-        ui.previewModes[tableName] = mode === 'row-header' ? 'row-header' : 'column-header';
-        Store.save();
-        this.renderPreview();
+        const previewModes = Object.assign({}, ui.previewModes || {});
+        previewModes[tableName] = mode === 'row-header' ? 'row-header' : 'column-header';
+        dispatch('ui:set', { key:'previewModes', value:previewModes });
     },
 
     appendPreviewModeToggle(meta, tableName, mode) {
@@ -193,7 +226,7 @@ const App = {
         if(!singleTableView || !tables.length) return '';
         const ui = Store.curr().ui;
         const selected = tables.some(table => table.name === ui.previewTable) ? ui.previewTable : tables[0].name;
-        ui.previewTable = selected;
+        if(ui.previewTable !== selected) dispatch('ui:set', { key:'previewTable', value:selected });
         tables.forEach(table => {
             const option = document.createElement('option');
             const rowCount = (table.rows || []).length;
@@ -211,17 +244,65 @@ const App = {
         const title = $('workspaceTitle');
         const summary = $('datasetSummary');
         if(title) title.textContent = Store.curr().title || 'Analysis';
-        if(!summary) return;
         const tableCount = TableRegistry.getRaw().length;
         const rows = TableRegistry.getRaw().reduce((sum, table) => sum + (table.rows || []).length, 0);
         const maxCols = TableRegistry.getRaw().reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
         const importItems = this.getImportSummaryItems();
         const format = (TableRegistry.getLastResult() && (TableRegistry.getLastResult().label || TableRegistry.getLastResult().format)) || (importItems[0] || '').replace(/^格式:\s*/, '');
         const header = importItems.find(text => text.indexOf('表头:') === 0) || '';
-        summary.textContent = tableCount
-            ? `${format || '已解析'}${header ? ` · ${header}` : ''} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列`
-            : '所有处理均在本地浏览器完成';
-        summary.title = summary.textContent;
+        if(summary) {
+            summary.textContent = tableCount
+                ? `${format || '已解析'}${header ? ` · ${header}` : ''} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列`
+                : '所有处理均在本地浏览器完成';
+            summary.title = summary.textContent;
+        }
+        this.updateAnalysisState();
+        this.renderActiveFilterChips();
+    },
+
+    updateAnalysisState() {
+        const el = $('analysisState');
+        if(!el) return;
+        const ui = Store.curr().ui;
+        const filterCount = (ui.globalFilter ? 1 : 0)
+            + Object.values(ui.rules || {}).reduce((sum, rules) => sum + ['filter','hl','focus'].filter(key => {
+                const value = rules && rules[key];
+                return Array.isArray(value) ? value.length > 0 : Boolean(String(value || '').trim());
+            }).length, 0)
+            + Object.values(ui.columnFilters || {}).reduce((sum, columns) => sum + Object.values(columns || {}).filter(value => String(value || '').trim()).length, 0);
+        const joins = Array.isArray(ui.enabledViews) ? ui.enabledViews.length : 0;
+        const edits = Object.values(ui.cellEdits || {}).reduce((sum, rows) => sum + Object.values(rows || {}).reduce((rowSum, cols) => rowSum + Object.keys(cols || {}).length, 0), 0);
+        el.textContent = `过滤 ${filterCount} · JOIN ${joins} · 修订 ${edits} · 状态 #${Store.revision}`;
+        el.title = '状态 revision 用于识别查询结果是否需要重新计算';
+    },
+
+    renderActiveFilterChips() {
+        const container = $('activeFilterChips');
+        if(!container) return;
+        if(typeof container.replaceChildren === 'function') container.replaceChildren();
+        else container.innerHTML = '';
+        const ui = Store.curr().ui;
+        const add = (label, clear) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'filter-chip';
+            button.title = `移除 ${label}`;
+            button.textContent = `${label} ×`;
+            button.onclick = clear;
+            container.appendChild(button);
+        };
+        if(ui.globalFilter) add(`全局: ${ui.globalFilter}`, () => dispatch('filter:global', { value:'' }));
+        Object.entries(ui.rules || {}).forEach(([table, rules]) => {
+            ['filter','hl','focus'].forEach(field => {
+                const value = rules && rules[field];
+                const active = Array.isArray(value) ? value.length > 0 : Boolean(String(value || '').trim());
+                if(active) add(`${table}.${field}: ${Array.isArray(value) ? value.join(', ') : value}`, () => dispatch('rule:set', { table, field, value:Array.isArray(value) ? [] : '' }));
+            });
+        });
+        Object.entries(ui.columnFilters || {}).forEach(([table, columns]) => Object.entries(columns || {}).forEach(([column, value]) => {
+            if(String(value || '').trim()) add(`${table}.${column}: ${value}`, () => dispatch('filter:column', { table, column, value:'' }));
+        }));
+        (Array.isArray(ui.enabledViews) ? ui.enabledViews : []).forEach(view => add(`JOIN: ${view}`, () => dispatch('ui:set', { key:'enabledViews', value:ui.enabledViews.filter(name => name !== view) })));
     },
 
     updateStorageStatus(detail={}) {
@@ -309,7 +390,7 @@ const App = {
     },
 
     setCopyFormat(format='default') {
-        Store.setCopyFormat(format);
+        dispatch('ui:copyFormat', { format });
         this.syncCopyFormatControl();
         this.syncCopyHeaderControl();
         Toast.show(`复制格式：${ClipboardFormatter.label(Store.state.copyFormat)}`);
@@ -406,9 +487,7 @@ const App = {
             pane.classList.toggle('active', pane.dataset.tab === next);
         });
         if(persist) {
-            const d = Store.curr();
-            if(d && d.ui) d.ui.sidebarTab = next;
-            Store.save();
+            dispatch('ui:set', { key:'sidebarTab', value:next });
         }
     },
 
@@ -479,7 +558,7 @@ const App = {
             SourceController.clearAutoParse();
             $('rawInput').value='';
             SourceController.clearLastPaste();
-            Store.curr().ui.cellEdits = {};
+            dispatch('source:replace', { text:'' });
             this.run();
         };
         $('parseBtn').onclick = doParse;
@@ -532,8 +611,12 @@ validflag Time      Level   Message                 Code
 
         const inputBind = (id, k, subK) => $(id).oninput = e => {
             const val = e.target.type==='checkbox'?e.target.checked:e.target.value;
-            if(subK) { if(k==='rules') { const tbl=$('targetTableSelect').value; if(tbl) Store.updateRule(tbl, subK, val); } else Store.updateUI(k, val); } else Store.updateUI(k, val);
-            this.renderPreview();
+            if(subK) {
+                if(k==='rules') {
+                    const tbl=$('targetTableSelect').value;
+                    if(tbl) dispatch('rule:set', { table:tbl, field:subK, value:val });
+                } else dispatch('ui:set', { key:k, value:val });
+            } else dispatch('ui:set', { key:k, value:val });
         };
         inputBind('globalFilter', 'globalFilter');
         inputBind('checkHl', 'enableHighlight');
@@ -546,8 +629,7 @@ validflag Time      Level   Message                 Code
         inputBind('filterInput', 'rules', 'filter');
         $('focusColsInput').onchange = e => {
             const t = $('targetTableSelect').value;
-            if(t) Store.updateRule(t, 'focus', e.target.value.split(',').filter(s=>s.trim()));
-            this.renderPreview();
+            if(t) dispatch('rule:set', { table:t, field:'focus', value:e.target.value.split(',').filter(s=>s.trim()) });
         };
 
         $('tablesTrigger').onclick = () => this.modTables();
@@ -555,24 +637,22 @@ validflag Time      Level   Message                 Code
         // FIX: Correctly call JoinEditor.modManageViews
         $('manageViewsBtn').onclick = e => { e.stopPropagation(); JoinEditor.modManageViews(); };
         $('selectColsBtn').onclick = () => this.modCols();
-        $('themeBtn').onclick = () => Store.toggleTheme();
+        $('themeBtn').onclick = () => dispatch('ui:theme');
         if($('helpBtn')) $('helpBtn').onclick = () => this.showHelp();
         if($('undoEditBtn')) $('undoEditBtn').onclick = () => CellEditController.undo();
         if($('redoEditBtn')) $('redoEditBtn').onclick = () => CellEditController.redo();
         if($('pageSizeSelect')) $('pageSizeSelect').onchange = e => {
             const ui = Store.curr().ui;
-            ui.pageSize = Number(e.target.value) || 100;
-            ui.tablePages = {};
-            Store.save();
-            this.renderPreview();
+            dispatch('ui:set', { key:'pageSize', value:Number(e.target.value) || 100 });
+            dispatch('ui:set', { key:'tablePages', value:{} });
         };
         if($('previewTableSelect')) $('previewTableSelect').onchange = e => {
             const ui = Store.curr().ui;
-            ui.previewTable = e.target.value || '';
-            if(!ui.tablePages) ui.tablePages = {};
-            ui.tablePages[ui.previewTable] = 1;
-            Store.save();
-            this.renderPreview();
+            const previewTable = e.target.value || '';
+            const tablePages = Object.assign({}, ui.tablePages || {});
+            if(previewTable) tablePages[previewTable] = 1;
+            dispatch('ui:set', { key:'previewTable', value:previewTable });
+            dispatch('ui:set', { key:'tablePages', value:tablePages });
         };
         if($('toggleSidebarMobileBtn')) $('toggleSidebarMobileBtn').onclick = () => {
             const sidebar = $('sidebar');
@@ -686,7 +766,12 @@ validflag Time      Level   Message                 Code
 
     showDiagnostics() {
         const result = TableRegistry.getLastResult();
-        const candidates = (result.candidates || []).map(item => `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : `识别分数 ${Math.round(item.score * 100)}%`}</span></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`).join('');
+        const candidates = (result.candidates || []).map(item => {
+            const score = Number.isFinite(item.score) ? `识别分数 ${Math.round(item.score * 100)}%` : '';
+            const reason = item.reason || item.explanation || '依据解析器特征进行判断';
+            const ambiguous = item.ambiguous || (item.risk && item.risk !== 'low');
+            return `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : score}${ambiguous ? ' · 需确认' : ''}</span><div class="muted">${this.escapeHtml(reason)}</div></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`;
+        }).join('');
         const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.severity || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
         this.modal('解析详情', `<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
         document.querySelectorAll('.diagnostic-format-btn').forEach(button => {
@@ -712,7 +797,7 @@ validflag Time      Level   Message                 Code
             const started = performance.now();
             const sourceText = $('rawInput').value;
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
-            Store.curr().raw = sourceText; Store.save();
+            if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
             const result = Parser.parse(sourceText, this.getParseOptions());
             TableRegistry.setResult(result);
             Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
@@ -720,11 +805,17 @@ validflag Time      Level   Message                 Code
             this.applyStoredCellEdits();
             this.updateImportSummary();
             const elapsed = Math.round(performance.now() - started);
-            dispatch('parse:completed', { tables: result.tables, elapsed: elapsed });
+            dispatch('parse:completed', {
+                docId:Store.state.activeId,
+                sourceRevision:Store.curr().sourceRevision,
+                format:result.format,
+                tables: result.tables,
+                elapsed: elapsed,
+            });
             if(render) {
                 this.updSelects();
-                this.renderPreview();
                 this.updChips();
+                this.requestRender();
             }
             if(TableRegistry.getRaw().length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
         } catch(e) {
@@ -781,7 +872,7 @@ validflag Time      Level   Message                 Code
         const viewNames = Store.state.globalViews.map(v => v.view);
         const vsRaw = ui.enabledViews || [];
         const vs = vsRaw.filter(v => viewNames.includes(v));
-        if(vs.length !== vsRaw.length) Store.updateUI('enabledViews', vs);
+        if(vs.length !== vsRaw.length) dispatch('ui:set', { key:'enabledViews', value:vs });
         $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>`<span class="chip">${this.escapeHtml(n)}</span>`).join('') : `<span class="placeholder">未启用</span>`;
     },
 
@@ -895,8 +986,11 @@ validflag Time      Level   Message                 Code
             const totalPages = Math.max(1, Math.ceil(res.rows.length / pageSize));
             const requestedPage = Number(ui.tablePages && ui.tablePages[t.name]) || 1;
             const page = Math.min(totalPages, Math.max(1, requestedPage));
-            if(!ui.tablePages) ui.tablePages = {};
-            ui.tablePages[t.name] = page;
+            const tablePages = Object.assign({}, ui.tablePages || {});
+            if(tablePages[t.name] !== page) {
+                tablePages[t.name] = page;
+                dispatch('ui:set', { key:'tablePages', value:tablePages });
+            }
             const pageRes = { headers:res.headers, rows:res.rows.slice((page - 1) * pageSize, page * pageSize) };
             const tbl = mode === 'row-header' ? this.buildRowHeaderTable(t, pageRes, tIdx, colFilters) : this.buildColumnHeaderTable(t, pageRes, tIdx, colFilters);
             const tableScroll = createEl('div', 'table-scroll');

@@ -1,4 +1,4 @@
-OTA.define('view-manager', ["runtime", "store", "exporter", "modal-controller"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Exporter}, {ModalController}) => {
+OTA.define('view-manager', ["runtime", "store", "exporter", "modal-controller", "dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Exporter}, {ModalController}, {dispatch}) => {
 /* ViewManager — JOIN view CRUD and management modal.
 
    Extracted from join-editor.js. All interactions go through Store.state.globalViews.
@@ -72,18 +72,17 @@ const ViewManager = {
             if (idx > -1) {
                 if (confirm(`视图 "${nv.view}" 已存在，是否覆盖？\n确定=覆盖 | 取消=自动改名`)) {
                     nv.createdAt = Store.state.globalViews[idx].createdAt || nv.createdAt;
-                    Store.state.globalViews[idx] = nv;
+                    dispatch('view:upsert', { index:idx, view:nv });
                 } else {
                     nv.view = this.makeUniqueName(nv.view);
-                    Store.state.globalViews.push(nv);
+                    dispatch('view:upsert', { view:nv });
                 }
             } else {
-                Store.state.globalViews.push(nv);
+                dispatch('view:upsert', { view:nv });
             }
             imported++;
         });
         if (imported) {
-            Store.save();
             this._notifyChange();
             this.modManageViews();
             Toast.show(`已导入 ${imported} 个视图`);
@@ -233,8 +232,7 @@ const ViewManager = {
                 if (selectedCbs.length === 0) return;
                 const indices = Array.from(selectedCbs).map(cb => parseInt(cb.dataset.index)).sort((a, b) => b - a);
                 if (!confirm(`确定删除选中的 ${indices.length} 个视图吗？此操作不可恢复。`)) return;
-                indices.forEach(idx => Store.state.globalViews.splice(idx, 1));
-                Store.save();
+                dispatch('view:removeMany', { indexes:indices });
                 self._notifyChange();
                 self.modManageViews();
                 Toast.show(`已删除 ${indices.length} 个视图`);
@@ -291,8 +289,7 @@ const ViewManager = {
             };
             if (copyBtn) copyBtn.onclick = () => {
                 const name = self.makeUniqueName(`${v.view}_copy`);
-                Store.state.globalViews.push({ ...v, view: name, createdAt: Date.now(), updatedAt: Date.now() });
-                Store.save();
+                dispatch('view:upsert', { view:{ ...v, view: name, createdAt: Date.now(), updatedAt: Date.now() } });
                 self._notifyChange();
                 self.modManageViews();
                 Toast.show('视图已复制');
@@ -307,8 +304,7 @@ const ViewManager = {
                 $(`jeConfirm_${i}`).style.display = 'none';
             };
             if (delOkBtn) delOkBtn.onclick = () => {
-                Store.state.globalViews.splice(i, 1);
-                Store.save();
+                dispatch('view:removeMany', { indexes:[i] });
                 self._notifyChange();
                 self.modManageViews();
             };

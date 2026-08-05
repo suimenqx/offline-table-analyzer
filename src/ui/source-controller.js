@@ -1,4 +1,4 @@
-OTA.define('source-controller', ["runtime", "store", "dispatch"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}) => {
+OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}) => {
 /* SourceController — manages source text input, file import, fullscreen editor,
    and input resizer. Delegates all state changes to dispatch().
 
@@ -21,7 +21,6 @@ const SourceController = {
     _persistTimer: null,
     _statsTimer: null,
     _autoParseTimer: null,
-    _returnFocus: null,
 
     // ── Pure helpers ──
 
@@ -97,7 +96,7 @@ const SourceController = {
 
         // Input changes → dispatch source:changed
         rawInput.oninput = () => {
-            dispatch('source:changed', { text: rawInput.value });
+            dispatch('source:changed', { text: rawInput.value, preservePaste:Boolean(SourceController._lastPaste && SourceController._lastPaste.docId === Store.state.activeId && String(SourceController._lastPaste.plain || '').trim() === rawInput.value.trim()) });
         };
 
         // Paste with HTML detection
@@ -114,14 +113,9 @@ const SourceController = {
             }
         });
 
-        // Schedule persistence on input (debounced save to localStorage)
+        // Source transitions already schedule persistence; this listener only
+        // drives the debounced auto-parse state.
         rawInput.addEventListener('input', () => {
-            clearTimeout(SourceController._persistTimer);
-            SourceController._persistTimer = setTimeout(() => {
-                Store.curr().raw = rawInput.value;
-                Store.save();
-            }, 650);
-
             // Debounced auto-parse: fire when input stabilises, unless disabled
             // or the source is large enough to require an explicit parse.
             SourceController.scheduleAutoParse({ text: rawInput.value });
@@ -201,12 +195,6 @@ const SourceController = {
                 return;
             }
 
-            Store.normalizeDoc(targetDoc, Store.state.docs.indexOf(targetDoc));
-            targetDoc.raw = text;
-            if (detected !== 'auto' && (!targetDoc.ui.importFormat || targetDoc.ui.importFormat === 'auto')) {
-                targetDoc.ui.importFormat = detected;
-            }
-
             if (detected === 'html-table' && Store.state.activeId === targetDocId) {
                 SourceController._lastPaste = { html: text, plain: text, docId: Store.state.activeId };
             } else if (Store.state.activeId === targetDocId) {
@@ -219,8 +207,7 @@ const SourceController = {
                 if (rawInput) rawInput.value = text;
                 const formatSelect = $('formatSelect');
                 if (formatSelect && detected !== 'auto' && formatSelect.value === 'auto') formatSelect.value = detected;
-                dispatch('source:changed', { text: text });
-                Store.save();
+                dispatch('source:replace', { docId:targetDocId, text, format:detected, preservePaste:detected === 'html-table' });
                 Toast.show(`已导入 ${file.name}`);
 
                 // Trigger parse only for the visible initiating tab.
@@ -231,7 +218,7 @@ const SourceController = {
                 }
             } else {
                 // Keep the import attached to its initiating tab without disturbing the visible tab.
-                Store.save();
+                dispatch('source:replace', { docId:targetDocId, text, format:detected });
                 Toast.show(`已导入 ${file.name} 到页签“${targetDoc.title || 'Analysis'}”`);
             }
         };
@@ -334,7 +321,6 @@ const SourceController = {
         const largeInput = $('rawInputLarge');
         if (!largeInput) return;
 
-        SourceController._returnFocus = document.activeElement;
         largeInput.value = mainInput ? mainInput.value : '';
 
         // Sync controls from main editor
@@ -345,6 +331,7 @@ const SourceController = {
             modal.classList.remove('hidden');
             modal.classList.add('active');
             modal.setAttribute('aria-hidden', 'false');
+            ModalController.activate(modal, largeInput);
         }
         document.body.classList.add('source-editor-open');
 
@@ -364,17 +351,13 @@ const SourceController = {
             modal.classList.remove('active');
             modal.classList.add('hidden');
             modal.setAttribute('aria-hidden', 'true');
+            ModalController.deactivate(modal);
         }
         document.body.classList.remove('source-editor-open');
 
         SourceController._syncToMain();
         if (textChanged || hadPendingAutoParse) this.scheduleAutoParse({ text: nextText });
 
-        // Restore focus
-        if (SourceController._returnFocus && typeof SourceController._returnFocus.focus === 'function') {
-            SourceController._returnFocus.focus();
-        }
-        SourceController._returnFocus = null;
     },
 
     /** Copy fullscreen editor text back to main editor + Store. */
@@ -385,7 +368,7 @@ const SourceController = {
 
         const text = largeInput.value;
         mainInput.value = text;
-        dispatch('source:changed', { text: text });
+        dispatch('source:changed', { text: text, preservePaste:Boolean(SourceController._lastPaste && SourceController._lastPaste.docId === Store.state.activeId && String(SourceController._lastPaste.plain || '').trim() === text.trim()) });
     },
 
     /** Reflect format/header controls from main → fullscreen. */
@@ -422,10 +405,7 @@ const SourceController = {
         clearTimeout(SourceController._persistTimer);
         SourceController._persistTimer = setTimeout(() => {
             const largeInput = $('rawInputLarge');
-            if (largeInput) {
-                Store.curr().raw = largeInput.value;
-                Store.save();
-            }
+            if (largeInput) dispatch('source:replace', { text:largeInput.value });
         }, 650);
     },
 

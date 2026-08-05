@@ -60,6 +60,17 @@ describe('ModalController — show / close', () => {
     assert.equal(fakeEl._focused, true);
     assert.equal(ModalController.returnFocus, null);
   });
+
+  it('activates a dialog and restores the opener focus on deactivation', () => {
+    const opener = { focus() { opener.focused = true; }, focused: false };
+    const dialog = dom.getElementById('modalContent');
+    globalThis.document.activeElement = opener;
+    ModalController.activate(dialog);
+    assert.equal(ModalController.activeContainer, dialog);
+    ModalController.deactivate(dialog);
+    assert.equal(opener.focused, true);
+    assert.equal(ModalController.activeContainer, null);
+  });
 });
 
 // ---------------------------------------------------------------------------

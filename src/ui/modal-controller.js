@@ -10,6 +10,7 @@ OTA.define('modal-controller', ["runtime", "store", "dispatch"], ({$, escapeHtml
 
 const ModalController = {
     returnFocus: null,
+    activeContainer: null,
 
     /**
      * Bind modal overlay click-to-close. Called once from App.init().
@@ -21,6 +22,45 @@ const ModalController = {
                 if (e.target === overlay) ModalController.close();
             });
         }
+        if(typeof document !== 'undefined' && document.addEventListener) {
+            document.addEventListener('keydown', (event) => {
+                if(!ModalController.activeContainer || event.key !== 'Tab') return;
+                const root = ModalController.activeContainer;
+                let focusable = [];
+                try {
+                    focusable = Array.from(root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+                        .filter(el => !el.disabled && el.getAttribute('aria-hidden') !== 'true');
+                } catch(e) { return; }
+                if(!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if(event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if(!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+        }
+    },
+
+    activate(container, initialFocus=null) {
+        if(!container) return;
+        ModalController.returnFocus = document.activeElement;
+        ModalController.activeContainer = container;
+        const target = initialFocus || (() => {
+            try { return container.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])'); } catch(e) { return null; }
+        })();
+        if(target && typeof target.focus === 'function') setTimeout(() => target.focus(), 0);
+    },
+
+    deactivate(container=null) {
+        if(container && ModalController.activeContainer && ModalController.activeContainer !== container) return;
+        ModalController.activeContainer = null;
+        const target = ModalController.returnFocus;
+        ModalController.returnFocus = null;
+        if(target && typeof target.focus === 'function') target.focus();
     },
 
     /**
@@ -29,6 +69,7 @@ const ModalController = {
     close() {
         const overlay = $('modalOverlay');
         if (overlay) overlay.classList.add('hidden');
+        ModalController.deactivate(overlay ? $('modalContent') : null);
         if (ModalController.returnFocus && typeof ModalController.returnFocus.focus === 'function') {
             ModalController.returnFocus.focus();
         }
@@ -48,7 +89,7 @@ const ModalController = {
         const closeBtn = $('modalCloseBtn');
         if (closeBtn) {
             closeBtn.onclick = () => ModalController.close();
-            setTimeout(() => closeBtn.focus(), 0);
+            ModalController.activate(content, closeBtn);
         }
     },
 
@@ -67,7 +108,7 @@ const ModalController = {
         ModalController._bindSaveBtn(() => {
             const v = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
             const next = (v.length === tableNames.length && tableNames.length > 0) ? null : v;
-            Store.updateUI('displayTables', next);
+            dispatch('ui:set', { key:'displayTables', value:next });
             ModalController.close();
             dispatch('preview:renderRequested', {});
         });
@@ -93,7 +134,7 @@ const ModalController = {
         ModalController.show('启用视图', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         ModalController._bindSaveBtn(() => {
             const sel = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
-            Store.updateUI('enabledViews', sel);
+            dispatch('ui:set', { key:'enabledViews', value:sel });
             ModalController.close();
             dispatch('preview:renderRequested', {});
         });
@@ -347,7 +388,7 @@ const ModalController = {
                 const cb = row.querySelector('input');
                 if (cb && cb.checked) checked.push(cb.value);
             });
-            Store.updateRule(tableName, 'focus', checked);
+            dispatch('rule:set', { table:tableName, field:'focus', value:checked });
             const focusInput = document.getElementById('focusColsInput');
             if (focusInput) focusInput.value = checked.join(', ');
             ModalController.close();

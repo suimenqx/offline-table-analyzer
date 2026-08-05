@@ -484,6 +484,10 @@
         .workspace-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .workspace-summary strong { font-size: 12px; }
         .workspace-summary span { color: var(--text-weak); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .workspace-state { color: var(--text-weak); font-size: 10px; white-space: nowrap; }
+        .active-filter-chips { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: auto hidden; }
+        .filter-chip { border: 1px solid var(--border); background: var(--bg-elevated); color: var(--text-mid); border-radius: 999px; padding: 2px 7px; font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
+        .filter-chip:hover, .filter-chip:focus-visible { border-color: var(--primary); color: var(--primary); }
         .subbar-actions { display: flex; align-items: center; gap: 6px; }
         .preview-table-picker { display: none; align-items: center; gap: 6px; min-width: 0; }
         .preview-table-picker.active { display: inline-flex; }
@@ -545,6 +549,8 @@
             .copy-settings-popover { position: fixed; top: 58px; right: 9px; width: min(240px, calc(100vw - 18px)); }
             .workspace-actions .export-secondary { display: none; }
             .workspace-subbar { padding: 7px 10px; }
+            .workspace-state { display: none; }
+            .active-filter-chips { max-width: 34vw; }
             .preview-table-picker { max-width: 52vw; }
             #previewTableSelect { min-width: 120px; max-width: 180px; }
             #toggleSidebarMobileBtn { display: inline-flex; }
@@ -811,6 +817,8 @@
                 <strong id="workspaceTitle">未解析</strong>
                 <span id="datasetSummary">所有处理均在本地浏览器完成</span>
             </div>
+            <div class="workspace-state" id="analysisState" role="status" aria-live="polite">等待解析</div>
+            <div class="active-filter-chips" id="activeFilterChips" aria-label="当前活动过滤和视图"></div>
             <div class="subbar-actions">
                 <div class="preview-table-picker" id="previewTablePicker">
                     <label for="previewTableSelect" class="muted">查看表</label>
@@ -1415,8 +1423,55 @@ const LEGACY_STORE_KEYS = ['v16_4_store'];
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'lua-inline', 'lua-expanded']);
 
+const MIGRATIONS = Object.freeze({
+    0(payload) {
+        const next = Object.assign({}, payload);
+        if(!Array.isArray(next.docs)) next.docs = [];
+        if(!Array.isArray(next.globalViews)) next.globalViews = [];
+        next.schemaVersion = 1;
+        return next;
+    },
+    1(payload) { return Object.assign({}, payload, { schemaVersion:2 }); },
+    2(payload) { return Object.assign({}, payload, { schemaVersion:3 }); },
+    3(payload) { return Object.assign({}, payload, { schemaVersion:4 }); },
+    4(payload) { return Object.assign({}, payload, { schemaVersion:5 }); },
+    5(payload) { return Object.assign({}, payload, { schemaVersion:6 }); },
+    6(payload) { return Object.assign({}, payload, { schemaVersion:7 }); },
+    7(payload) { return Object.assign({}, payload, { schemaVersion:8 }); },
+    8(payload) { return Object.assign({}, payload, { schemaVersion:9 }); },
+    9(payload) { return Object.assign({}, payload, { schemaVersion:10 }); },
+    10(payload) { return Object.assign({}, payload, { schemaVersion:11 }); },
+    11(payload) { return Object.assign({}, payload, { schemaVersion:12 }); },
+    12(payload) { return Object.assign({}, payload, { schemaVersion:13 }); },
+    13(payload) { return Object.assign({}, payload, { schemaVersion:14 }); },
+    14(payload) { return Object.assign({}, payload, { schemaVersion:15 }); },
+    15(payload) { return Object.assign({}, payload, { schemaVersion:16 }); },
+    16(payload) { return Object.assign({}, payload, { schemaVersion:17 }); },
+    17(payload) { return Object.assign({}, payload, { schemaVersion:18 }); },
+    18(payload) { return Object.assign({}, payload, { schemaVersion:19 }); },
+    19(payload) { return Object.assign({}, payload, { schemaVersion:20 }); },
+});
+
+function migrateWorkspacePayload(payload) {
+    if(!payload || typeof payload !== 'object') throw new Error('工作区数据无效');
+    let next = Object.assign({}, payload);
+    let version = Number.isInteger(next.schemaVersion) ? next.schemaVersion : 0;
+    if(version > WORKSPACE_SCHEMA_VERSION) throw new Error('该工作区由更高版本创建');
+    while(version < WORKSPACE_SCHEMA_VERSION) {
+        const migrate = MIGRATIONS[version];
+        if(typeof migrate !== 'function') throw new Error(`缺少 schema ${version} 到下一版本的迁移`);
+        next = migrate(next);
+        version = Number(next.schemaVersion);
+    }
+    next.schemaVersion = WORKSPACE_SCHEMA_VERSION;
+    return next;
+}
+
 const Store = {
     state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', copyWithHeaders:true, spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
+    revision: 0,
+    viewRevision: 0,
+    queryRevision: 0,
     lastSaveError: null,
     storageBytes: 0,
     migratedFrom: null,
@@ -1426,16 +1481,23 @@ const Store = {
     _listeners: null,  // Set of onChange callbacks; lazily initialised
     _notifyQueue: null, // pending events queued for batched async delivery
     _notifyTimer: null, // single batched async timer
+    getState() { return this.state; },
+    getDocument(id=this.state.activeId) {
+        return (this.state.docs || []).find(doc => doc.id === id) || null;
+    },
+    getView(name) {
+        return (this.state.globalViews || []).find(view => view.view === name) || null;
+    },
     init() {
         let loaded = null;
         try {
             const current = localStorage.getItem(STORE_KEY);
-            if(current) loaded = JSON.parse(current);
+            if(current) loaded = migrateWorkspacePayload(JSON.parse(current));
             if(!loaded) {
                 for(const key of LEGACY_STORE_KEYS) {
                     const legacy = localStorage.getItem(key);
                     if(!legacy) continue;
-                    const parsed = JSON.parse(legacy);
+                    const parsed = migrateWorkspacePayload(JSON.parse(legacy));
                     if(parsed && Array.isArray(parsed.docs)) {
                         loaded = parsed;
                         this.migratedFrom = key;
@@ -1546,13 +1608,20 @@ const Store = {
     importWorkspace(payload, merge=false) {
         if(!payload || typeof payload !== 'object' || !this.isSafePayload(payload)) throw new Error('工作区文件包含不安全或过深的数据结构');
         if(!['ota-workspace','table-tool-tabs'].includes(payload.kind)) throw new Error('不是受支持的工作区文件');
+        payload = migrateWorkspacePayload(payload);
         if(!Array.isArray(payload.docs) || payload.docs.length === 0 || payload.docs.length > 100) throw new Error('工作区页签数量无效');
-        if(payload.schemaVersion && payload.schemaVersion > WORKSPACE_SCHEMA_VERSION) throw new Error('该工作区由更高版本创建');
         const imported = payload.docs.map((doc, idx) => {
             if(!doc || typeof doc !== 'object') throw new Error(`第 ${idx + 1} 个页签无效`);
             const raw = typeof doc.raw === 'string' ? doc.raw : '';
             if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`页签“${doc.title || idx + 1}”的数据超过 25 MB 限制`);
-            return { id:typeof doc.id === 'string' ? doc.id : '', title:typeof doc.title === 'string' ? doc.title : `Analysis ${idx + 1}`, raw, ui:(doc.ui && typeof doc.ui === 'object') ? doc.ui : {} };
+            return {
+                id:typeof doc.id === 'string' ? doc.id : '',
+                title:typeof doc.title === 'string' ? doc.title : `Analysis ${idx + 1}`,
+                raw,
+                sourceRevision:Number.isInteger(doc.sourceRevision) && doc.sourceRevision >= 0 ? doc.sourceRevision : undefined,
+                lastParse:null,
+                ui:(doc.ui && typeof doc.ui === 'object') ? doc.ui : {}
+            };
         });
         const base = merge ? this.state.docs.slice() : [];
         const usedIds = new Set(base.map(doc => doc.id));
@@ -1588,6 +1657,14 @@ const Store = {
         if(!doc.id) doc.id = this.generateDocId();
         if(!doc.title) doc.title = this.makeUniqueTitle(`Analysis ${idx + 1}`, doc.id);
         if(doc.raw === undefined || doc.raw === null) doc.raw = "";
+        const hasKnownSourceRevision = Number.isInteger(doc.sourceRevision) && doc.sourceRevision >= 0;
+        if(!hasKnownSourceRevision) {
+            doc.sourceRevision = 0;
+            // Backups created before sourceRevision cannot prove that row-index
+            // edits belong to the current raw source; discard only that unsafe overlay.
+            if(doc.ui && doc.ui.cellEdits) doc.ui.cellEdits = {};
+        }
+        if(doc.lastParse === undefined || !doc.lastParse || doc.lastParse.sourceRevision !== doc.sourceRevision) doc.lastParse = null;
         const defaults = this.createDefaultUI();
         doc.ui = Object.assign(defaults, doc.ui || {});
         if(!doc.ui.rules) doc.ui.rules = {};
@@ -1750,6 +1827,15 @@ const Store = {
      * Falls back to synchronous delivery when setTimeout is unavailable.
      */
     _notify(event, payload) {
+        if(event === 'state:changed') {
+            this.revision += 1;
+            payload = Object.assign({ revision:this.revision, activeId:this.state.activeId }, payload || {});
+            const changed = payload.changed || [];
+            if(changed.includes('views')) this.viewRevision += 1;
+            if(changed.includes('views') || changed.includes('query') || changed.includes('ui') || changed.includes('dataset')) this.queryRevision += 1;
+            payload.viewRevision = this.viewRevision;
+            payload.queryRevision = this.queryRevision;
+        }
         if (!this._listeners || this._listeners.size === 0) return;
         if (!this._notifyQueue) this._notifyQueue = [];
         this._notifyQueue.push({ event, payload });
@@ -1869,12 +1955,34 @@ const Store = {
 
             // ── Source ──
             case 'source:changed': {
-                // Payload: { text }  — raw text was modified by user
-                const doc = this.curr();
-                doc.raw = payload && typeof payload.text === 'string' ? payload.text : '';
-                this._notify('source:textChanged', { text: doc.raw });
-                this._notify('state:changed', {});
+                return this.transition('source:replace', payload);
+            }
+            case 'source:replace': {
+                // Payload: { text, docId?, format?, headerMode? }
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                const next = payload && typeof payload.text === 'string' ? payload.text : '';
+                const format = payload && typeof payload.format === 'string' ? payload.format : null;
+                const headerMode = payload && typeof payload.headerMode === 'string' ? payload.headerMode : null;
+                const changed = doc.raw !== next
+                    || (format !== null && doc.ui.importFormat !== format)
+                    || (headerMode !== null && doc.ui.importHeaderMode !== headerMode);
+                if(!changed) return doc.raw;
+                doc.raw = next;
+                doc.sourceRevision = (doc.sourceRevision || 0) + 1;
+                doc.lastParse = null;
+                doc.ui.cellEdits = {};
+                if(format !== null) doc.ui.importFormat = format || 'auto';
+                if(headerMode !== null) doc.ui.importHeaderMode = headerMode || 'auto';
                 this.scheduleSave();
+                this._notify('source:textChanged', {
+                    docId:doc.id,
+                    text:doc.raw,
+                    sourceRevision:doc.sourceRevision,
+                    preservePaste:payload && payload.preservePaste === true,
+                    invalidatedEdits:true,
+                });
+                this._notify('state:changed', { changed:['source','cellEdits'] });
                 return doc.raw;
             }
 
@@ -1882,47 +1990,78 @@ const Store = {
             case 'parse:completed': {
                 // Emitted by App.run() after Parser.parse() succeeds.
                 // Payload: { tables, elapsed, diagnostics }
-                this._notify('parse:completed', payload || {});
-                this._notify('state:changed', {});
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const parsePayload = payload || {};
+                const resultRevision = Number.isInteger(parsePayload.sourceRevision) ? parsePayload.sourceRevision : doc.sourceRevision;
+                if(resultRevision !== doc.sourceRevision) {
+                    this._notify('parse:stale', { docId:doc.id, sourceRevision:resultRevision, currentSourceRevision:doc.sourceRevision });
+                    return false;
+                }
+                doc.lastParse = {
+                    docId:doc.id,
+                    sourceRevision:resultRevision,
+                    format:parsePayload.format || null,
+                    completedAt:Date.now(),
+                };
+                this._notify('parse:completed', Object.assign({ docId:doc.id, sourceRevision:resultRevision }, parsePayload));
+                this._notify('state:changed', { changed:['dataset'] });
+                return true;
+            }
+
+            // ── Generic document state ──
+            case 'ui:set': {
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                const key = payload && payload.key;
+                if(!key || key === 'cellEdits') return false;
+                doc.ui[key] = payload.value;
+                this.scheduleSave();
+                this._notify('ui:changed', { docId:doc.id, key, value:doc.ui[key] });
+                this._notify('state:changed', { changed:['ui'] });
+                return doc.ui[key];
+            }
+            case 'rule:set': {
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                const table = payload && payload.table;
+                const field = payload && payload.field;
+                if(!table || !field) return false;
+                if(!doc.ui.rules[table]) doc.ui.rules[table] = {};
+                doc.ui.rules[table][field] = payload.value;
+                this.scheduleSave();
+                this._notify('filter:changed', { scope:'table', table, field, value:payload.value });
+                this._notify('state:changed', { changed:['query'] });
                 return true;
             }
 
             // ── Filters ──
             case 'filter:global': {
-                const doc = this.curr();
-                doc.ui.globalFilter = payload && payload.value ? String(payload.value) : '';
-                this.scheduleSave();
-                this._notify('filter:changed', { scope: 'global', value: doc.ui.globalFilter });
-                this._notify('state:changed', {});
-                return doc.ui.globalFilter;
+                const value = payload && payload.value ? String(payload.value) : '';
+                const result = this.transition('ui:set', { key:'globalFilter', value });
+                this._notify('filter:changed', { scope:'global', value });
+                return result;
             }
             case 'filter:table': {
                 const tableName = payload && payload.table;
                 const field = payload && payload.field;
                 const value = payload && payload.value ? String(payload.value) : '';
                 if (!tableName || !field) return false;
-                this.updateRule(tableName, field, value);
-                this._notify('filter:changed', { scope: 'table', table: tableName, field, value });
-                this._notify('state:changed', {});
-                return true;
+                return this.transition('rule:set', { table:tableName, field, value });
             }
             case 'filter:column': {
                 // Payload: { table, column, value }
                 const table = payload && payload.table;
                 const column = payload && payload.column;
                 if (!table || !column) return false;
-                const ui = this.curr().ui;
-                if (!ui.columnFilters) ui.columnFilters = {};
-                if (!ui.columnFilters[table]) ui.columnFilters[table] = {};
                 const val = (payload.value || '').trim();
-                if (val) {
-                    ui.columnFilters[table][column] = val;
-                } else {
-                    delete ui.columnFilters[table][column];
-                }
-                this.save();
+                const current = this.curr().ui.columnFilters || {};
+                const nextFilters = JSON.parse(JSON.stringify(current));
+                if(!nextFilters[table]) nextFilters[table] = {};
+                if(val) nextFilters[table][column] = val;
+                else delete nextFilters[table][column];
+                if(Object.keys(nextFilters[table]).length === 0) delete nextFilters[table];
+                this.transition('ui:set', { key:'columnFilters', value:nextFilters });
                 this._notify('filter:changed', { scope: 'column', table, column, value: val });
-                this._notify('state:changed', {});
                 return true;
             }
 
@@ -1951,13 +2090,10 @@ const Store = {
                 // Payload: { table }
                 const table = payload && payload.table;
                 if (!table) return false;
-                const doc = this.curr();
-                if (doc.ui.columnFilters) {
-                    delete doc.ui.columnFilters[table];
-                    this.save();
-                }
+                const nextFilters = JSON.parse(JSON.stringify(this.curr().ui.columnFilters || {}));
+                delete nextFilters[table];
+                this.transition('ui:set', { key:'columnFilters', value:nextFilters });
                 this._notify('filter:changed', { scope: 'column', table, column: null, value: '' });
-                this._notify('state:changed', {});
                 return true;
             }
 
@@ -1989,61 +2125,115 @@ const Store = {
 
             // ── UI settings ──
             case 'ui:sidebarTab': {
-                this.updateUI('sidebarTab', payload && payload.tab || 'data');
+                this.transition('ui:set', { key:'sidebarTab', value:payload && payload.tab || 'data' });
                 this._notify('ui:sidebarChanged', { tab: payload && payload.tab });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'ui:autoParse': {
-                this.updateUI('autoParse', payload && payload.enabled !== false);
+                this.transition('ui:set', { key:'autoParse', value:payload && payload.enabled !== false });
                 this._notify('ui:autoParseChanged', { enabled: this.curr().ui.autoParse });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'import:setFormat': {
-                this.updateUI('importFormat', payload && payload.format || 'auto');
+                this.transition('source:replace', { text:this.curr().raw, format:payload && payload.format || 'auto' });
                 this._notify('import:formatChanged', { format: payload && payload.format });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'import:setHeaderMode': {
-                this.updateUI('importHeaderMode', payload && payload.mode || 'auto');
+                this.transition('source:replace', { text:this.curr().raw, headerMode:payload && payload.mode || 'auto' });
                 this._notify('import:headerModeChanged', { mode: payload && payload.mode });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'filter:focus': {
                 // Payload: { table, columns }
                 const table = payload && payload.table;
                 if (!table) return false;
-                this.updateRule(table, 'focus', (payload && payload.columns) || []);
+                this.transition('rule:set', { table, field:'focus', value:(payload && payload.columns) || [] });
                 this._notify('filter:changed', { scope: 'focus', table });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'ui:copyFormat': {
                 this.setCopyFormat(payload && payload.format);
                 this._notify('ui:copyFormatChanged', { format: this.state.copyFormat });
-                this._notify('state:changed', {});
+                this._notify('state:changed', { changed:['preferences'] });
                 return true;
             }
             case 'ui:copyHeaders': {
                 this.setCopyWithHeaders(payload && payload.enabled);
                 this._notify('ui:copyHeadersChanged', { enabled: this.state.copyWithHeaders });
-                this._notify('state:changed', {});
+                this._notify('state:changed', { changed:['preferences'] });
                 return true;
             }
             case 'ui:theme': {
                 this.toggleTheme();
                 this._notify('ui:themeChanged', { theme: this.state.theme });
-                this._notify('state:changed', {});
+                this._notify('state:changed', { changed:['preferences'] });
                 return this.state.theme;
             }
             case 'ui:persistRaw': {
                 this.setPersistRaw(payload && payload.enabled !== false);
                 this._notify('ui:persistRawChanged', { enabled: this.state.persistRaw });
-                this._notify('state:changed', {});
+                this._notify('state:changed', { changed:['preferences'] });
                 return this.state.persistRaw;
+            }
+
+            case 'document:replaceUI': {
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc || !payload || !payload.ui || typeof payload.ui !== 'object') return false;
+                doc.ui = Object.assign(this.createDefaultUI(), payload.ui);
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                this.save();
+                this._notify('ui:changed', { docId:doc.id, replaced:true });
+                this._notify('state:changed', { changed:['ui'] });
+                return true;
+            }
+            case 'preferences:replace': {
+                const prefs = payload && payload.preferences;
+                if(!prefs || typeof prefs !== 'object') return false;
+                if(['light','dark'].includes(prefs.theme)) this.state.theme = prefs.theme;
+                if(COPY_FORMATS.includes(prefs.copyFormat)) this.state.copyFormat = prefs.copyFormat;
+                if(typeof prefs.copyWithHeaders === 'boolean') this.state.copyWithHeaders = prefs.copyWithHeaders;
+                if(typeof prefs.persistRaw === 'boolean') this.state.persistRaw = prefs.persistRaw;
+                if(typeof prefs.spreadsheetSafe === 'boolean') this.state.spreadsheetSafe = prefs.spreadsheetSafe;
+                this.applyTheme();
+                this.save();
+                this._notify('preferences:changed', { preferences:Object.assign({}, prefs) });
+                this._notify('state:changed', { changed:['preferences'] });
+                return true;
+            }
+
+            // ── JOIN view state ──
+            case 'view:replaceAll': {
+                const views = Array.isArray(payload && payload.views) ? payload.views : [];
+                this.state.globalViews = views.slice(0, 500);
+                this.save();
+                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('state:changed', { changed:['views'] });
+                return this.state.globalViews;
+            }
+            case 'view:upsert': {
+                const view = payload && payload.view;
+                if(!view || typeof view !== 'object' || !view.view) return false;
+                const index = Number.isInteger(payload.index)
+                    ? payload.index
+                    : this.state.globalViews.findIndex(item => item.view === view.view);
+                if(index >= 0 && index < this.state.globalViews.length) this.state.globalViews[index] = Object.assign({}, view);
+                else this.state.globalViews.push(Object.assign({}, view));
+                this.save();
+                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('state:changed', { changed:['views'] });
+                return true;
+            }
+            case 'view:removeMany': {
+                const indexes = Array.isArray(payload && payload.indexes)
+                    ? payload.indexes.filter(Number.isInteger).sort((a,b) => b-a) : [];
+                indexes.forEach(index => {
+                    if(index >= 0 && index < this.state.globalViews.length) this.state.globalViews.splice(index, 1);
+                });
+                this.save();
+                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('state:changed', { changed:['views'] });
+                return indexes.length;
             }
 
             // ── Workspace ──
@@ -2056,6 +2246,12 @@ const Store = {
                 }
                 return ok;
             }
+            case 'workspace:import': {
+                const count = this.importWorkspace(payload && payload.workspace, payload && payload.merge === true);
+                this._notify('workspace:imported', { count });
+                this._notify('state:changed', { changed:['workspace'] });
+                return count;
+            }
 
             default:
                 if (typeof console !== 'undefined' && console.warn) {
@@ -2066,7 +2262,7 @@ const Store = {
     }
 };
 
-    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, Store };
+    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, MIGRATIONS, migrateWorkspacePayload, Store };
 });
 
 /* @module core/dispatch.js: command bus between UI and Store */
@@ -4773,6 +4969,140 @@ const Joiner = {
     return { Joiner };
 });
 
+/* @module core/query-service.js: shared preview query/result pipeline */
+OTA.define('query-service', ["filter-engine", "joiner"], ({FilterEngine}, {Joiner}) => {
+/* QueryService — the single derived-data contract for preview and preview export.
+   It deliberately receives snapshots and has no DOM, Store, or persistence access.
+*/
+
+const MAX_CACHE_ENTRIES = 8;
+const cache = new Map();
+const identities = new WeakMap();
+let nextIdentity = 1;
+
+function objectIdentity(value) {
+    if(!value || typeof value !== 'object') return 0;
+    if(!identities.has(value)) identities.set(value, nextIdentity++);
+    return identities.get(value);
+}
+
+function stableValue(value) {
+    if(value === null || typeof value !== 'object') return value;
+    if(Array.isArray(value)) return value.map(stableValue);
+    return Object.keys(value).sort().reduce((out, key) => {
+        out[key] = stableValue(value[key]);
+        return out;
+    }, {});
+}
+
+function querySignature(ui, meta) {
+    const query = {
+        displayTables:ui.displayTables || null,
+        enabledViews:ui.enabledViews || null,
+        rules:ui.rules || {},
+        columnFilters:ui.columnFilters || {},
+        globalFilter:ui.globalFilter || '',
+        enableHighlight:ui.enableHighlight !== false,
+        onlyHighlighted:ui.onlyHighlighted || false,
+    };
+    return JSON.stringify({
+        docId:meta.docId || '',
+        sourceRevision:Number(meta.sourceRevision) || 0,
+        stateRevision:Number(meta.stateRevision) || 0,
+        viewRevision:Number(meta.viewRevision) || 0,
+        queryRevision:Number(meta.queryRevision) || 0,
+        rawToken:Number(meta.rawToken) || 0,
+        query:stableValue(query),
+    });
+}
+
+function cloneForResult(table) {
+    return {
+        name:table.name,
+        headers:Array.isArray(table.headers) ? table.headers.slice() : [],
+        rows:Array.isArray(table.rows) ? table.rows.map(row => row.slice()) : [],
+        isView:!!table.isView,
+    };
+}
+
+const QueryService = {
+    clearCache() { cache.clear(); },
+
+    getCacheSize() { return cache.size; },
+
+    getPreview({rawTables=[], globalViews=[], ui={}, docId='', sourceRevision=0, stateRevision=0, viewRevision=0, queryRevision=0}={}) {
+        const key = querySignature(ui, {
+            docId,
+            sourceRevision,
+            stateRevision,
+            viewRevision,
+            queryRevision,
+            rawToken:objectIdentity(rawTables),
+        });
+        const cached = cache.get(key);
+        if(cached) return cached;
+
+        let tables = rawTables.slice();
+        if(Array.isArray(ui.displayTables)) {
+            const selected = new Set(ui.displayTables);
+            tables = tables.filter(table => selected.has(table.name));
+        }
+
+        const joins = Array.isArray(ui.enabledViews) && ui.enabledViews.length
+            ? ui.enabledViews.map(name => {
+                const config = globalViews.find(view => view && view.view === name);
+                return config ? Joiner.run(rawTables, config, globalViews) : null;
+            }).filter(Boolean)
+            : [];
+
+        const processedTables = tables.concat(joins).map((table, tableIndex) => {
+            const snapshot = cloneForResult(table);
+            const rules = (ui.rules && ui.rules[table.name]) || {};
+            const result = FilterEngine.processTable(
+                snapshot,
+                rules,
+                ui,
+                ui.globalFilter || '',
+                ui.enableHighlight !== false,
+                ui.onlyHighlighted || false
+            );
+            result.rows.forEach((row, index) => { row._resultIndex = index; });
+            return { table:snapshot, res:result, tIdx:tableIndex };
+        });
+
+        const result = Object.freeze({
+            key,
+            tables:Object.freeze(processedTables),
+        sourceRevision:Number(sourceRevision) || 0,
+        stateRevision:Number(stateRevision) || 0,
+        viewRevision:Number(viewRevision) || 0,
+        queryRevision:Number(queryRevision) || 0,
+        });
+        cache.set(key, result);
+        while(cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+        return result;
+    },
+
+    paginate(processed, tableName, page=1, pageSize=100) {
+        const item = (processed || []).find(entry => entry.table.name === tableName);
+        if(!item) return {headers:[], rows:[], page:1, pageCount:1, totalRows:0};
+        const size = Math.max(1, Number(pageSize) || 100);
+        const totalRows = item.res.rows.length;
+        const pageCount = Math.max(1, Math.ceil(totalRows / size));
+        const current = Math.min(pageCount, Math.max(1, Number(page) || 1));
+        return {
+            headers:item.res.headers.slice(),
+            rows:item.res.rows.slice((current - 1) * size, current * size),
+            page:current,
+            pageCount,
+            totalRows,
+        };
+    },
+};
+
+    return { QueryService };
+});
+
 /* @module core/table-registry.js: shared table/column metadata access */
 OTA.define('table-registry', ["store", "joiner"], ({Store}, {Joiner}) => {
 /* TableRegistry — single source of truth for parsed table data and metadata.
@@ -5292,7 +5622,7 @@ const Select = {
 });
 
 /* @module ui/join-editor.js: JOIN editor UI */
-OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}) => {
+OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager","dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}, {dispatch}) => {
 /* Join Editor - v2: improved UX */
 const JoinEditor = {
     state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '', selectedOrderIdx: -1 },
@@ -6097,6 +6427,7 @@ const JoinEditor = {
     /* ── Open / Close / Save ── */
     open(editIdx = -1) {
         const p = $('joinModal'); p.classList.remove('hidden');
+        ModalController.activate(p);
         document.body.classList.add('modal-open');
         this.state.editIdx = editIdx;
         this.metaCache = {};
@@ -6167,6 +6498,7 @@ const JoinEditor = {
             if(!confirm('有未保存修改，确定关闭？')) return;
         }
         $('joinModal').classList.add('hidden');
+        ModalController.deactivate($('joinModal'));
         document.body.classList.remove('modal-open');
     },
 
@@ -6197,14 +6529,12 @@ const JoinEditor = {
             updatedAt: Date.now()
         };
 
-        if(this.state.editIdx > -1) Store.state.globalViews[this.state.editIdx] = nv;
-        else Store.state.globalViews.push(nv);
-
-        Store.save();
+        dispatch('view:upsert', { index:this.state.editIdx > -1 ? this.state.editIdx : undefined, view:nv });
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
         this.setDirty(false);
         $('joinModal').classList.add('hidden');
+        ModalController.deactivate($('joinModal'));
         document.body.classList.remove('modal-open');
         Toast.show(this.state.editIdx > -1 ? '视图已更新' : '视图已创建');
     },
@@ -6219,7 +6549,7 @@ const JoinEditor = {
 });
 
 /* @module ui/view-manager.js: JOIN view CRUD management modal */
-OTA.define('view-manager', ["runtime", "store", "exporter", "modal-controller"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Exporter}, {ModalController}) => {
+OTA.define('view-manager', ["runtime", "store", "exporter", "modal-controller", "dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Exporter}, {ModalController}, {dispatch}) => {
 /* ViewManager — JOIN view CRUD and management modal.
 
    Extracted from join-editor.js. All interactions go through Store.state.globalViews.
@@ -6293,18 +6623,17 @@ const ViewManager = {
             if (idx > -1) {
                 if (confirm(`视图 "${nv.view}" 已存在，是否覆盖？\n确定=覆盖 | 取消=自动改名`)) {
                     nv.createdAt = Store.state.globalViews[idx].createdAt || nv.createdAt;
-                    Store.state.globalViews[idx] = nv;
+                    dispatch('view:upsert', { index:idx, view:nv });
                 } else {
                     nv.view = this.makeUniqueName(nv.view);
-                    Store.state.globalViews.push(nv);
+                    dispatch('view:upsert', { view:nv });
                 }
             } else {
-                Store.state.globalViews.push(nv);
+                dispatch('view:upsert', { view:nv });
             }
             imported++;
         });
         if (imported) {
-            Store.save();
             this._notifyChange();
             this.modManageViews();
             Toast.show(`已导入 ${imported} 个视图`);
@@ -6454,8 +6783,7 @@ const ViewManager = {
                 if (selectedCbs.length === 0) return;
                 const indices = Array.from(selectedCbs).map(cb => parseInt(cb.dataset.index)).sort((a, b) => b - a);
                 if (!confirm(`确定删除选中的 ${indices.length} 个视图吗？此操作不可恢复。`)) return;
-                indices.forEach(idx => Store.state.globalViews.splice(idx, 1));
-                Store.save();
+                dispatch('view:removeMany', { indexes:indices });
                 self._notifyChange();
                 self.modManageViews();
                 Toast.show(`已删除 ${indices.length} 个视图`);
@@ -6512,8 +6840,7 @@ const ViewManager = {
             };
             if (copyBtn) copyBtn.onclick = () => {
                 const name = self.makeUniqueName(`${v.view}_copy`);
-                Store.state.globalViews.push({ ...v, view: name, createdAt: Date.now(), updatedAt: Date.now() });
-                Store.save();
+                dispatch('view:upsert', { view:{ ...v, view: name, createdAt: Date.now(), updatedAt: Date.now() } });
                 self._notifyChange();
                 self.modManageViews();
                 Toast.show('视图已复制');
@@ -6528,8 +6855,7 @@ const ViewManager = {
                 $(`jeConfirm_${i}`).style.display = 'none';
             };
             if (delOkBtn) delOkBtn.onclick = () => {
-                Store.state.globalViews.splice(i, 1);
-                Store.save();
+                dispatch('view:removeMany', { indexes:[i] });
                 self._notifyChange();
                 self.modManageViews();
             };
@@ -6542,7 +6868,7 @@ const ViewManager = {
 });
 
 /* @module ui/source-controller.js: source editor and file import */
-OTA.define('source-controller', ["runtime", "store", "dispatch"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}) => {
+OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}) => {
 /* SourceController — manages source text input, file import, fullscreen editor,
    and input resizer. Delegates all state changes to dispatch().
 
@@ -6565,7 +6891,6 @@ const SourceController = {
     _persistTimer: null,
     _statsTimer: null,
     _autoParseTimer: null,
-    _returnFocus: null,
 
     // ── Pure helpers ──
 
@@ -6641,7 +6966,7 @@ const SourceController = {
 
         // Input changes → dispatch source:changed
         rawInput.oninput = () => {
-            dispatch('source:changed', { text: rawInput.value });
+            dispatch('source:changed', { text: rawInput.value, preservePaste:Boolean(SourceController._lastPaste && SourceController._lastPaste.docId === Store.state.activeId && String(SourceController._lastPaste.plain || '').trim() === rawInput.value.trim()) });
         };
 
         // Paste with HTML detection
@@ -6658,14 +6983,9 @@ const SourceController = {
             }
         });
 
-        // Schedule persistence on input (debounced save to localStorage)
+        // Source transitions already schedule persistence; this listener only
+        // drives the debounced auto-parse state.
         rawInput.addEventListener('input', () => {
-            clearTimeout(SourceController._persistTimer);
-            SourceController._persistTimer = setTimeout(() => {
-                Store.curr().raw = rawInput.value;
-                Store.save();
-            }, 650);
-
             // Debounced auto-parse: fire when input stabilises, unless disabled
             // or the source is large enough to require an explicit parse.
             SourceController.scheduleAutoParse({ text: rawInput.value });
@@ -6745,12 +7065,6 @@ const SourceController = {
                 return;
             }
 
-            Store.normalizeDoc(targetDoc, Store.state.docs.indexOf(targetDoc));
-            targetDoc.raw = text;
-            if (detected !== 'auto' && (!targetDoc.ui.importFormat || targetDoc.ui.importFormat === 'auto')) {
-                targetDoc.ui.importFormat = detected;
-            }
-
             if (detected === 'html-table' && Store.state.activeId === targetDocId) {
                 SourceController._lastPaste = { html: text, plain: text, docId: Store.state.activeId };
             } else if (Store.state.activeId === targetDocId) {
@@ -6763,8 +7077,7 @@ const SourceController = {
                 if (rawInput) rawInput.value = text;
                 const formatSelect = $('formatSelect');
                 if (formatSelect && detected !== 'auto' && formatSelect.value === 'auto') formatSelect.value = detected;
-                dispatch('source:changed', { text: text });
-                Store.save();
+                dispatch('source:replace', { docId:targetDocId, text, format:detected, preservePaste:detected === 'html-table' });
                 Toast.show(`已导入 ${file.name}`);
 
                 // Trigger parse only for the visible initiating tab.
@@ -6775,7 +7088,7 @@ const SourceController = {
                 }
             } else {
                 // Keep the import attached to its initiating tab without disturbing the visible tab.
-                Store.save();
+                dispatch('source:replace', { docId:targetDocId, text, format:detected });
                 Toast.show(`已导入 ${file.name} 到页签“${targetDoc.title || 'Analysis'}”`);
             }
         };
@@ -6878,7 +7191,6 @@ const SourceController = {
         const largeInput = $('rawInputLarge');
         if (!largeInput) return;
 
-        SourceController._returnFocus = document.activeElement;
         largeInput.value = mainInput ? mainInput.value : '';
 
         // Sync controls from main editor
@@ -6889,6 +7201,7 @@ const SourceController = {
             modal.classList.remove('hidden');
             modal.classList.add('active');
             modal.setAttribute('aria-hidden', 'false');
+            ModalController.activate(modal, largeInput);
         }
         document.body.classList.add('source-editor-open');
 
@@ -6908,17 +7221,13 @@ const SourceController = {
             modal.classList.remove('active');
             modal.classList.add('hidden');
             modal.setAttribute('aria-hidden', 'true');
+            ModalController.deactivate(modal);
         }
         document.body.classList.remove('source-editor-open');
 
         SourceController._syncToMain();
         if (textChanged || hadPendingAutoParse) this.scheduleAutoParse({ text: nextText });
 
-        // Restore focus
-        if (SourceController._returnFocus && typeof SourceController._returnFocus.focus === 'function') {
-            SourceController._returnFocus.focus();
-        }
-        SourceController._returnFocus = null;
     },
 
     /** Copy fullscreen editor text back to main editor + Store. */
@@ -6929,7 +7238,7 @@ const SourceController = {
 
         const text = largeInput.value;
         mainInput.value = text;
-        dispatch('source:changed', { text: text });
+        dispatch('source:changed', { text: text, preservePaste:Boolean(SourceController._lastPaste && SourceController._lastPaste.docId === Store.state.activeId && String(SourceController._lastPaste.plain || '').trim() === text.trim()) });
     },
 
     /** Reflect format/header controls from main → fullscreen. */
@@ -6966,10 +7275,7 @@ const SourceController = {
         clearTimeout(SourceController._persistTimer);
         SourceController._persistTimer = setTimeout(() => {
             const largeInput = $('rawInputLarge');
-            if (largeInput) {
-                Store.curr().raw = largeInput.value;
-                Store.save();
-            }
+            if (largeInput) dispatch('source:replace', { text:largeInput.value });
         }, 650);
     },
 
@@ -7395,6 +7701,7 @@ OTA.define('modal-controller', ["runtime", "store", "dispatch"], ({$, escapeHtml
 
 const ModalController = {
     returnFocus: null,
+    activeContainer: null,
 
     /**
      * Bind modal overlay click-to-close. Called once from App.init().
@@ -7406,6 +7713,45 @@ const ModalController = {
                 if (e.target === overlay) ModalController.close();
             });
         }
+        if(typeof document !== 'undefined' && document.addEventListener) {
+            document.addEventListener('keydown', (event) => {
+                if(!ModalController.activeContainer || event.key !== 'Tab') return;
+                const root = ModalController.activeContainer;
+                let focusable = [];
+                try {
+                    focusable = Array.from(root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+                        .filter(el => !el.disabled && el.getAttribute('aria-hidden') !== 'true');
+                } catch(e) { return; }
+                if(!focusable.length) return;
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if(event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if(!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            });
+        }
+    },
+
+    activate(container, initialFocus=null) {
+        if(!container) return;
+        ModalController.returnFocus = document.activeElement;
+        ModalController.activeContainer = container;
+        const target = initialFocus || (() => {
+            try { return container.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])'); } catch(e) { return null; }
+        })();
+        if(target && typeof target.focus === 'function') setTimeout(() => target.focus(), 0);
+    },
+
+    deactivate(container=null) {
+        if(container && ModalController.activeContainer && ModalController.activeContainer !== container) return;
+        ModalController.activeContainer = null;
+        const target = ModalController.returnFocus;
+        ModalController.returnFocus = null;
+        if(target && typeof target.focus === 'function') target.focus();
     },
 
     /**
@@ -7414,6 +7760,7 @@ const ModalController = {
     close() {
         const overlay = $('modalOverlay');
         if (overlay) overlay.classList.add('hidden');
+        ModalController.deactivate(overlay ? $('modalContent') : null);
         if (ModalController.returnFocus && typeof ModalController.returnFocus.focus === 'function') {
             ModalController.returnFocus.focus();
         }
@@ -7433,7 +7780,7 @@ const ModalController = {
         const closeBtn = $('modalCloseBtn');
         if (closeBtn) {
             closeBtn.onclick = () => ModalController.close();
-            setTimeout(() => closeBtn.focus(), 0);
+            ModalController.activate(content, closeBtn);
         }
     },
 
@@ -7452,7 +7799,7 @@ const ModalController = {
         ModalController._bindSaveBtn(() => {
             const v = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
             const next = (v.length === tableNames.length && tableNames.length > 0) ? null : v;
-            Store.updateUI('displayTables', next);
+            dispatch('ui:set', { key:'displayTables', value:next });
             ModalController.close();
             dispatch('preview:renderRequested', {});
         });
@@ -7478,7 +7825,7 @@ const ModalController = {
         ModalController.show('启用视图', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         ModalController._bindSaveBtn(() => {
             const sel = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
-            Store.updateUI('enabledViews', sel);
+            dispatch('ui:set', { key:'enabledViews', value:sel });
             ModalController.close();
             dispatch('preview:renderRequested', {});
         });
@@ -7732,7 +8079,7 @@ const ModalController = {
                 const cb = row.querySelector('input');
                 if (cb && cb.checked) checked.push(cb.value);
             });
-            Store.updateRule(tableName, 'focus', checked);
+            dispatch('rule:set', { table:tableName, field:'focus', value:checked });
             const focusInput = document.getElementById('focusColsInput');
             if (focusInput) focusInput.value = checked.join(', ');
             ModalController.close();
@@ -7984,7 +8331,7 @@ const TabController = {
 
     _persistCurrentSource() {
         const input = $('rawInput');
-        if (input) Store.curr().raw = input.value;
+        if (input) dispatch('source:replace', { text:input.value });
     },
 
     // ── Internal helpers ──
@@ -8017,7 +8364,7 @@ const TabController = {
 });
 
 /* @module ui/keyboard-controller.js: global keyboard shortcuts */
-OTA.define('keyboard-controller', ["runtime", "store", "source-controller", "cell-edit-controller", "tab-controller", "join-editor", "modal-controller"], ({$, Toast}, {Store}, {SourceController}, {CellEditController}, {TabController}, {JoinEditor}, {ModalController}) => {
+OTA.define('keyboard-controller', ["runtime", "store", "dispatch", "source-controller", "cell-edit-controller", "tab-controller", "join-editor", "modal-controller"], ({$, Toast}, {Store}, {dispatch}, {SourceController}, {CellEditController}, {TabController}, {JoinEditor}, {ModalController}) => {
 /* KeyboardController — global keyboard shortcut handler.
 
    Extracted from App.bind() to keep the orchestrator lean.
@@ -8067,8 +8414,8 @@ const KeyboardController = {
         if (mod && e.key.toLowerCase() === 's')     {
             e.preventDefault();
             const inp = $('rawInput');
-            if (inp) Store.curr().raw = inp.value;
-            Store.save();
+            if (inp) dispatch('source:replace', { text:inp.value });
+            dispatch('workspace:save');
             Toast.show('工作区已保存');
             return;
         }
@@ -8098,7 +8445,7 @@ const KeyboardController = {
 });
 
 /* @module ui/export-controller.js: file exports and workspace backup */
-OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine"], ({$, Toast}, {Store, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}) => {
+OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine", "query-service"], ({$, Toast}, {Store, APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}, {QueryService}) => {
 /* ExportController — file exports, workspace/config backup, copy format.
 
    Responsibilities:
@@ -8185,8 +8532,8 @@ const ExportController = {
         const exportTabBtn = $('exportTabBtn');
         if (exportTabBtn) exportTabBtn.onclick = () => Exporter.toJson({
             kind: 'ota-workspace',
-            schemaVersion: (Store.schemaVersion || 20),
-            appVersion: (Store._appVersion || '21.0.0'),
+            schemaVersion: WORKSPACE_SCHEMA_VERSION,
+            appVersion: APP_VERSION,
             exportedAt: new Date().toISOString(),
             docs: Store.state.docs,
             globalViews: Store.state.globalViews,
@@ -8310,23 +8657,17 @@ const ExportController = {
     },
 
     _getPreviewProcessedTables() {
-        const ui = Store.curr().ui;
-        let tables = TableRegistry.getRaw();
-        if (ui.displayTables) tables = tables.filter(t => ui.displayTables.includes(t.name));
-        const joins = ExportController._getEnabledJoinTables(true);
-        return [...tables, ...joins].map((table, tIdx) => {
-            const rules = (ui.rules && ui.rules[table.name]) || {};
-            const res = FilterEngine.processTable(
-                table,
-                rules,
-                ui,
-                ui.globalFilter || '',
-                ui.enableHighlight !== false,
-                ui.onlyHighlighted || false
-            );
-            res.rows.forEach((row, index) => { row._resultIndex = index; });
-            return { table, res, tIdx };
-        });
+        const doc = Store.curr();
+        return QueryService.getPreview({
+            rawTables:TableRegistry.getRaw(),
+            globalViews:Store.state.globalViews,
+            ui:doc.ui,
+            docId:doc.id,
+            sourceRevision:doc.sourceRevision,
+            stateRevision:Store.revision,
+            viewRevision:Store.viewRevision,
+            queryRevision:Store.queryRevision,
+        }).tables;
     },
 
     _getPreviewExportTables() {
@@ -8343,7 +8684,7 @@ const ExportController = {
     _importWorkspacePayload(json) {
         const d = JSON.parse(json);
         const replace = typeof confirm === 'function' ? confirm('确定：替换当前工作区\n取消：把备份追加为新页签') : true;
-        const count = Store.importWorkspace(d, !replace);
+        const count = dispatch('workspace:import', { workspace:d, merge:!replace });
         this._applyPreferences(d.preferences);
         dispatch('workspace:imported', { count });
         return count;
@@ -8355,11 +8696,12 @@ const ExportController = {
         if (d.kind !== 'table-tool-config' || !Store.isSafePayload(d)) throw new Error('配置结构无效');
 
         if (Array.isArray(d.globalViews)) {
-            const oldCount = Store.state.globalViews.length;
-            Store.state.globalViews = d.globalViews.slice(0, 500).filter(
+            const nextViews = d.globalViews.slice(0, 500).filter(
                 view => view && typeof view === 'object' && typeof view.view === 'string'
             );
-            Toast.show(`全局视图已更新 (${oldCount} → ${Store.state.globalViews.length} 个)`);
+            const oldCount = Store.state.globalViews.length;
+            dispatch('view:replaceAll', { views:nextViews });
+            Toast.show(`全局视图已更新 (${oldCount} → ${nextViews.length} 个)`);
         }
 
         let appliedCount = 0;
@@ -8369,7 +8711,7 @@ const ExportController = {
                 let t = Store.state.docs.find(y => y.title === x.title);
                 if (!t) t = Store.state.docs.find(y => y.id === x.id);
                 if (t) {
-                    if (x.ui && typeof x.ui === 'object') t.ui = x.ui;
+                    if (x.ui && typeof x.ui === 'object') dispatch('document:replaceUI', { docId:t.id, ui:x.ui });
                     appliedCount++;
                 } else {
                     unmatched.push(x.title || x.id);
@@ -8384,24 +8726,17 @@ const ExportController = {
             )) {
                 unmatched.forEach(docName => {
                     const cfg = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
-                    if (cfg) Store.addDoc({ title: cfg.title, raw: '', ui: cfg.ui || {} });
+                    if (cfg) dispatch('tab:create', { title:cfg.title, raw:'', ui:cfg.ui || {} });
                 });
             }
         }
-        Store.save();
         return appliedCount;
     },
 
     /** Apply workspace preferences block to current Store. */
     _applyPreferences(prefs) {
         if (!prefs || typeof prefs !== 'object') return;
-        if (['light', 'dark'].includes(prefs.theme)) Store.state.theme = prefs.theme;
-        if (COPY_FORMATS.includes(prefs.copyFormat)) Store.state.copyFormat = prefs.copyFormat;
-        if (typeof prefs.copyWithHeaders === 'boolean') Store.state.copyWithHeaders = prefs.copyWithHeaders;
-        if (typeof prefs.persistRaw === 'boolean') Store.state.persistRaw = prefs.persistRaw;
-        if (typeof prefs.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = prefs.spreadsheetSafe;
-        Store.applyTheme();
-        Store.save();
+        dispatch('preferences:replace', { preferences:prefs });
     },
 
     _emit(name) {
@@ -8421,6 +8756,21 @@ const App = {
     raw: [], rendered: [],
     sourceParseState: 'ready',
     tabDrag: { sourceId:null },
+    _renderQueued: false,
+    _renderPending: false,
+    requestRender() {
+        this._renderPending = true;
+        if(this._renderQueued) return;
+        this._renderQueued = true;
+        const flush = () => {
+            this._renderQueued = false;
+            if(!this._renderPending) return;
+            this._renderPending = false;
+            this.renderPreview();
+        };
+        if(typeof setTimeout === 'function') setTimeout(flush, 0);
+        else flush();
+    },
     // Shared utilities (imported from runtime)
     escapeHtml,
     formatBytes,
@@ -8432,7 +8782,7 @@ const App = {
         if(!Store.state.docs.some(d => d.id === id)) return false;
         if(!force && Store.state.activeId === id) return false;
         const input = $('rawInput');
-        if(input) Store.curr().raw = input.value;
+        if(input) dispatch('source:replace', { text:input.value });
         return dispatch('tab:activate', { id, force });
     },
     init() {
@@ -8458,20 +8808,39 @@ const App = {
                 case 'tab:reordered':
                     this.renderTabs();
                     break;
+                case 'source:textChanged':
+                    if (!payload || payload.docId === Store.state.activeId) {
+                        CellEditController.reset();
+                        if(!payload || payload.preservePaste !== true) SourceController.clearLastPaste();
+                        this.updateWorkspaceSummary();
+                    }
+                    break;
+                case 'parse:stale':
+                    Toast.show('解析结果已过期，请重新解析当前数据源', true);
+                    break;
+                case 'ui:changed':
+                    if (!payload || payload.replaced || ['globalFilter','columnFilters','rules','displayTables','enabledViews','previewModes','pageSize','previewTable','tablePages'].includes(payload.key)) this.requestRender();
+                    this.updateWorkspaceSummary();
+                    break;
+                case 'views:changed':
+                    this.updSelects();
+                    this.updChips();
+                    this.requestRender();
+                    break;
                 case 'parse:completed':
                     this.updSelects();
-                    this.renderPreview();
                     this.updChips();
+                    this.requestRender();
                     if (payload && payload.elapsed > 800) {
                         Toast.show(`\u89e3\u6790\u5b8c\u6210 \u00b7 ${payload.elapsed} ms`);
                     }
                     break;
                 case 'filter:changed':
-                    this.renderPreview();
+                    this.requestRender();
                     break;
                 case 'preview:changed':
                 case 'preview:renderRequested':
-                    this.renderPreview();
+                    this.requestRender();
                     break;
                 case 'workspace:saved':
                     this.updateStorageStatus(payload || {});
@@ -8510,7 +8879,7 @@ const App = {
             document.addEventListener('ota:joinChanged', () => {
                 this.updSelects();
                 this.updChips();
-                this.renderPreview();
+                this.requestRender();
             });
             document.addEventListener('ota:joinParseRequested', () => {
                 this.run();
@@ -8571,10 +8940,9 @@ const App = {
 
     setTablePreviewMode(tableName, mode) {
         const ui = Store.curr().ui;
-        if(!ui.previewModes) ui.previewModes = {};
-        ui.previewModes[tableName] = mode === 'row-header' ? 'row-header' : 'column-header';
-        Store.save();
-        this.renderPreview();
+        const previewModes = Object.assign({}, ui.previewModes || {});
+        previewModes[tableName] = mode === 'row-header' ? 'row-header' : 'column-header';
+        dispatch('ui:set', { key:'previewModes', value:previewModes });
     },
 
     appendPreviewModeToggle(meta, tableName, mode) {
@@ -8610,7 +8978,7 @@ const App = {
         if(!singleTableView || !tables.length) return '';
         const ui = Store.curr().ui;
         const selected = tables.some(table => table.name === ui.previewTable) ? ui.previewTable : tables[0].name;
-        ui.previewTable = selected;
+        if(ui.previewTable !== selected) dispatch('ui:set', { key:'previewTable', value:selected });
         tables.forEach(table => {
             const option = document.createElement('option');
             const rowCount = (table.rows || []).length;
@@ -8628,17 +8996,65 @@ const App = {
         const title = $('workspaceTitle');
         const summary = $('datasetSummary');
         if(title) title.textContent = Store.curr().title || 'Analysis';
-        if(!summary) return;
         const tableCount = TableRegistry.getRaw().length;
         const rows = TableRegistry.getRaw().reduce((sum, table) => sum + (table.rows || []).length, 0);
         const maxCols = TableRegistry.getRaw().reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
         const importItems = this.getImportSummaryItems();
         const format = (TableRegistry.getLastResult() && (TableRegistry.getLastResult().label || TableRegistry.getLastResult().format)) || (importItems[0] || '').replace(/^格式:\s*/, '');
         const header = importItems.find(text => text.indexOf('表头:') === 0) || '';
-        summary.textContent = tableCount
-            ? `${format || '已解析'}${header ? ` · ${header}` : ''} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列`
-            : '所有处理均在本地浏览器完成';
-        summary.title = summary.textContent;
+        if(summary) {
+            summary.textContent = tableCount
+                ? `${format || '已解析'}${header ? ` · ${header}` : ''} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列`
+                : '所有处理均在本地浏览器完成';
+            summary.title = summary.textContent;
+        }
+        this.updateAnalysisState();
+        this.renderActiveFilterChips();
+    },
+
+    updateAnalysisState() {
+        const el = $('analysisState');
+        if(!el) return;
+        const ui = Store.curr().ui;
+        const filterCount = (ui.globalFilter ? 1 : 0)
+            + Object.values(ui.rules || {}).reduce((sum, rules) => sum + ['filter','hl','focus'].filter(key => {
+                const value = rules && rules[key];
+                return Array.isArray(value) ? value.length > 0 : Boolean(String(value || '').trim());
+            }).length, 0)
+            + Object.values(ui.columnFilters || {}).reduce((sum, columns) => sum + Object.values(columns || {}).filter(value => String(value || '').trim()).length, 0);
+        const joins = Array.isArray(ui.enabledViews) ? ui.enabledViews.length : 0;
+        const edits = Object.values(ui.cellEdits || {}).reduce((sum, rows) => sum + Object.values(rows || {}).reduce((rowSum, cols) => rowSum + Object.keys(cols || {}).length, 0), 0);
+        el.textContent = `过滤 ${filterCount} · JOIN ${joins} · 修订 ${edits} · 状态 #${Store.revision}`;
+        el.title = '状态 revision 用于识别查询结果是否需要重新计算';
+    },
+
+    renderActiveFilterChips() {
+        const container = $('activeFilterChips');
+        if(!container) return;
+        if(typeof container.replaceChildren === 'function') container.replaceChildren();
+        else container.innerHTML = '';
+        const ui = Store.curr().ui;
+        const add = (label, clear) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'filter-chip';
+            button.title = `移除 ${label}`;
+            button.textContent = `${label} ×`;
+            button.onclick = clear;
+            container.appendChild(button);
+        };
+        if(ui.globalFilter) add(`全局: ${ui.globalFilter}`, () => dispatch('filter:global', { value:'' }));
+        Object.entries(ui.rules || {}).forEach(([table, rules]) => {
+            ['filter','hl','focus'].forEach(field => {
+                const value = rules && rules[field];
+                const active = Array.isArray(value) ? value.length > 0 : Boolean(String(value || '').trim());
+                if(active) add(`${table}.${field}: ${Array.isArray(value) ? value.join(', ') : value}`, () => dispatch('rule:set', { table, field, value:Array.isArray(value) ? [] : '' }));
+            });
+        });
+        Object.entries(ui.columnFilters || {}).forEach(([table, columns]) => Object.entries(columns || {}).forEach(([column, value]) => {
+            if(String(value || '').trim()) add(`${table}.${column}: ${value}`, () => dispatch('filter:column', { table, column, value:'' }));
+        }));
+        (Array.isArray(ui.enabledViews) ? ui.enabledViews : []).forEach(view => add(`JOIN: ${view}`, () => dispatch('ui:set', { key:'enabledViews', value:ui.enabledViews.filter(name => name !== view) })));
     },
 
     updateStorageStatus(detail={}) {
@@ -8726,7 +9142,7 @@ const App = {
     },
 
     setCopyFormat(format='default') {
-        Store.setCopyFormat(format);
+        dispatch('ui:copyFormat', { format });
         this.syncCopyFormatControl();
         this.syncCopyHeaderControl();
         Toast.show(`复制格式：${ClipboardFormatter.label(Store.state.copyFormat)}`);
@@ -8814,9 +9230,7 @@ const App = {
             pane.classList.toggle('active', pane.dataset.tab === next);
         });
         if(persist) {
-            const d = Store.curr();
-            if(d && d.ui) d.ui.sidebarTab = next;
-            Store.save();
+            dispatch('ui:set', { key:'sidebarTab', value:next });
         }
     },
 
@@ -8887,7 +9301,7 @@ const App = {
             SourceController.clearAutoParse();
             $('rawInput').value='';
             SourceController.clearLastPaste();
-            Store.curr().ui.cellEdits = {};
+            dispatch('source:replace', { text:'' });
             this.run();
         };
         $('parseBtn').onclick = doParse;
@@ -8940,8 +9354,12 @@ validflag Time      Level   Message                 Code
 
         const inputBind = (id, k, subK) => $(id).oninput = e => {
             const val = e.target.type==='checkbox'?e.target.checked:e.target.value;
-            if(subK) { if(k==='rules') { const tbl=$('targetTableSelect').value; if(tbl) Store.updateRule(tbl, subK, val); } else Store.updateUI(k, val); } else Store.updateUI(k, val);
-            this.renderPreview();
+            if(subK) {
+                if(k==='rules') {
+                    const tbl=$('targetTableSelect').value;
+                    if(tbl) dispatch('rule:set', { table:tbl, field:subK, value:val });
+                } else dispatch('ui:set', { key:k, value:val });
+            } else dispatch('ui:set', { key:k, value:val });
         };
         inputBind('globalFilter', 'globalFilter');
         inputBind('checkHl', 'enableHighlight');
@@ -8954,8 +9372,7 @@ validflag Time      Level   Message                 Code
         inputBind('filterInput', 'rules', 'filter');
         $('focusColsInput').onchange = e => {
             const t = $('targetTableSelect').value;
-            if(t) Store.updateRule(t, 'focus', e.target.value.split(',').filter(s=>s.trim()));
-            this.renderPreview();
+            if(t) dispatch('rule:set', { table:t, field:'focus', value:e.target.value.split(',').filter(s=>s.trim()) });
         };
 
         $('tablesTrigger').onclick = () => this.modTables();
@@ -8963,24 +9380,22 @@ validflag Time      Level   Message                 Code
         // FIX: Correctly call JoinEditor.modManageViews
         $('manageViewsBtn').onclick = e => { e.stopPropagation(); JoinEditor.modManageViews(); };
         $('selectColsBtn').onclick = () => this.modCols();
-        $('themeBtn').onclick = () => Store.toggleTheme();
+        $('themeBtn').onclick = () => dispatch('ui:theme');
         if($('helpBtn')) $('helpBtn').onclick = () => this.showHelp();
         if($('undoEditBtn')) $('undoEditBtn').onclick = () => CellEditController.undo();
         if($('redoEditBtn')) $('redoEditBtn').onclick = () => CellEditController.redo();
         if($('pageSizeSelect')) $('pageSizeSelect').onchange = e => {
             const ui = Store.curr().ui;
-            ui.pageSize = Number(e.target.value) || 100;
-            ui.tablePages = {};
-            Store.save();
-            this.renderPreview();
+            dispatch('ui:set', { key:'pageSize', value:Number(e.target.value) || 100 });
+            dispatch('ui:set', { key:'tablePages', value:{} });
         };
         if($('previewTableSelect')) $('previewTableSelect').onchange = e => {
             const ui = Store.curr().ui;
-            ui.previewTable = e.target.value || '';
-            if(!ui.tablePages) ui.tablePages = {};
-            ui.tablePages[ui.previewTable] = 1;
-            Store.save();
-            this.renderPreview();
+            const previewTable = e.target.value || '';
+            const tablePages = Object.assign({}, ui.tablePages || {});
+            if(previewTable) tablePages[previewTable] = 1;
+            dispatch('ui:set', { key:'previewTable', value:previewTable });
+            dispatch('ui:set', { key:'tablePages', value:tablePages });
         };
         if($('toggleSidebarMobileBtn')) $('toggleSidebarMobileBtn').onclick = () => {
             const sidebar = $('sidebar');
@@ -9091,7 +9506,12 @@ validflag Time      Level   Message                 Code
 
     showDiagnostics() {
         const result = TableRegistry.getLastResult();
-        const candidates = (result.candidates || []).map(item => `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : `识别分数 ${Math.round(item.score * 100)}%`}</span></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`).join('');
+        const candidates = (result.candidates || []).map(item => {
+            const score = Number.isFinite(item.score) ? `识别分数 ${Math.round(item.score * 100)}%` : '';
+            const reason = item.reason || item.explanation || '依据解析器特征进行判断';
+            const ambiguous = item.ambiguous || (item.risk && item.risk !== 'low');
+            return `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : score}${ambiguous ? ' · 需确认' : ''}</span><div class="muted">${this.escapeHtml(reason)}</div></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`;
+        }).join('');
         const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.severity || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
         this.modal('解析详情', `<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
         document.querySelectorAll('.diagnostic-format-btn').forEach(button => {
@@ -9117,7 +9537,7 @@ validflag Time      Level   Message                 Code
             const started = performance.now();
             const sourceText = $('rawInput').value;
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
-            Store.curr().raw = sourceText; Store.save();
+            if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
             const result = Parser.parse(sourceText, this.getParseOptions());
             TableRegistry.setResult(result);
             Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
@@ -9125,11 +9545,17 @@ validflag Time      Level   Message                 Code
             this.applyStoredCellEdits();
             this.updateImportSummary();
             const elapsed = Math.round(performance.now() - started);
-            dispatch('parse:completed', { tables: result.tables, elapsed: elapsed });
+            dispatch('parse:completed', {
+                docId:Store.state.activeId,
+                sourceRevision:Store.curr().sourceRevision,
+                format:result.format,
+                tables: result.tables,
+                elapsed: elapsed,
+            });
             if(render) {
                 this.updSelects();
-                this.renderPreview();
                 this.updChips();
+                this.requestRender();
             }
             if(TableRegistry.getRaw().length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
         } catch(e) {
@@ -9186,7 +9612,7 @@ validflag Time      Level   Message                 Code
         const viewNames = Store.state.globalViews.map(v => v.view);
         const vsRaw = ui.enabledViews || [];
         const vs = vsRaw.filter(v => viewNames.includes(v));
-        if(vs.length !== vsRaw.length) Store.updateUI('enabledViews', vs);
+        if(vs.length !== vsRaw.length) dispatch('ui:set', { key:'enabledViews', value:vs });
         $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>`<span class="chip">${this.escapeHtml(n)}</span>`).join('') : `<span class="placeholder">未启用</span>`;
     },
 
@@ -9300,8 +9726,11 @@ validflag Time      Level   Message                 Code
             const totalPages = Math.max(1, Math.ceil(res.rows.length / pageSize));
             const requestedPage = Number(ui.tablePages && ui.tablePages[t.name]) || 1;
             const page = Math.min(totalPages, Math.max(1, requestedPage));
-            if(!ui.tablePages) ui.tablePages = {};
-            ui.tablePages[t.name] = page;
+            const tablePages = Object.assign({}, ui.tablePages || {});
+            if(tablePages[t.name] !== page) {
+                tablePages[t.name] = page;
+                dispatch('ui:set', { key:'tablePages', value:tablePages });
+            }
             const pageRes = { headers:res.headers, rows:res.rows.slice((page - 1) * pageSize, page * pageSize) };
             const tbl = mode === 'row-header' ? this.buildRowHeaderTable(t, pageRes, tIdx, colFilters) : this.buildColumnHeaderTable(t, pageRes, tIdx, colFilters);
             const tableScroll = createEl('div', 'table-scroll');

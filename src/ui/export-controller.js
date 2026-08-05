@@ -1,4 +1,4 @@
-OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine"], ({$, Toast}, {Store, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}) => {
+OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine", "query-service"], ({$, Toast}, {Store, APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}, {QueryService}) => {
 /* ExportController — file exports, workspace/config backup, copy format.
 
    Responsibilities:
@@ -85,8 +85,8 @@ const ExportController = {
         const exportTabBtn = $('exportTabBtn');
         if (exportTabBtn) exportTabBtn.onclick = () => Exporter.toJson({
             kind: 'ota-workspace',
-            schemaVersion: (Store.schemaVersion || 20),
-            appVersion: (Store._appVersion || '21.0.0'),
+            schemaVersion: WORKSPACE_SCHEMA_VERSION,
+            appVersion: APP_VERSION,
             exportedAt: new Date().toISOString(),
             docs: Store.state.docs,
             globalViews: Store.state.globalViews,
@@ -210,23 +210,17 @@ const ExportController = {
     },
 
     _getPreviewProcessedTables() {
-        const ui = Store.curr().ui;
-        let tables = TableRegistry.getRaw();
-        if (ui.displayTables) tables = tables.filter(t => ui.displayTables.includes(t.name));
-        const joins = ExportController._getEnabledJoinTables(true);
-        return [...tables, ...joins].map((table, tIdx) => {
-            const rules = (ui.rules && ui.rules[table.name]) || {};
-            const res = FilterEngine.processTable(
-                table,
-                rules,
-                ui,
-                ui.globalFilter || '',
-                ui.enableHighlight !== false,
-                ui.onlyHighlighted || false
-            );
-            res.rows.forEach((row, index) => { row._resultIndex = index; });
-            return { table, res, tIdx };
-        });
+        const doc = Store.curr();
+        return QueryService.getPreview({
+            rawTables:TableRegistry.getRaw(),
+            globalViews:Store.state.globalViews,
+            ui:doc.ui,
+            docId:doc.id,
+            sourceRevision:doc.sourceRevision,
+            stateRevision:Store.revision,
+            viewRevision:Store.viewRevision,
+            queryRevision:Store.queryRevision,
+        }).tables;
     },
 
     _getPreviewExportTables() {
@@ -243,7 +237,7 @@ const ExportController = {
     _importWorkspacePayload(json) {
         const d = JSON.parse(json);
         const replace = typeof confirm === 'function' ? confirm('确定：替换当前工作区\n取消：把备份追加为新页签') : true;
-        const count = Store.importWorkspace(d, !replace);
+        const count = dispatch('workspace:import', { workspace:d, merge:!replace });
         this._applyPreferences(d.preferences);
         dispatch('workspace:imported', { count });
         return count;
@@ -255,11 +249,12 @@ const ExportController = {
         if (d.kind !== 'table-tool-config' || !Store.isSafePayload(d)) throw new Error('配置结构无效');
 
         if (Array.isArray(d.globalViews)) {
-            const oldCount = Store.state.globalViews.length;
-            Store.state.globalViews = d.globalViews.slice(0, 500).filter(
+            const nextViews = d.globalViews.slice(0, 500).filter(
                 view => view && typeof view === 'object' && typeof view.view === 'string'
             );
-            Toast.show(`全局视图已更新 (${oldCount} → ${Store.state.globalViews.length} 个)`);
+            const oldCount = Store.state.globalViews.length;
+            dispatch('view:replaceAll', { views:nextViews });
+            Toast.show(`全局视图已更新 (${oldCount} → ${nextViews.length} 个)`);
         }
 
         let appliedCount = 0;
@@ -269,7 +264,7 @@ const ExportController = {
                 let t = Store.state.docs.find(y => y.title === x.title);
                 if (!t) t = Store.state.docs.find(y => y.id === x.id);
                 if (t) {
-                    if (x.ui && typeof x.ui === 'object') t.ui = x.ui;
+                    if (x.ui && typeof x.ui === 'object') dispatch('document:replaceUI', { docId:t.id, ui:x.ui });
                     appliedCount++;
                 } else {
                     unmatched.push(x.title || x.id);
@@ -284,24 +279,17 @@ const ExportController = {
             )) {
                 unmatched.forEach(docName => {
                     const cfg = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
-                    if (cfg) Store.addDoc({ title: cfg.title, raw: '', ui: cfg.ui || {} });
+                    if (cfg) dispatch('tab:create', { title:cfg.title, raw:'', ui:cfg.ui || {} });
                 });
             }
         }
-        Store.save();
         return appliedCount;
     },
 
     /** Apply workspace preferences block to current Store. */
     _applyPreferences(prefs) {
         if (!prefs || typeof prefs !== 'object') return;
-        if (['light', 'dark'].includes(prefs.theme)) Store.state.theme = prefs.theme;
-        if (COPY_FORMATS.includes(prefs.copyFormat)) Store.state.copyFormat = prefs.copyFormat;
-        if (typeof prefs.copyWithHeaders === 'boolean') Store.state.copyWithHeaders = prefs.copyWithHeaders;
-        if (typeof prefs.persistRaw === 'boolean') Store.state.persistRaw = prefs.persistRaw;
-        if (typeof prefs.spreadsheetSafe === 'boolean') Store.state.spreadsheetSafe = prefs.spreadsheetSafe;
-        Store.applyTheme();
-        Store.save();
+        dispatch('preferences:replace', { preferences:prefs });
     },
 
     _emit(name) {

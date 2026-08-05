@@ -1,14 +1,61 @@
 OTA.define('store', [], () => {
 /* Core */
-const APP_VERSION = '22.0.0';
+const APP_VERSION = '__OTA_APP_VERSION__';
 const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
 const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'lua-inline', 'lua-expanded']);
 
+const MIGRATIONS = Object.freeze({
+    0(payload) {
+        const next = Object.assign({}, payload);
+        if(!Array.isArray(next.docs)) next.docs = [];
+        if(!Array.isArray(next.globalViews)) next.globalViews = [];
+        next.schemaVersion = 1;
+        return next;
+    },
+    1(payload) { return Object.assign({}, payload, { schemaVersion:2 }); },
+    2(payload) { return Object.assign({}, payload, { schemaVersion:3 }); },
+    3(payload) { return Object.assign({}, payload, { schemaVersion:4 }); },
+    4(payload) { return Object.assign({}, payload, { schemaVersion:5 }); },
+    5(payload) { return Object.assign({}, payload, { schemaVersion:6 }); },
+    6(payload) { return Object.assign({}, payload, { schemaVersion:7 }); },
+    7(payload) { return Object.assign({}, payload, { schemaVersion:8 }); },
+    8(payload) { return Object.assign({}, payload, { schemaVersion:9 }); },
+    9(payload) { return Object.assign({}, payload, { schemaVersion:10 }); },
+    10(payload) { return Object.assign({}, payload, { schemaVersion:11 }); },
+    11(payload) { return Object.assign({}, payload, { schemaVersion:12 }); },
+    12(payload) { return Object.assign({}, payload, { schemaVersion:13 }); },
+    13(payload) { return Object.assign({}, payload, { schemaVersion:14 }); },
+    14(payload) { return Object.assign({}, payload, { schemaVersion:15 }); },
+    15(payload) { return Object.assign({}, payload, { schemaVersion:16 }); },
+    16(payload) { return Object.assign({}, payload, { schemaVersion:17 }); },
+    17(payload) { return Object.assign({}, payload, { schemaVersion:18 }); },
+    18(payload) { return Object.assign({}, payload, { schemaVersion:19 }); },
+    19(payload) { return Object.assign({}, payload, { schemaVersion:20 }); },
+});
+
+function migrateWorkspacePayload(payload) {
+    if(!payload || typeof payload !== 'object') throw new Error('工作区数据无效');
+    let next = Object.assign({}, payload);
+    let version = Number.isInteger(next.schemaVersion) ? next.schemaVersion : 0;
+    if(version > WORKSPACE_SCHEMA_VERSION) throw new Error('该工作区由更高版本创建');
+    while(version < WORKSPACE_SCHEMA_VERSION) {
+        const migrate = MIGRATIONS[version];
+        if(typeof migrate !== 'function') throw new Error(`缺少 schema ${version} 到下一版本的迁移`);
+        next = migrate(next);
+        version = Number(next.schemaVersion);
+    }
+    next.schemaVersion = WORKSPACE_SCHEMA_VERSION;
+    return next;
+}
+
 const Store = {
     state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', copyWithHeaders:true, spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
+    revision: 0,
+    viewRevision: 0,
+    queryRevision: 0,
     lastSaveError: null,
     storageBytes: 0,
     migratedFrom: null,
@@ -18,16 +65,23 @@ const Store = {
     _listeners: null,  // Set of onChange callbacks; lazily initialised
     _notifyQueue: null, // pending events queued for batched async delivery
     _notifyTimer: null, // single batched async timer
+    getState() { return this.state; },
+    getDocument(id=this.state.activeId) {
+        return (this.state.docs || []).find(doc => doc.id === id) || null;
+    },
+    getView(name) {
+        return (this.state.globalViews || []).find(view => view.view === name) || null;
+    },
     init() {
         let loaded = null;
         try {
             const current = localStorage.getItem(STORE_KEY);
-            if(current) loaded = JSON.parse(current);
+            if(current) loaded = migrateWorkspacePayload(JSON.parse(current));
             if(!loaded) {
                 for(const key of LEGACY_STORE_KEYS) {
                     const legacy = localStorage.getItem(key);
                     if(!legacy) continue;
-                    const parsed = JSON.parse(legacy);
+                    const parsed = migrateWorkspacePayload(JSON.parse(legacy));
                     if(parsed && Array.isArray(parsed.docs)) {
                         loaded = parsed;
                         this.migratedFrom = key;
@@ -138,13 +192,20 @@ const Store = {
     importWorkspace(payload, merge=false) {
         if(!payload || typeof payload !== 'object' || !this.isSafePayload(payload)) throw new Error('工作区文件包含不安全或过深的数据结构');
         if(!['ota-workspace','table-tool-tabs'].includes(payload.kind)) throw new Error('不是受支持的工作区文件');
+        payload = migrateWorkspacePayload(payload);
         if(!Array.isArray(payload.docs) || payload.docs.length === 0 || payload.docs.length > 100) throw new Error('工作区页签数量无效');
-        if(payload.schemaVersion && payload.schemaVersion > WORKSPACE_SCHEMA_VERSION) throw new Error('该工作区由更高版本创建');
         const imported = payload.docs.map((doc, idx) => {
             if(!doc || typeof doc !== 'object') throw new Error(`第 ${idx + 1} 个页签无效`);
             const raw = typeof doc.raw === 'string' ? doc.raw : '';
             if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`页签“${doc.title || idx + 1}”的数据超过 25 MB 限制`);
-            return { id:typeof doc.id === 'string' ? doc.id : '', title:typeof doc.title === 'string' ? doc.title : `Analysis ${idx + 1}`, raw, ui:(doc.ui && typeof doc.ui === 'object') ? doc.ui : {} };
+            return {
+                id:typeof doc.id === 'string' ? doc.id : '',
+                title:typeof doc.title === 'string' ? doc.title : `Analysis ${idx + 1}`,
+                raw,
+                sourceRevision:Number.isInteger(doc.sourceRevision) && doc.sourceRevision >= 0 ? doc.sourceRevision : undefined,
+                lastParse:null,
+                ui:(doc.ui && typeof doc.ui === 'object') ? doc.ui : {}
+            };
         });
         const base = merge ? this.state.docs.slice() : [];
         const usedIds = new Set(base.map(doc => doc.id));
@@ -180,6 +241,14 @@ const Store = {
         if(!doc.id) doc.id = this.generateDocId();
         if(!doc.title) doc.title = this.makeUniqueTitle(`Analysis ${idx + 1}`, doc.id);
         if(doc.raw === undefined || doc.raw === null) doc.raw = "";
+        const hasKnownSourceRevision = Number.isInteger(doc.sourceRevision) && doc.sourceRevision >= 0;
+        if(!hasKnownSourceRevision) {
+            doc.sourceRevision = 0;
+            // Backups created before sourceRevision cannot prove that row-index
+            // edits belong to the current raw source; discard only that unsafe overlay.
+            if(doc.ui && doc.ui.cellEdits) doc.ui.cellEdits = {};
+        }
+        if(doc.lastParse === undefined || !doc.lastParse || doc.lastParse.sourceRevision !== doc.sourceRevision) doc.lastParse = null;
         const defaults = this.createDefaultUI();
         doc.ui = Object.assign(defaults, doc.ui || {});
         if(!doc.ui.rules) doc.ui.rules = {};
@@ -342,6 +411,15 @@ const Store = {
      * Falls back to synchronous delivery when setTimeout is unavailable.
      */
     _notify(event, payload) {
+        if(event === 'state:changed') {
+            this.revision += 1;
+            payload = Object.assign({ revision:this.revision, activeId:this.state.activeId }, payload || {});
+            const changed = payload.changed || [];
+            if(changed.includes('views')) this.viewRevision += 1;
+            if(changed.includes('views') || changed.includes('query') || changed.includes('ui') || changed.includes('dataset')) this.queryRevision += 1;
+            payload.viewRevision = this.viewRevision;
+            payload.queryRevision = this.queryRevision;
+        }
         if (!this._listeners || this._listeners.size === 0) return;
         if (!this._notifyQueue) this._notifyQueue = [];
         this._notifyQueue.push({ event, payload });
@@ -461,12 +539,34 @@ const Store = {
 
             // ── Source ──
             case 'source:changed': {
-                // Payload: { text }  — raw text was modified by user
-                const doc = this.curr();
-                doc.raw = payload && typeof payload.text === 'string' ? payload.text : '';
-                this._notify('source:textChanged', { text: doc.raw });
-                this._notify('state:changed', {});
+                return this.transition('source:replace', payload);
+            }
+            case 'source:replace': {
+                // Payload: { text, docId?, format?, headerMode? }
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                const next = payload && typeof payload.text === 'string' ? payload.text : '';
+                const format = payload && typeof payload.format === 'string' ? payload.format : null;
+                const headerMode = payload && typeof payload.headerMode === 'string' ? payload.headerMode : null;
+                const changed = doc.raw !== next
+                    || (format !== null && doc.ui.importFormat !== format)
+                    || (headerMode !== null && doc.ui.importHeaderMode !== headerMode);
+                if(!changed) return doc.raw;
+                doc.raw = next;
+                doc.sourceRevision = (doc.sourceRevision || 0) + 1;
+                doc.lastParse = null;
+                doc.ui.cellEdits = {};
+                if(format !== null) doc.ui.importFormat = format || 'auto';
+                if(headerMode !== null) doc.ui.importHeaderMode = headerMode || 'auto';
                 this.scheduleSave();
+                this._notify('source:textChanged', {
+                    docId:doc.id,
+                    text:doc.raw,
+                    sourceRevision:doc.sourceRevision,
+                    preservePaste:payload && payload.preservePaste === true,
+                    invalidatedEdits:true,
+                });
+                this._notify('state:changed', { changed:['source','cellEdits'] });
                 return doc.raw;
             }
 
@@ -474,47 +574,78 @@ const Store = {
             case 'parse:completed': {
                 // Emitted by App.run() after Parser.parse() succeeds.
                 // Payload: { tables, elapsed, diagnostics }
-                this._notify('parse:completed', payload || {});
-                this._notify('state:changed', {});
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const parsePayload = payload || {};
+                const resultRevision = Number.isInteger(parsePayload.sourceRevision) ? parsePayload.sourceRevision : doc.sourceRevision;
+                if(resultRevision !== doc.sourceRevision) {
+                    this._notify('parse:stale', { docId:doc.id, sourceRevision:resultRevision, currentSourceRevision:doc.sourceRevision });
+                    return false;
+                }
+                doc.lastParse = {
+                    docId:doc.id,
+                    sourceRevision:resultRevision,
+                    format:parsePayload.format || null,
+                    completedAt:Date.now(),
+                };
+                this._notify('parse:completed', Object.assign({ docId:doc.id, sourceRevision:resultRevision }, parsePayload));
+                this._notify('state:changed', { changed:['dataset'] });
+                return true;
+            }
+
+            // ── Generic document state ──
+            case 'ui:set': {
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                const key = payload && payload.key;
+                if(!key || key === 'cellEdits') return false;
+                doc.ui[key] = payload.value;
+                this.scheduleSave();
+                this._notify('ui:changed', { docId:doc.id, key, value:doc.ui[key] });
+                this._notify('state:changed', { changed:['ui'] });
+                return doc.ui[key];
+            }
+            case 'rule:set': {
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                const table = payload && payload.table;
+                const field = payload && payload.field;
+                if(!table || !field) return false;
+                if(!doc.ui.rules[table]) doc.ui.rules[table] = {};
+                doc.ui.rules[table][field] = payload.value;
+                this.scheduleSave();
+                this._notify('filter:changed', { scope:'table', table, field, value:payload.value });
+                this._notify('state:changed', { changed:['query'] });
                 return true;
             }
 
             // ── Filters ──
             case 'filter:global': {
-                const doc = this.curr();
-                doc.ui.globalFilter = payload && payload.value ? String(payload.value) : '';
-                this.scheduleSave();
-                this._notify('filter:changed', { scope: 'global', value: doc.ui.globalFilter });
-                this._notify('state:changed', {});
-                return doc.ui.globalFilter;
+                const value = payload && payload.value ? String(payload.value) : '';
+                const result = this.transition('ui:set', { key:'globalFilter', value });
+                this._notify('filter:changed', { scope:'global', value });
+                return result;
             }
             case 'filter:table': {
                 const tableName = payload && payload.table;
                 const field = payload && payload.field;
                 const value = payload && payload.value ? String(payload.value) : '';
                 if (!tableName || !field) return false;
-                this.updateRule(tableName, field, value);
-                this._notify('filter:changed', { scope: 'table', table: tableName, field, value });
-                this._notify('state:changed', {});
-                return true;
+                return this.transition('rule:set', { table:tableName, field, value });
             }
             case 'filter:column': {
                 // Payload: { table, column, value }
                 const table = payload && payload.table;
                 const column = payload && payload.column;
                 if (!table || !column) return false;
-                const ui = this.curr().ui;
-                if (!ui.columnFilters) ui.columnFilters = {};
-                if (!ui.columnFilters[table]) ui.columnFilters[table] = {};
                 const val = (payload.value || '').trim();
-                if (val) {
-                    ui.columnFilters[table][column] = val;
-                } else {
-                    delete ui.columnFilters[table][column];
-                }
-                this.save();
+                const current = this.curr().ui.columnFilters || {};
+                const nextFilters = JSON.parse(JSON.stringify(current));
+                if(!nextFilters[table]) nextFilters[table] = {};
+                if(val) nextFilters[table][column] = val;
+                else delete nextFilters[table][column];
+                if(Object.keys(nextFilters[table]).length === 0) delete nextFilters[table];
+                this.transition('ui:set', { key:'columnFilters', value:nextFilters });
                 this._notify('filter:changed', { scope: 'column', table, column, value: val });
-                this._notify('state:changed', {});
                 return true;
             }
 
@@ -543,13 +674,10 @@ const Store = {
                 // Payload: { table }
                 const table = payload && payload.table;
                 if (!table) return false;
-                const doc = this.curr();
-                if (doc.ui.columnFilters) {
-                    delete doc.ui.columnFilters[table];
-                    this.save();
-                }
+                const nextFilters = JSON.parse(JSON.stringify(this.curr().ui.columnFilters || {}));
+                delete nextFilters[table];
+                this.transition('ui:set', { key:'columnFilters', value:nextFilters });
                 this._notify('filter:changed', { scope: 'column', table, column: null, value: '' });
-                this._notify('state:changed', {});
                 return true;
             }
 
@@ -581,61 +709,115 @@ const Store = {
 
             // ── UI settings ──
             case 'ui:sidebarTab': {
-                this.updateUI('sidebarTab', payload && payload.tab || 'data');
+                this.transition('ui:set', { key:'sidebarTab', value:payload && payload.tab || 'data' });
                 this._notify('ui:sidebarChanged', { tab: payload && payload.tab });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'ui:autoParse': {
-                this.updateUI('autoParse', payload && payload.enabled !== false);
+                this.transition('ui:set', { key:'autoParse', value:payload && payload.enabled !== false });
                 this._notify('ui:autoParseChanged', { enabled: this.curr().ui.autoParse });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'import:setFormat': {
-                this.updateUI('importFormat', payload && payload.format || 'auto');
+                this.transition('source:replace', { text:this.curr().raw, format:payload && payload.format || 'auto' });
                 this._notify('import:formatChanged', { format: payload && payload.format });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'import:setHeaderMode': {
-                this.updateUI('importHeaderMode', payload && payload.mode || 'auto');
+                this.transition('source:replace', { text:this.curr().raw, headerMode:payload && payload.mode || 'auto' });
                 this._notify('import:headerModeChanged', { mode: payload && payload.mode });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'filter:focus': {
                 // Payload: { table, columns }
                 const table = payload && payload.table;
                 if (!table) return false;
-                this.updateRule(table, 'focus', (payload && payload.columns) || []);
+                this.transition('rule:set', { table, field:'focus', value:(payload && payload.columns) || [] });
                 this._notify('filter:changed', { scope: 'focus', table });
-                this._notify('state:changed', {});
                 return true;
             }
             case 'ui:copyFormat': {
                 this.setCopyFormat(payload && payload.format);
                 this._notify('ui:copyFormatChanged', { format: this.state.copyFormat });
-                this._notify('state:changed', {});
+                this._notify('state:changed', { changed:['preferences'] });
                 return true;
             }
             case 'ui:copyHeaders': {
                 this.setCopyWithHeaders(payload && payload.enabled);
                 this._notify('ui:copyHeadersChanged', { enabled: this.state.copyWithHeaders });
-                this._notify('state:changed', {});
+                this._notify('state:changed', { changed:['preferences'] });
                 return true;
             }
             case 'ui:theme': {
                 this.toggleTheme();
                 this._notify('ui:themeChanged', { theme: this.state.theme });
-                this._notify('state:changed', {});
+                this._notify('state:changed', { changed:['preferences'] });
                 return this.state.theme;
             }
             case 'ui:persistRaw': {
                 this.setPersistRaw(payload && payload.enabled !== false);
                 this._notify('ui:persistRawChanged', { enabled: this.state.persistRaw });
-                this._notify('state:changed', {});
+                this._notify('state:changed', { changed:['preferences'] });
                 return this.state.persistRaw;
+            }
+
+            case 'document:replaceUI': {
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc || !payload || !payload.ui || typeof payload.ui !== 'object') return false;
+                doc.ui = Object.assign(this.createDefaultUI(), payload.ui);
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                this.save();
+                this._notify('ui:changed', { docId:doc.id, replaced:true });
+                this._notify('state:changed', { changed:['ui'] });
+                return true;
+            }
+            case 'preferences:replace': {
+                const prefs = payload && payload.preferences;
+                if(!prefs || typeof prefs !== 'object') return false;
+                if(['light','dark'].includes(prefs.theme)) this.state.theme = prefs.theme;
+                if(COPY_FORMATS.includes(prefs.copyFormat)) this.state.copyFormat = prefs.copyFormat;
+                if(typeof prefs.copyWithHeaders === 'boolean') this.state.copyWithHeaders = prefs.copyWithHeaders;
+                if(typeof prefs.persistRaw === 'boolean') this.state.persistRaw = prefs.persistRaw;
+                if(typeof prefs.spreadsheetSafe === 'boolean') this.state.spreadsheetSafe = prefs.spreadsheetSafe;
+                this.applyTheme();
+                this.save();
+                this._notify('preferences:changed', { preferences:Object.assign({}, prefs) });
+                this._notify('state:changed', { changed:['preferences'] });
+                return true;
+            }
+
+            // ── JOIN view state ──
+            case 'view:replaceAll': {
+                const views = Array.isArray(payload && payload.views) ? payload.views : [];
+                this.state.globalViews = views.slice(0, 500);
+                this.save();
+                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('state:changed', { changed:['views'] });
+                return this.state.globalViews;
+            }
+            case 'view:upsert': {
+                const view = payload && payload.view;
+                if(!view || typeof view !== 'object' || !view.view) return false;
+                const index = Number.isInteger(payload.index)
+                    ? payload.index
+                    : this.state.globalViews.findIndex(item => item.view === view.view);
+                if(index >= 0 && index < this.state.globalViews.length) this.state.globalViews[index] = Object.assign({}, view);
+                else this.state.globalViews.push(Object.assign({}, view));
+                this.save();
+                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('state:changed', { changed:['views'] });
+                return true;
+            }
+            case 'view:removeMany': {
+                const indexes = Array.isArray(payload && payload.indexes)
+                    ? payload.indexes.filter(Number.isInteger).sort((a,b) => b-a) : [];
+                indexes.forEach(index => {
+                    if(index >= 0 && index < this.state.globalViews.length) this.state.globalViews.splice(index, 1);
+                });
+                this.save();
+                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('state:changed', { changed:['views'] });
+                return indexes.length;
             }
 
             // ── Workspace ──
@@ -648,6 +830,12 @@ const Store = {
                 }
                 return ok;
             }
+            case 'workspace:import': {
+                const count = this.importWorkspace(payload && payload.workspace, payload && payload.merge === true);
+                this._notify('workspace:imported', { count });
+                this._notify('state:changed', { changed:['workspace'] });
+                return count;
+            }
 
             default:
                 if (typeof console !== 'undefined' && console.warn) {
@@ -658,5 +846,5 @@ const Store = {
     }
 };
 
-    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, Store };
+    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, MIGRATIONS, migrateWorkspacePayload, Store };
 });

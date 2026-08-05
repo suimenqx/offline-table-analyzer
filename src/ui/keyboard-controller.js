@@ -1,4 +1,4 @@
-OTA.define('keyboard-controller', ["runtime", "store", "source-controller", "cell-edit-controller", "tab-controller", "join-editor", "modal-controller"], ({$, Toast}, {Store}, {SourceController}, {CellEditController}, {TabController}, {JoinEditor}, {ModalController}) => {
+OTA.define('keyboard-controller', ["runtime", "store", "dispatch", "source-controller", "cell-edit-controller", "tab-controller", "join-editor", "modal-controller"], ({$, Toast}, {Store}, {dispatch}, {SourceController}, {CellEditController}, {TabController}, {JoinEditor}, {ModalController}) => {
 /* KeyboardController — global keyboard shortcut handler.
 
    Extracted from App.bind() to keep the orchestrator lean.
@@ -48,8 +48,8 @@ const KeyboardController = {
         if (mod && e.key.toLowerCase() === 's')     {
             e.preventDefault();
             const inp = $('rawInput');
-            if (inp) Store.curr().raw = inp.value;
-            Store.save();
+            if (inp) dispatch('source:replace', { text:inp.value });
+            dispatch('workspace:save');
             Toast.show('工作区已保存');
             return;
         }

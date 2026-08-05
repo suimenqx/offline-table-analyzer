@@ -6,10 +6,10 @@
 
 - 解析、状态、JOIN、复制和 UI 控制器之间的边界只能靠注释表达。
 - 一个小功能变更容易触发整页语法、渲染或保存回归。
-- 领域代码难以复用到 Worker、Node 测试或未来的 XLSX 导入模块。
+- 领域代码难以复用到 Node 测试或未来的 XLSX 导入模块。
 - 发布单文件的约束与开发源文件的可维护性相互冲突。
 
-已有代码的优点也必须保留：零运行时依赖、成熟的 v21 数据契约、完整的解析器和 JOIN 回归用例、明确的隐私边界，以及可以直接双击打开的发布体验。
+已有代码的优点也必须保留：零运行时依赖、成熟的 v22 数据契约、完整的解析器和 JOIN 回归用例、明确的隐私边界，以及可以直接双击打开的发布体验。
 
 ## 2. 方案比较
 
@@ -19,7 +19,7 @@
 | 浏览器原生 ES Module | 依赖方向清晰，调试体验好 | 直接打开 `file://` 时存在模块加载/CORS 兼容问题，无法满足单文件交付 | 暂不作为发布形态 |
 | 引入 Vite/Webpack/React | 工程能力强，适合大型 UI | 引入依赖、构建链和生态升级成本，偏离“单文件/零依赖”产品定位 | 暂不选 |
 | **源模块 + 确定性内联构建** | 保持单 HTML、无运行时依赖；源文件可拆分；构建和回退可验证 | 需要维护轻量 registry；暂时不是标准 ESM | **当前选型** |
-| 纯函数核心 + 可选 ESM/Worker | 长期可扩展到大数据和后台线程 | 需要先稳定领域契约和消息协议 | 作为下一阶段演进目标 |
+| 纯函数核心 + 可选 ESM | 保持领域逻辑可测试、可维护 | 需要先稳定领域契约 | 当前采用纯函数核心，后台线程不在本计划内 |
 
 ## 3. 当前决策：源模块 + 单文件发布
 
@@ -28,7 +28,7 @@
 - `src/templates/index.html`：只保存稳定 HTML 壳和发布元数据。
 - `src/styles/styles.css`：集中保存设计令牌、布局、响应式和无障碍样式。
 - `src/core/`、`src/state/`、`src/parsing/`、`src/export/`、`src/transform/`、`src/ui/`：按分层职责保存业务模块；首个模块提供本地 registry，最后一个模块启动应用。
-- `tools/build-release.js`：读取固定 manifest，将样式和模块确定性内联到根目录 `index.html`。
+- `tools/build-release.cjs`：读取固定 manifest，将样式和模块确定性内联到根目录 `index.html`，并从 `package.json` 注入版本。
 - `index.html`：生成产物，不再手工修改；用户仍然只接触这个文件。
 
 构建器不做压缩、不执行代码转换、不下载依赖，因此发布结果透明、可审计、可复现。测试继续对生成产物进行语法和离线校验，防止“源文件通过、发布文件损坏”。
@@ -68,7 +68,7 @@ App orchestrator → bootstrap
 
 ## 5. 已落地模块地图
 
-当前发布构建包含 30 个源模块，按目录分层：
+当前发布构建包含 41 个源模块，按目录分层：
 
 | 目录 | 文件 | 职责 | 主要公开对象 |
 | --- | --- | --- | --- |
@@ -76,6 +76,7 @@ App orchestrator → bootstrap
 | | `runtime.js` | DOM 查询、Tooltip、Toast | `$`, `createEl`, `Tooltip`, `Toast` |
 | | `table-utils.js` | 文本、单元格、行宽、表头工具 | `TableUtils` |
 | | `filter-engine.js` | 纯过滤/高亮/列投影逻辑（token 解析、操作符匹配、正则），零 DOM 依赖 | `FilterEngine` |
+| | `query-service.js` | 统一 JOIN、过滤、Focus、分页和预览结果缓存 | `QueryService` |
 | `state/` | `store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
 | `export/` | `exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
 | | `clipboard.js` | 剪贴板序列化 | `ClipboardFormatter` |
@@ -131,8 +132,8 @@ DOM event
 
 ### 阶段 A：可复现边界 ✅（已完成）
 
-- 建立新分支。
-- 提取 template、styles 和 20 个按依赖排序的源模块。
+- 在 `main` 分支直接演进。
+- 提取 template、styles 和 41 个按依赖排序的源模块。
 - 增加 `build:release`，使根 `index.html` 可从源完全生成。
 - 保持现有测试全部通过。
 
@@ -147,27 +148,20 @@ DOM event
 - ✅ 将 `buildColumnHeaderTable` / `buildRowHeaderTable` 从 App 提取到 `TableBuilder`（~130 行 → ~12 行）。
 - ✅ 将过滤 token 引擎从 `App.proc()` 提取到 `FilterEngine.processTable()`。
 
-### 阶段 D：浏览器回归和性能基线
+### 阶段 D：浏览器回归和用户流程验证
 
 - 加入真实浏览器 headless 流程：粘贴 → 解析 → 筛选 → JOIN → 复制 → 导出。
-- 建立 1 MB、5 MB、20 MB 和 10 万行 fixture 的耗时/内存基线。
-- 只有基线证明主线程成为瓶颈时，才启用 Worker、IndexedDB 或虚拟滚动。
-
-### 阶段 E：可选大数据架构
-
-- 把纯领域模块编译为 Worker 可用代码。
-- 设计可取消、带进度的解析/规则消息协议。
-- 以迁移版本和事务方式引入 IndexedDB，保留 localStorage/单文件 fallback。
+- 保持 25 MB 输入上限、分页和单文件离线边界；不引入 Worker、IndexedDB、虚拟滚动或流式导出。
 
 ## 8. 分支与发布策略
 
-初始重构基于 `codex/refactor-modular-architecture` 分支完成；当前所有开发在 `main` 分支继续演进。
+当前所有开发直接在 `main` 分支完成。
 
 后续规则：
 
 - 每个阶段一个可验证提交，合并到 `main` 后通过 GitHub Pages 自动发布。
 - 同一人连续演进：直接在 `main` 上提交，每个阶段保持独立可回退。
-- 需要并行开发：从 `main` 创建 feature 分支，禁止两个分支同时编辑生成的 `index.html`。
+- 不创建主题分支或 PR；生成的 `index.html` 只由构建脚本更新。
 - 回退优先使用 `git revert`；不要用 destructive reset 覆盖已发布变更。
 - 发布前运行 `npm run build:release` + `npm run validate:release` + 全量测试。
 

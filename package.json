@@ -10,7 +10,8 @@
     "test": "node tools/build-release.cjs && node --test-reporter=spec --test \"tests/**/*.test.js\"",
     "test:watch": "node --test --watch tests/",
     "test:coverage": "node --experimental-test-coverage --test-reporter=spec --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test tests/",
-    "validate:release": "node tools/build-release.cjs && node tools/validate-release.cjs"
+    "validate:release": "node tools/build-release.cjs && node tools/validate-release.cjs",
+    "validate:architecture": "node tools/build-release.cjs && node tools/validate-architecture.cjs"
   },
   "engines": {
     "node": ">=20"

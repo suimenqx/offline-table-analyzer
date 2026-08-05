@@ -230,7 +230,7 @@ const TabController = {
 
     _persistCurrentSource() {
         const input = $('rawInput');
-        if (input) Store.curr().raw = input.value;
+        if (input) dispatch('source:replace', { text:input.value });
     },
 
     // ── Internal helpers ──
