@@ -78,6 +78,7 @@ const TableBuilder = {
                 const td = createEl('td');
                 const v = c === undefined || c === null ? '' : c;
                 td.textContent = v;
+                if (String(v).includes('\n')) td.classList.add('multiline-cell');
                 if (String(v).length > 18) td.dataset.full = v;
                 td.dataset.r = rIdx;
                 td.dataset.c = cIdx;
@@ -159,6 +160,7 @@ const TableBuilder = {
                 const td = createEl('td');
                 const v = r.d[cIdx] === undefined || r.d[cIdx] === null ? '' : r.d[cIdx];
                 td.textContent = v;
+                if (String(v).includes('\n')) td.classList.add('multiline-cell');
                 if (String(v).length > 18) td.dataset.full = v;
                 td.dataset.r = rIdx;
                 td.dataset.c = cIdx;

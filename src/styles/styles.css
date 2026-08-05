@@ -230,6 +230,7 @@
         th, td { padding: 9px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
         th { background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 6%, transparent), transparent); color: var(--text-strong); font-weight: 700; position: sticky; top: 0; z-index: 5; white-space: nowrap; }
         td { white-space: nowrap; }
+        td.multiline-cell { white-space: pre-wrap; }
         tbody tr:nth-child(even) td { background: rgba(15, 23, 42, 0.015); }
         tbody tr:hover td { background: color-mix(in srgb, var(--primary) 6%, transparent); }
         tr.highlight-row td { background: var(--highlight-row); }

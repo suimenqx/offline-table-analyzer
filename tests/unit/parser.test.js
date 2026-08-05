@@ -623,6 +623,42 @@ describe('HTML parser', () => {
     const r = ImportEngine.parse({ text: '', html });
     assert.equal(firstTable(r).rows[1].join('|'), 'A||Bob');
   });
+
+  it('preserves br variants and escaped br as semantic newlines', () => {
+    const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td>first<br>second<BR/>third<br />fourth&lt;br&gt;fifth</td></tr></table>';
+    const r = ImportEngine.parse({ text: '', html });
+    assert.equal(firstTable(r).rows[0][1], 'first\nsecond\nthird\nfourth\nfifth');
+  });
+
+  it('inserts one newline between block elements inside a cell', () => {
+    const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td><div>first</div><p>second <strong>line</strong></p><ul><li>third</li><li>fourth</li></ul></td></tr></table>';
+    const r = ImportEngine.parse({ text: '', html });
+    assert.equal(firstTable(r).rows[0][1], 'first\nsecond line\nthird\nfourth');
+  });
+
+  it('normalizes source whitespace around preserved line breaks', () => {
+    const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td>\n  line 1  \r\n\t line 2 \n</td></tr></table>';
+    const r = ImportEngine.parse({ text: '', html });
+    assert.equal(firstTable(r).rows[0][1], 'line 1\nline 2');
+  });
+
+  it('preserves meaningful indentation inside pre while trimming cell edges', () => {
+    const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td><pre>  line 1\n    line 2</pre></td></tr></table>';
+    const r = ImportEngine.parse({ text: '', html });
+    assert.equal(firstTable(r).rows[0][1], 'line 1\n    line 2');
+  });
+
+  it('decodes named and numeric entities without turning ordinary tags into breaks', () => {
+    const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td>&nbsp;A &amp; B &lt;div&gt;literal&lt;/div&gt; &#x4e2d;&#25991;</td></tr></table>';
+    const r = ImportEngine.parse({ text: '', html });
+    assert.equal(firstTable(r).rows[0][1], 'A & B <div>literal</div> 中文');
+  });
+
+  it('keeps intentional repeated br breaks but trims only cell-edge breaks', () => {
+    const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td><br>first<br><br>third<br></td></tr></table>';
+    const r = ImportEngine.parse({ text: '', html });
+    assert.equal(firstTable(r).rows[0][1], 'first\n\nthird');
+  });
 });
 
 // ---------------------------------------------------------------------------
