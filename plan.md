@@ -64,4 +64,4 @@
 - [x] D. Preview、Copy、Export 使用统一 QueryResult。
 - [x] E. 关键 Dialog 支持键盘闭环与焦点恢复。
 - [x] F. 版本、schema、备份和文档信息一致。
-- [ ] G. 变更已提交到 `main` 并推送到配置的主远程。
+- [x] G. 变更已提交到 `main` 并推送到配置的主远程。
