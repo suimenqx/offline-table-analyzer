@@ -12,6 +12,7 @@ export function createDOMSandbox(options = {}) {
     const node = {
       tagName: tag.toUpperCase(),
       value: '',
+      type: '',
       checked: false,
       disabled: false,
       hidden: false,
@@ -97,6 +98,15 @@ export function createDOMSandbox(options = {}) {
         return { top: 0, left: 0, width: 100, height: 30, right: 100, bottom: 30 };
       },
     };
+    let value = '';
+    Object.defineProperty(node, 'value', {
+      configurable: true,
+      get() { return value; },
+      set(next) {
+        value = String(next ?? '');
+        if (tag.toLowerCase() === 'input' && node.type === 'text') value = value.replace(/[\r\n]/g, '');
+      },
+    });
     return node;
   }
 

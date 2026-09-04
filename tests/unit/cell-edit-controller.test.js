@@ -4,6 +4,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import { strict as assert } from 'node:assert/strict';
 import { createStorageMock } from '../mocks/storage.js';
+import { createDOMSandbox } from '../mocks/dom.js';
 import { loadModules } from '../helpers/load-modules.mjs';
 
 let storage, CellEditController, Store, TableRegistry;
@@ -56,6 +57,69 @@ beforeEach(() => {
   CellEditController.editHistory = [];
   CellEditController.editRedo = [];
   CellEditController.activeEditor = null;
+});
+
+function createEditableCell(value) {
+  const dom = createDOMSandbox();
+  globalThis.document = dom.document;
+  globalThis.window = dom.window;
+
+  const table = document.createElement('table');
+  table.dataset.tableName = 'T1';
+  const td = document.createElement('td');
+  td.dataset.sourceRow = '0';
+  td.dataset.sourceCol = '0';
+  td.textContent = value;
+  td.closest = (selector) => selector === 'table' ? table : null;
+  table.appendChild(td);
+  TableRegistry.getRaw()[0].rows[0][0] = value;
+  return { td };
+}
+
+function keydown(editor, key, shiftKey = false) {
+  editor.dispatchEvent({
+    type: 'keydown',
+    key,
+    shiftKey,
+    preventDefault() {},
+  });
+}
+
+// ---------------------------------------------------------------------------
+describe('CellEditController — inline editor', () => {
+  it('preserves multiline cell text through open and commit', () => {
+    const { td } = createEditableCell('a\nb');
+
+    CellEditController.begin(td);
+    const editor = td.children[0];
+    assert.equal(editor.tagName, 'TEXTAREA');
+    assert.equal(editor.className, 'cell-editor');
+    assert.equal(editor.value, 'a\nb');
+
+    editor.value = 'first\nsecond';
+    keydown(editor, 'Enter');
+
+    assert.equal(td.textContent, 'first\nsecond');
+    assert.equal(TableRegistry.getRaw()[0].rows[0][0], 'first\nsecond');
+    assert.equal(td.classList.contains('multiline-cell'), true);
+  });
+
+  it('inserts a newline with Shift+Enter without committing', () => {
+    const { td } = createEditableCell('a');
+
+    CellEditController.begin(td);
+    const editor = td.children[0];
+    editor.selectionStart = 1;
+    editor.selectionEnd = 1;
+    keydown(editor, 'Enter', true);
+
+    assert.equal(editor.value, 'a\n');
+    assert.ok(CellEditController.activeEditor, 'Shift+Enter should keep the editor open');
+
+    keydown(editor, 'Enter');
+    assert.equal(CellEditController.activeEditor, null);
+    assert.equal(TableRegistry.getRaw()[0].rows[0][0], 'a\n');
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -338,6 +338,8 @@ Double-click any cell in a **raw table** (source tables, not JOIN views) to edit
 
 **JOIN views are read-only** — cells in derived tables cannot be edited.
 
+The inline editor supports line breaks. Press **Shift+Enter** to insert a newline, **Enter** or **Tab** to commit, **Escape** to cancel, or click away to commit. Existing line breaks remain intact while editing.
+
 Corrections are scoped per analysis tab and are saved with the workspace.
 
 ---

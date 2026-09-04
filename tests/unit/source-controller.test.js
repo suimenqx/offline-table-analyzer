@@ -160,6 +160,25 @@ describe('SourceController paste metadata', () => {
     assert.equal(SourceController.getCurrentPaste('id,name\n1,Bob'), null);
     assert.equal(SourceController.getCurrentPaste(''), null);
   });
+
+  it('keeps HTML clipboard data when the browser normalizes CRLF to LF', () => {
+    const plain = 'id\tnote\r\n1\thello\r\nworld';
+    const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td>hello<br>world</td></tr></table>';
+    SourceController.captureClipboard({
+      types: ['text/plain', 'text/html'],
+      getData(type) { return type === 'text/html' ? html : plain; },
+    });
+
+    const current = SourceController.getCurrentPaste(plain.replace(/\r\n/g, '\n'));
+    assert.ok(current, 'the normalized textarea value should still match the clipboard snapshot');
+    assert.equal(current.html, html);
+    assert.equal(current.hasHtmlTable, true);
+
+    const { ImportEngine } = OTA.require('import-engine');
+    const parsed = ImportEngine.parse({ text: plain.replace(/\r\n/g, '\n'), html: current.html });
+    assert.equal(parsed.format, 'html-table');
+    assert.deepEqual(parsed.tables[0].rows, [['1', 'hello\nworld']]);
+  });
 });
 
 // ---------------------------------------------------------------------------

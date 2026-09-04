@@ -1,4 +1,4 @@
-OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}) => {
+OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller", "table-utils"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}, {TableUtils}) => {
 /* SourceController — manages source text input, file import, fullscreen editor,
    and input resizer. Delegates all state changes to dispatch().
 
@@ -151,7 +151,7 @@ const SourceController = {
     getCurrentPaste(text='') {
         const snapshot = this._lastPaste;
         if (!snapshot || snapshot.docId !== Store.state.activeId) return null;
-        if (String(snapshot.plain || '').trim() !== String(text || '').trim()) return null;
+        if (TableUtils.normalizeText(snapshot.plain).trim() !== TableUtils.normalizeText(text).trim()) return null;
         return snapshot;
     },
 
