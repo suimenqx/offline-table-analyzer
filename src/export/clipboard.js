@@ -133,7 +133,7 @@ const ClipboardFormatter = {
         const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
         const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
         const header = includeHeaders ? `<thead>${rowHtml(matrix[0], 'th')}</thead>` : '';
-        const rows = includeHeaders ? matrix.slice(1) : matrix;
+        const rows = (matrix || []).slice(1);
         return `<table border="1">${header}<tbody>${rows.map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
     toText(matrix, format='default', includeHeaders=true) {

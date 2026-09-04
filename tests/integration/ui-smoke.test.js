@@ -173,6 +173,9 @@ describe('Selection.copy', () => {
 
     assert.equal(copied['text/plain'], '1\tAlice\n2\tBob');
     assert.ok(!copied['text/html'].includes('<thead>'));
+    assert.ok(!copied['text/html'].includes('>id</td>'));
+    assert.ok(!copied['text/html'].includes('>name</td>'));
+    assert.ok(copied['text/html'].includes('>Alice</td>'));
     Select.clear();
   });
 });

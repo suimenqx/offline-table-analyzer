@@ -54,6 +54,12 @@ describe('ClipboardFormatter — text formats', () => {
     assert.ok(!html.includes('<thead>'));
     assert.ok(html.includes('<td'));
     assert.ok(!html.includes('<th'));
+    // Header values must not appear as body <td> cells when includeHeaders=false
+    assert.ok(!html.includes('>id</td>'));
+    assert.ok(!html.includes('>name</td>'));
+    assert.ok(html.includes('>1</td>'));
+    assert.ok(html.includes('>Alice</td>'));
+    assert.ok(html.includes('>Bob, Jr.</td>') || html.includes('>Bob, Jr.&lt;') || html.includes('Bob, Jr.'));
   });
 
   it('keeps Lua field names when headers are disabled', () => {
@@ -162,6 +168,24 @@ describe('ClipboardFormatter.toHtml', () => {
     const html = F.toHtml(matrix);
     assert.ok(html.includes('<table'));
     assert.ok(html.includes('<th'));
+  });
+
+  it('omits header cell values from tbody when includeHeaders is false', () => {
+    const html = F.toHtml(matrix, 'default', false);
+    assert.equal(html.includes('<thead>'), false);
+    assert.equal(html.includes('>id</td>'), false);
+    assert.equal(html.includes('>name</td>'), false);
+    assert.ok(html.includes('>1</td>'));
+    assert.ok(html.includes('>Alice</td>'));
+  });
+
+  it('keeps header values only in thead when includeHeaders is true', () => {
+    const html = F.toHtml(matrix, 'default', true);
+    assert.ok(html.includes('<thead>'));
+    assert.ok(html.includes('>id</th>'));
+    assert.ok(html.includes('>name</th>'));
+    assert.equal(html.includes('>id</td>'), false);
+    assert.equal(html.includes('>name</td>'), false);
   });
 
   it('uses code markup for lua formats', () => {

@@ -199,7 +199,7 @@ const Select = {
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
         e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format, includeHeaders));
         e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format, includeHeaders));
-        const rowCount = includeHeaders ? Math.max(0, matrix.length - 1) : matrix.length;
+        const rowCount = Math.max(0, matrix.length - 1);
         const headerLabel = includeHeaders ? '含表头' : '不含表头';
         Toast.show(`已复制 ${rowCount} 行 · ${ClipboardFormatter.label(format)} · ${headerLabel}`);
     }

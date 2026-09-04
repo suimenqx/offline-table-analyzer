@@ -2647,7 +2647,7 @@ const ClipboardFormatter = {
         const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
         const rowHtml = (row, tag) => `<tr>${(row || []).map(cell => `<${tag} style="border:1px solid #ccc; padding:2px 6px; white-space:pre-wrap;">${htmlCell(cell)}</${tag}>`).join('')}</tr>`;
         const header = includeHeaders ? `<thead>${rowHtml(matrix[0], 'th')}</thead>` : '';
-        const rows = includeHeaders ? matrix.slice(1) : matrix;
+        const rows = (matrix || []).slice(1);
         return `<table border="1">${header}<tbody>${rows.map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
     toText(matrix, format='default', includeHeaders=true) {
@@ -5732,7 +5732,7 @@ const Select = {
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
         e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format, includeHeaders));
         e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format, includeHeaders));
-        const rowCount = includeHeaders ? Math.max(0, matrix.length - 1) : matrix.length;
+        const rowCount = Math.max(0, matrix.length - 1);
         const headerLabel = includeHeaders ? '含表头' : '不含表头';
         Toast.show(`已复制 ${rowCount} 行 · ${ClipboardFormatter.label(format)} · ${headerLabel}`);
     }
