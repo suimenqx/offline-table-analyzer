@@ -101,6 +101,8 @@ App orchestrator → bootstrap
 | `ui/` | `selection.js` | 预览区域范围选择 | `Select` |
 | | `table-builder.js` | 预览表格 DOM 构建（列表头/行表头模式），消费 FilterEngine 输出 | `TableBuilder` |
 | | `join-editor.js` | JOIN 编辑器 UI | `JoinEditor` |
+| | `source-controller.js` | 源文本、文件导入、全屏编辑器和剪贴板源快照；使用 `TableUtils` 统一文本换行 | `SourceController` |
+| | `cell-edit-controller.js` | 原始表单元格修正、撤销/重做和多行内联编辑 | `CellEditController` |
 | | `app.js` | 应用编排和 UI，委托过滤给 FilterEngine、表格构建给 TableBuilder | `App` |
 | （根） | `bootstrap.js` | 应用启动 | — |
 

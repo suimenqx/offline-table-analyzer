@@ -2,7 +2,7 @@ OTA.define('cell-edit-controller', ["runtime", "store", "dispatch", "table-regis
 /* CellEditController — inline cell editing with undo/redo.
 
    Responsibilities:
-   - Double-click → inline input
+   - Double-click → inline textarea
    - Commit/cancel with Enter/Tab/Escape/blur
    - Non-destructive overlay in ui.cellEdits
    - 100-step undo/redo stacks
@@ -67,8 +67,7 @@ const CellEditController = {
         td.style.minHeight = `${origHeight}px`;
         td.classList.add('editing');
 
-        const input = document.createElement('input');
-        input.type = 'text';
+        const input = document.createElement('textarea');
         input.className = 'cell-editor';
         input.value = orig;
         td.innerHTML = '';
@@ -83,6 +82,7 @@ const CellEditController = {
             done = true;
             if (input.parentNode === td) td.removeChild(input);
             td.textContent = orig;
+            td.classList.toggle('multiline-cell', String(orig).includes('\n'));
             td.style.height = '';
             td.style.minHeight = '';
             td.classList.remove('editing');
@@ -95,6 +95,7 @@ const CellEditController = {
             const val = input.value;
             if (input.parentNode === td) td.removeChild(input);
             td.textContent = val;
+            td.classList.toggle('multiline-cell', String(val).includes('\n'));
             if (String(val).length > 18) td.dataset.full = val;
             else td.removeAttribute('data-full');
             CellEditController.apply(tableName, sourceRow, sourceCol, val);
@@ -105,6 +106,19 @@ const CellEditController = {
         };
 
         input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.shiftKey) {
+                e.preventDefault();
+                const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
+                const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
+                input.value = input.value.slice(0, start) + '\n' + input.value.slice(end);
+                const caret = start + 1;
+                if (typeof input.setSelectionRange === 'function') input.setSelectionRange(caret, caret);
+                else {
+                    input.selectionStart = caret;
+                    input.selectionEnd = caret;
+                }
+                return;
+            }
             if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); commit(); }
             else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         });

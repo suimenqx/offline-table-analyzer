@@ -261,7 +261,7 @@
         .filter-popover .fp-actions { display: flex; justify-content: flex-end; gap: 4px; }
         .filter-popover .fp-actions .sm, .filter-popover .fp-actions .primary.sm { padding: 2px 8px; font-size: 11px; height: 26px; }
         td.editing { position: relative; }
-        .cell-editor { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); box-sizing: border-box; border: 1px solid var(--primary); border-radius: 4px; padding: 2px 4px; font-family: var(--font-table); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; font-size: 12px; background: var(--bg-card); color: var(--text-main); }
+        .cell-editor { position: absolute; inset: 2px; width: calc(100% - 4px); height: calc(100% - 4px); min-height: 3em; box-sizing: border-box; border: 1px solid var(--primary); border-radius: 4px; padding: 2px 4px; font-family: var(--font-table); font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; font-size: 12px; line-height: 1.45; background: var(--bg-card); color: var(--text-main); white-space: pre-wrap; overflow: auto; resize: vertical; }
 
         /* Modals */
         .modal-bg { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45); backdrop-filter: blur(4px); z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -6988,7 +6988,7 @@ const ViewManager = {
 });
 
 /* @module ui/source-controller.js: source editor and file import */
-OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}) => {
+OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller", "table-utils"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}, {TableUtils}) => {
 /* SourceController — manages source text input, file import, fullscreen editor,
    and input resizer. Delegates all state changes to dispatch().
 
@@ -7141,7 +7141,7 @@ const SourceController = {
     getCurrentPaste(text='') {
         const snapshot = this._lastPaste;
         if (!snapshot || snapshot.docId !== Store.state.activeId) return null;
-        if (String(snapshot.plain || '').trim() !== String(text || '').trim()) return null;
+        if (TableUtils.normalizeText(snapshot.plain).trim() !== TableUtils.normalizeText(text).trim()) return null;
         return snapshot;
     },
 
@@ -7571,7 +7571,7 @@ OTA.define('cell-edit-controller', ["runtime", "store", "dispatch", "table-regis
 /* CellEditController — inline cell editing with undo/redo.
 
    Responsibilities:
-   - Double-click → inline input
+   - Double-click → inline textarea
    - Commit/cancel with Enter/Tab/Escape/blur
    - Non-destructive overlay in ui.cellEdits
    - 100-step undo/redo stacks
@@ -7636,8 +7636,7 @@ const CellEditController = {
         td.style.minHeight = `${origHeight}px`;
         td.classList.add('editing');
 
-        const input = document.createElement('input');
-        input.type = 'text';
+        const input = document.createElement('textarea');
         input.className = 'cell-editor';
         input.value = orig;
         td.innerHTML = '';
@@ -7652,6 +7651,7 @@ const CellEditController = {
             done = true;
             if (input.parentNode === td) td.removeChild(input);
             td.textContent = orig;
+            td.classList.toggle('multiline-cell', String(orig).includes('\n'));
             td.style.height = '';
             td.style.minHeight = '';
             td.classList.remove('editing');
@@ -7664,6 +7664,7 @@ const CellEditController = {
             const val = input.value;
             if (input.parentNode === td) td.removeChild(input);
             td.textContent = val;
+            td.classList.toggle('multiline-cell', String(val).includes('\n'));
             if (String(val).length > 18) td.dataset.full = val;
             else td.removeAttribute('data-full');
             CellEditController.apply(tableName, sourceRow, sourceCol, val);
@@ -7674,6 +7675,19 @@ const CellEditController = {
         };
 
         input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && e.shiftKey) {
+                e.preventDefault();
+                const start = Number.isInteger(input.selectionStart) ? input.selectionStart : input.value.length;
+                const end = Number.isInteger(input.selectionEnd) ? input.selectionEnd : start;
+                input.value = input.value.slice(0, start) + '\n' + input.value.slice(end);
+                const caret = start + 1;
+                if (typeof input.setSelectionRange === 'function') input.setSelectionRange(caret, caret);
+                else {
+                    input.selectionStart = caret;
+                    input.selectionEnd = caret;
+                }
+                return;
+            }
             if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); commit(); }
             else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
         });

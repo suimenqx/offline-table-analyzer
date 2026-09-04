@@ -2,6 +2,13 @@
 
 All notable changes are documented here. The project follows semantic versioning from v20 onward.
 
+## Unreleased
+
+### Fixes
+
+- Preserve HTML clipboard table snapshots when the browser normalizes pasted CRLF line endings to LF, preventing multiline cells from falling through to split TSV rows.
+- Preserve multiline cell values during inline editing with a textarea editor; Shift+Enter inserts a newline while Enter/Tab commits.
+
 ## 22.0.0 — 2026-08-05
 
 ### Architecture and state reliability
