@@ -489,3 +489,87 @@ describe('Store — transition protocol', () => {
     Store._notify('noop', {});
   });
 });
+
+// ---------------------------------------------------------------------------
+// Store — import options are UI/parse options, not source rewrites
+// ---------------------------------------------------------------------------
+describe('Store — import options leave source paste lifetime alone', () => {
+  it('import:setHeaderMode updates header mode without source:textChanged or revision bump', async () => {
+    const doc = Store.curr();
+    doc.raw = 'id\tnote\n1\thello\nworld';
+    doc.ui.importHeaderMode = 'auto';
+    doc.ui.cellEdits = { '$T1': { 0: { 0: 'keep-until-app' } } };
+    doc.sourceRevision = 3;
+    doc.lastParse = { sourceRevision: 3, format: 'html-table' };
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    const ok = Store.transition('import:setHeaderMode', { mode: 'none' });
+    assert.equal(ok, true);
+    assert.equal(doc.ui.importHeaderMode, 'none');
+    assert.equal(doc.raw, 'id\tnote\n1\thello\nworld');
+    assert.equal(doc.sourceRevision, 3, 'option toggles must not bump sourceRevision');
+    assert.equal(doc.lastParse && doc.lastParse.format, 'html-table', 'option toggles must not clear lastParse');
+    assert.deepEqual(doc.ui.cellEdits, { '$T1': { 0: { 0: 'keep-until-app' } } });
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(events.filter(e => e.evt === 'source:textChanged').length, 0);
+    const modeEvents = events.filter(e => e.evt === 'import:headerModeChanged');
+    assert.ok(modeEvents.length >= 1);
+    assert.equal(modeEvents[0].payload.mode, 'none');
+    unsub();
+  });
+
+  it('import:setFormat updates format without source:textChanged or revision bump', async () => {
+    const doc = Store.curr();
+    doc.raw = 'a,b\n1,2';
+    doc.ui.importFormat = 'auto';
+    doc.sourceRevision = 2;
+    doc.ui.cellEdits = { '$T1': { 0: { 0: 'x' } } };
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    const ok = Store.transition('import:setFormat', { format: 'csv' });
+    assert.equal(ok, true);
+    assert.equal(doc.ui.importFormat, 'csv');
+    assert.equal(doc.sourceRevision, 2);
+    assert.deepEqual(doc.ui.cellEdits, { '$T1': { 0: { 0: 'x' } } });
+
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(events.filter(e => e.evt === 'source:textChanged').length, 0);
+    const formatEvents = events.filter(e => e.evt === 'import:formatChanged');
+    assert.ok(formatEvents.length >= 1);
+    assert.equal(formatEvents[0].payload.format, 'csv');
+    unsub();
+  });
+
+  it('source:replace defaults preservePaste to true when text is unchanged', async () => {
+    const doc = Store.curr();
+    doc.raw = 'same';
+    doc.ui.importFormat = 'auto';
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    Store.transition('source:replace', { text: 'same', format: 'csv' });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const changed = events.find(e => e.evt === 'source:textChanged');
+    assert.ok(changed);
+    assert.equal(changed.payload.preservePaste, true);
+    assert.equal(doc.ui.importFormat, 'csv');
+    unsub();
+  });
+
+  it('source:replace still clears paste contract when text changes', async () => {
+    const doc = Store.curr();
+    doc.raw = 'old';
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+
+    Store.transition('source:replace', { text: 'new' });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    const changed = events.find(e => e.evt === 'source:textChanged');
+    assert.ok(changed);
+    assert.equal(changed.payload.preservePaste, false);
+    unsub();
+  });
+});

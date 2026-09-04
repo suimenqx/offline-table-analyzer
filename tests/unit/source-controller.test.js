@@ -182,6 +182,70 @@ describe('SourceController paste metadata', () => {
 });
 
 // ---------------------------------------------------------------------------
+// HTML paste survives import option toggles
+// ---------------------------------------------------------------------------
+describe('SourceController — paste survives import option toggles', () => {
+  const plain = 'id\tnote\n1\thello\nworld\n2\tok';
+  const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td>hello<br>world</td></tr><tr><td>2</td><td>ok</td></tr></table>';
+
+  function captureMultilineHtmlPaste() {
+    Store.curr().raw = plain;
+    Store.curr().ui.importHeaderMode = 'auto';
+    Store.curr().ui.importFormat = 'auto';
+    return SourceController.captureClipboard({
+      types: ['text/plain', 'text/html'],
+      getData(type) { return type === 'text/html' ? html : plain; },
+    });
+  }
+
+  it('retains HTML paste across headerMode auto→none and keeps multiline cell under none', async () => {
+    captureMultilineHtmlPaste();
+    assert.ok(SourceController.getCurrentPaste(plain)?.html);
+
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+    dispatch('import:setHeaderMode', { mode: 'none' });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    unsub();
+
+    assert.equal(events.filter(e => e.evt === 'source:textChanged').length, 0,
+      'headerMode is a parse option — must not emit source:textChanged');
+    const current = SourceController.getCurrentPaste(plain);
+    assert.ok(current, 'paste snapshot must survive headerMode toggle');
+    assert.equal(current.html, html);
+
+    const { ImportEngine } = OTA.require('import-engine');
+    const parsed = ImportEngine.parse({ text: plain, html: current.html }, { headerMode: 'none' });
+    assert.equal(parsed.format, 'html-table');
+    assert.ok(parsed.tables[0].rows.some(row => String(row[1] || '').includes('\n')),
+      'multiline cell must stay one cell under headerMode=none');
+  });
+
+  it('retains HTML paste across import format change', async () => {
+    captureMultilineHtmlPaste();
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+    dispatch('import:setFormat', { format: 'csv' });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    unsub();
+
+    assert.equal(events.filter(e => e.evt === 'source:textChanged').length, 0,
+      'format is a parse option — must not emit source:textChanged');
+    assert.ok(SourceController.getCurrentPaste(plain)?.html, 'paste snapshot must survive format toggle');
+  });
+
+  it('stops exposing paste when source text no longer matches the snapshot', async () => {
+    captureMultilineHtmlPaste();
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+    dispatch('source:replace', { text: plain + '\nextra' });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    unsub();
+    assert.equal(SourceController.getCurrentPaste(plain + '\nextra'), null);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // dispatch integration
 // ---------------------------------------------------------------------------
 describe('SourceController — dispatch integration', () => {

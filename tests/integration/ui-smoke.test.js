@@ -217,6 +217,29 @@ describe('Runtime API surface', () => {
 });
 
 describe('Paste source diagnostics', () => {
+  it('keeps paste metadata for unchanged text and clears it when text diverges', async () => {
+    setupDOM();
+    const { Store } = OTA.require('store');
+    const { SourceController } = OTA.require('source-controller');
+    const plain = 'id\tnote\n1\thello\nworld';
+    const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td>hello<br>world</td></tr></table>';
+    Store.state.docs = [{ id: 'a', title: 'First', raw: plain, ui: {} }];
+    Store.state.activeId = 'a';
+    SourceController.setPasteSnapshot(SourceController.createSourceSnapshot({
+      plain,
+      html,
+      types: ['text/plain', 'text/html'],
+    }));
+
+    Store.transition('source:replace', { text: plain, format: 'csv' });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(SourceController.getCurrentPaste(plain), 'same source text should keep paste metadata');
+
+    Store.transition('source:replace', { text: `${plain}\nextra`, preservePaste: true });
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(SourceController.getLastPaste(), null, 'divergent source text must clear paste metadata');
+  });
+
   it('shows escaped source formats without executing pasted HTML', () => {
     setupDOM();
     const { App } = OTA.require('app');

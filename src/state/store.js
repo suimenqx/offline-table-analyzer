@@ -542,13 +542,16 @@ const Store = {
                 return this.transition('source:replace', payload);
             }
             case 'source:replace': {
-                // Payload: { text, docId?, format?, headerMode? }
+                // Payload: { text, docId?, format?, headerMode?, preservePaste? }
+                // preservePaste is a compatibility hint for source listeners; they still
+                // validate the current snapshot against the emitted text.
                 const doc = this.getDocument(payload && payload.docId) || this.curr();
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const next = payload && typeof payload.text === 'string' ? payload.text : '';
                 const format = payload && typeof payload.format === 'string' ? payload.format : null;
                 const headerMode = payload && typeof payload.headerMode === 'string' ? payload.headerMode : null;
-                const changed = doc.raw !== next
+                const textUnchanged = doc.raw === next;
+                const changed = !textUnchanged
                     || (format !== null && doc.ui.importFormat !== format)
                     || (headerMode !== null && doc.ui.importHeaderMode !== headerMode);
                 if(!changed) return doc.raw;
@@ -558,12 +561,16 @@ const Store = {
                 doc.ui.cellEdits = {};
                 if(format !== null) doc.ui.importFormat = format || 'auto';
                 if(headerMode !== null) doc.ui.importHeaderMode = headerMode || 'auto';
+                // Default true when text is unchanged; allow explicit false to force clear.
+                const preservePaste = payload && payload.preservePaste === false
+                    ? false
+                    : ((payload && payload.preservePaste === true) || textUnchanged);
                 this.scheduleSave();
                 this._notify('source:textChanged', {
                     docId:doc.id,
                     text:doc.raw,
                     sourceRevision:doc.sourceRevision,
-                    preservePaste:payload && payload.preservePaste === true,
+                    preservePaste,
                     invalidatedEdits:true,
                 });
                 this._notify('state:changed', { changed:['source','cellEdits'] });
@@ -719,13 +726,35 @@ const Store = {
                 return true;
             }
             case 'import:setFormat': {
-                this.transition('source:replace', { text:this.curr().raw, format:payload && payload.format || 'auto' });
-                this._notify('import:formatChanged', { format: payload && payload.format });
+                // Parse/UI option only — not a source content mutation.
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                const format = payload && typeof payload.format === 'string' && payload.format
+                    ? payload.format
+                    : 'auto';
+                if(doc.ui.importFormat !== format) {
+                    doc.ui.importFormat = format;
+                    this.scheduleSave();
+                    this._notify('ui:changed', { docId:doc.id, key:'importFormat', value:doc.ui.importFormat });
+                    this._notify('state:changed', { changed:['ui'] });
+                }
+                this._notify('import:formatChanged', { format: doc.ui.importFormat });
                 return true;
             }
             case 'import:setHeaderMode': {
-                this.transition('source:replace', { text:this.curr().raw, headerMode:payload && payload.mode || 'auto' });
-                this._notify('import:headerModeChanged', { mode: payload && payload.mode });
+                // Parse/UI option only — not a source content mutation.
+                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                this.normalizeDoc(doc, this.state.docs.indexOf(doc));
+                const mode = payload && typeof payload.mode === 'string' && payload.mode
+                    ? payload.mode
+                    : 'auto';
+                if(doc.ui.importHeaderMode !== mode) {
+                    doc.ui.importHeaderMode = mode;
+                    this.scheduleSave();
+                    this._notify('ui:changed', { docId:doc.id, key:'importHeaderMode', value:doc.ui.importHeaderMode });
+                    this._notify('state:changed', { changed:['ui'] });
+                }
+                this._notify('import:headerModeChanged', { mode: doc.ui.importHeaderMode });
                 return true;
             }
             case 'filter:focus': {

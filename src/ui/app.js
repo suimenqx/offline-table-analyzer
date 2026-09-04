@@ -59,7 +59,12 @@ const App = {
                 case 'source:textChanged':
                     if (!payload || payload.docId === Store.state.activeId) {
                         CellEditController.reset();
-                        if(!payload || payload.preservePaste !== true) SourceController.clearLastPaste();
+                        // Paste lifetime follows the source text, not the transition that
+                        // happened to deliver it. Option toggles do not emit this event;
+                        // any source event keeps the snapshot only while text still matches.
+                        const text = payload && typeof payload.text === 'string' ? payload.text : '';
+                        const keepPaste = Boolean(SourceController.getCurrentPaste(text));
+                        if(!keepPaste) SourceController.clearLastPaste();
                         this.updatePasteSourceButton();
                         this.updateWorkspaceSummary();
                     }
