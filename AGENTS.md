@@ -19,7 +19,7 @@
 2. Preserve existing public behavior and error semantics. Add regression coverage for changed behavior; use unit coverage for pure logic and integration/UI coverage for cross-module flows. Do not weaken a test or validator to make a change pass.
 3. If persisted data shape or compatibility changes, update the migration path, old-version fixtures, and requirements documentation. If module ownership, dependency direction, or delivery architecture changes, update the architecture decision and its rationale.
 4. Regenerate `index.html` through the project build. For source or release changes, run the relevant test, architecture, and release scripts declared in `package.json`; inspect the generated artifact and `git diff --check` before finishing.
-5. Work directly on `main`. Stage only files belonging to the requested change, preserve unrelated user edits, then commit and push to `origin/main`. Do not create topic branches or pull requests.
+5. Work directly on `main` and push completed commits to `origin/main`. If the checkout is on another branch, inspect its state and get user direction before changing branch state. Never create, switch to, or use `feature/*`, `fix/*`, agent, or other topic branches or worktrees; do not open pull requests. Stage only files belonging to the requested change and preserve unrelated user edits.
 
 ## Read on demand
 
