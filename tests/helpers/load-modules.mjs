@@ -12,57 +12,17 @@
  */
 
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import vm from 'node:vm';
 
 const ROOT = path.resolve(import.meta.dirname, '..', '..');
 const SRC = path.join(ROOT, 'src');
+const cjsRequire = createRequire(import.meta.url);
+const { MODULES } = cjsRequire('../../tools/build-release.cjs');
 
-// 模块加载顺序 —— 与 tools/build-release.cjs 中的 MODULES 保持一致
-const MODULE_ORDER = [
-  'core/module-loader.js',
-  'core/runtime.js',
-  'core/table-utils.js',
-  'core/source-snapshot.js',
-  'core/filter-engine.js',
-  'state/store.js',
-  'core/dispatch.js',
-  'export/exporter.js',
-  'export/clipboard.js',
-  'parsing/header-resolver.js',
-  'parsing/text-layout.js',
-  'parsing/format-sniffer.js',
-  'parsing/delimited-utils.js',
-  'parsing/parser-helpers.js',
-  'parsing/parsers/html-parser.js',
-  'parsing/parsers/delimited-parsers.js',
-  'parsing/parsers/data-block-parser.js',
-  'parsing/parsers/pipe-table-parser.js',
-  'parsing/parsers/ascii-table-parser.js',
-  'parsing/parsers/fixed-width-parser.js',
-  'parsing/parsers/cli-multi-block-parser.js',
-  'parsing/parsers/aligned-table-parser.js',
-  'parsing/parsers/plain-text-parser.js',
-  'parsing/parsers/cli-table-data-parser.js',
-  'parsing/import-engine.js',
-  'parsing/legacy-facade.js',
-  'transform/joiner.js',
-  'core/query-service.js',
-  'core/table-registry.js',
-  'ui/table-builder.js',
-  'ui/selection.js',
-  'ui/join-editor.js',
-  'ui/view-manager.js',
-  'ui/source-controller.js',
-  'ui/cell-edit-controller.js',
-  'ui/filter-controller.js',
-  'ui/modal-controller.js',
-  'ui/tab-controller.js',
-  'ui/keyboard-controller.js',
-  'ui/export-controller.js',
-  'ui/app.js',
-  'bootstrap.js',
-];
+// Tests and release generation use the same source module order.
+const MODULE_ORDER = MODULES.map(([file]) => file);
 
 // 需要注入的全局变量名
 const INJECTED_GLOBALS = ['window', 'document', 'localStorage', 'CustomEvent', 'MouseEvent', 'Option', 'alert', 'confirm'];

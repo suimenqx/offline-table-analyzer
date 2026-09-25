@@ -222,7 +222,7 @@ All test files use Node's built-in test runner and live under `tests/`:
 - `tests/unit/modal-controller.test.js`, `filter-controller.test.js`, and `cell-edit-controller.test.js`: dialog, filter, and correction-controller contracts.
 - `tests/integration/build.test.js`, `ui-smoke.test.js`, and `accessibility.test.js`: deterministic release construction, bootstrap behavior, render coalescing, paste-source diagnostics, keyboard/UI contracts, live regions, and responsive markers.
 - `tools/validate-release.cjs`: version consistency, single inline script, offline assets/APIs, and required community files.
-- `tools/validate-architecture.cjs`: Store command boundary, offline and large-data boundaries, schema/version consistency, manifest completeness, and deterministic `index.html` output.
+- `tools/validate-architecture.cjs`: Store command boundary, offline and large-data boundaries, schema/version consistency, complete module inventory, declared and dynamic dependency resolution/order, and deterministic `index.html` output.
 
 `npm test` rebuilds the release and runs every `tests/**/*.test.js` file. Release delivery additionally requires `npm run validate:release` and `npm run validate:architecture`.
 

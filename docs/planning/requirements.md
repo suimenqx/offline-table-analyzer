@@ -228,7 +228,7 @@ The defining constraints are:
 - Added `Store.transition` revision/source lifecycle metadata, explicit schema migrations, and UI command-boundary validation.
 - Added the pure `QueryService` pipeline so preview and preview export share JOIN/filter/focus results and bounded cache keys.
 - Added status/chip visibility, format-candidate explanations, dialog focus trapping, and deterministic version injection.
-- Build manifest contains 41 source modules; all tests, architecture validation, and release validation pass without regression.
+- Build manifest contains 42 source modules; all tests, architecture validation, and release validation pass without regression.
 
 ## 5. Explicit non-goals for v20–v22
 
