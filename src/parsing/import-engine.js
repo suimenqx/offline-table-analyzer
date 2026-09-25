@@ -47,7 +47,7 @@ const ImportEngine = {
 
             // ── 1. 记忆格式优先试探 ──
             if (!chosen && !selectedType) {
-                const lastFmt = (typeof Store !== 'undefined' && Store.lastSuccessfulFormat) || null;
+                const lastFmt = options.lastSuccessfulFormat || null;
                 if (lastFmt && lastFmt !== 'html-table') {
                     const cachedParser = this.getParser(lastFmt);
                     if (cachedParser && cachedParser.id !== 'plain-text') {

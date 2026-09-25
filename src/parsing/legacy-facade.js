@@ -1,4 +1,4 @@
-OTA.define('parser-facade', ["import-engine","runtime"], ({ImportEngine}, {Toast}) => {
+OTA.define('parser-facade', ["import-engine"], ({ImportEngine}) => {
 /* Parser */
 const Parser = {
     lastResult: { tables:[], format:'empty', label:'空输入' },
@@ -10,8 +10,6 @@ const Parser = {
             // (tables, format, diagnostics, and candidates), not only tables.
             return result;
         } catch(e) {
-            console.error(e);
-            Toast.show('解析出错: ' + e.message, true);
             this.lastResult = { tables:[], format:'error', label:'解析错误', diagnostics:[{ severity:'error', code:'PARSE_ERROR', message:e.message || String(e) }], candidates:[] };
             return this.lastResult;
         }

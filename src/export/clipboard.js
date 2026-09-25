@@ -150,6 +150,15 @@ const ClipboardFormatter = {
             default: return this.toDelimited(rows, '\t');
         }
     },
+    toClipboardPayload(matrix, { format='default', includeHeaders=true } = {}) {
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        const effectiveHeaders = isLua || includeHeaders !== false;
+        return {
+            text: this.toText(matrix, format, effectiveHeaders),
+            html: this.toHtml(matrix, format, effectiveHeaders),
+            includeHeaders: effectiveHeaders,
+        };
+    },
     label(format='default') {
         return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
     }

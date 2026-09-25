@@ -68,13 +68,14 @@ App orchestrator → bootstrap
 
 ## 5. 已落地模块地图
 
-当前发布构建包含 41 个源模块，按目录分层：
+当前发布构建包含 42 个源模块，按目录分层：
 
 | 目录 | 文件 | 职责 | 主要公开对象 |
 | --- | --- | --- | --- |
 | `core/` | `module-loader.js` | 无依赖的本地模块 registry | `OTA.define`, `OTA.require`, `OTA.start` |
 | | `runtime.js` | DOM 查询、Tooltip、Toast | `$`, `createEl`, `Tooltip`, `Toast` |
 | | `table-utils.js` | 文本、单元格、行宽、表头工具 | `TableUtils` |
+| | `source-snapshot.js` | 临时剪贴板/文件来源元数据、诊断预览限长、页签与文本匹配 | `SourceSnapshot` |
 | | `filter-engine.js` | 纯过滤/高亮/列投影逻辑（token 解析、操作符匹配、正则），零 DOM 依赖 | `FilterEngine` |
 | | `query-service.js` | 统一 JOIN、过滤、Focus、分页和预览结果缓存 | `QueryService` |
 | `state/` | `store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
@@ -101,7 +102,7 @@ App orchestrator → bootstrap
 | `ui/` | `selection.js` | 预览区域范围选择 | `Select` |
 | | `table-builder.js` | 预览表格 DOM 构建（列表头/行表头模式），消费 FilterEngine 输出 | `TableBuilder` |
 | | `join-editor.js` | JOIN 编辑器 UI | `JoinEditor` |
-| | `source-controller.js` | 源文本、文件导入、全屏编辑器和剪贴板源快照；使用 `TableUtils` 统一文本换行 | `SourceController` |
+| | `source-controller.js` | 源文本、文件/剪贴板浏览器适配、全屏编辑器和输入尺寸控制 | `SourceController` |
 | | `cell-edit-controller.js` | 原始表单元格修正、撤销/重做和多行内联编辑 | `CellEditController` |
 | | `app.js` | 应用编排和 UI，委托过滤给 FilterEngine、表格构建给 TableBuilder | `App` |
 | （根） | `bootstrap.js` | 应用启动 | — |
@@ -135,7 +136,7 @@ DOM event
 ### 阶段 A：可复现边界 ✅（已完成）
 
 - 在 `main` 分支直接演进。
-- 提取 template、styles 和 41 个按依赖排序的源模块。
+- 提取 template、styles 和按依赖排序的源模块。
 - 增加 `build:release`，使根 `index.html` 可从源完全生成。
 - 保持现有测试全部通过。
 
@@ -144,6 +145,8 @@ DOM event
 - ✅ 将 `FilterEngine` 提取为纯函数模块，无 DOM/storage 依赖，可独立在 Node 中测试。
 - ✅ `App.proc()` 从 ~100 行缩减为 7 行委托调用。
 - ✅ `TableBuilder` 提取为独立 DOM 构建模块，预览表格渲染逻辑复用。
+- ✅ `SourceSnapshot` 接管临时来源元数据和页签/文本匹配；`ImportEngine` 接收显式格式偏好。
+- ✅ 剪贴板成对序列化，App 直接调用 `QueryService` 获取预览结果。
 
 ### 阶段 C：状态与 UI 控制器拆分
 

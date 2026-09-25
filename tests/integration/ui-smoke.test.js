@@ -86,6 +86,72 @@ describe('App bootstrap', () => {
     }
   });
 
+  it('routes structured parser errors through App and preserves the last successful format', () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { Store } = OTA.require('store');
+    const { ImportEngine } = OTA.require('import-engine');
+    const { TableRegistry } = OTA.require('table-registry');
+    const { Toast } = OTA.require('runtime');
+    const targetSelect = document.getElementById('targetTableSelect');
+    targetSelect.options = [];
+    targetSelect.add = option => targetSelect.options.push(option);
+    Store.state.docs = [{ id: 'a', title: 'First', raw: '', ui: {} }];
+    Store.state.activeId = 'a';
+    Store.lastSuccessfulFormat = 'csv';
+
+    const previousParse = ImportEngine.parse;
+    const previousToast = Toast.show;
+    const previousConsoleError = console.error;
+    const shown = [];
+    ImportEngine.parse = () => { throw new Error('invalid source'); };
+    Toast.show = message => shown.push(message);
+    console.error = () => {};
+    try {
+      document.getElementById('rawInput').value = 'broken input';
+      App.run(false);
+      assert.equal(TableRegistry.getFormat(), 'error');
+      assert.equal(Store.lastSuccessfulFormat, 'csv');
+      assert.equal(Store.curr().lastParse.format, 'error');
+      assert.deepEqual(shown, ['解析失败：invalid source']);
+    } finally {
+      ImportEngine.parse = previousParse;
+      Toast.show = previousToast;
+      console.error = previousConsoleError;
+    }
+  });
+
+  it('passes the remembered successful format to the parser', () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { Store } = OTA.require('store');
+    Store.state.docs = [{ id: 'a', title: 'First', raw: '', ui: {} }];
+    Store.state.activeId = 'a';
+    Store.lastSuccessfulFormat = 'csv';
+
+    assert.equal(App.getParseOptions().lastSuccessfulFormat, 'csv');
+  });
+
+  it('builds preview results from QueryService without routing through export internals', () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { QueryService } = OTA.require('query-service');
+    const { ExportController } = OTA.require('export-controller');
+    const expected = [{ table: { name: 'Preview' }, res: { headers: ['id'], rows: [] }, tIdx: 0 }];
+    const previousGetPreview = QueryService.getPreview;
+    const previousExportPreview = ExportController._getPreviewProcessedTables;
+    QueryService.getPreview = () => ({ tables: expected });
+    ExportController._getPreviewProcessedTables = () => {
+      throw new Error('App must not use ExportController preview internals');
+    };
+    try {
+      assert.equal(App.getPreviewProcessedTables(), expected);
+    } finally {
+      QueryService.getPreview = previousGetPreview;
+      ExportController._getPreviewProcessedTables = previousExportPreview;
+    }
+  });
+
   it('coalesces multiple render requests from one state batch', async () => {
     setupDOM();
     const { App } = OTA.require('app');
@@ -221,11 +287,13 @@ describe('Paste source diagnostics', () => {
     setupDOM();
     const { Store } = OTA.require('store');
     const { SourceController } = OTA.require('source-controller');
+    const { SourceSnapshot } = OTA.require('source-snapshot');
     const plain = 'id\tnote\n1\thello\nworld';
     const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td>hello<br>world</td></tr></table>';
     Store.state.docs = [{ id: 'a', title: 'First', raw: plain, ui: {} }];
     Store.state.activeId = 'a';
-    SourceController.setPasteSnapshot(SourceController.createSourceSnapshot({
+    SourceController.setPasteSnapshot(SourceSnapshot.createSourceSnapshot({
+      docId: Store.state.activeId,
       plain,
       html,
       types: ['text/plain', 'text/html'],
@@ -237,24 +305,27 @@ describe('Paste source diagnostics', () => {
 
     Store.transition('source:replace', { text: `${plain}\nextra`, preservePaste: true });
     await new Promise(resolve => setTimeout(resolve, 10));
-    assert.equal(SourceController.getLastPaste(), null, 'divergent source text must clear paste metadata');
+    assert.equal(SourceSnapshot.getLastPaste(), null, 'divergent source text must clear paste metadata');
   });
 
   it('shows escaped source formats without executing pasted HTML', () => {
     setupDOM();
     const { App } = OTA.require('app');
+    const { Store } = OTA.require('store');
     const { SourceController } = OTA.require('source-controller');
+    const { SourceSnapshot } = OTA.require('source-snapshot');
     const { TableRegistry } = OTA.require('table-registry');
     const plain = 'id\tname\n1\tAlice';
     const html = '<table><tr><td>Alice</td></tr></table><script>alert(1)</script>';
     document.getElementById('rawInput').value = plain;
-    SourceController.setPasteSnapshot(SourceController.createSourceSnapshot({
+    SourceController.setPasteSnapshot(SourceSnapshot.createSourceSnapshot({
+      docId: Store.state.activeId,
       plain,
       html,
       types: ['text/plain', 'text/html'],
       formats: [
-        SourceController.createSourceFormat('text/plain', plain),
-        SourceController.createSourceFormat('text/html', html),
+        SourceSnapshot.createSourceFormat('text/plain', plain),
+        SourceSnapshot.createSourceFormat('text/html', html),
       ],
     }));
     TableRegistry.setResult({ format: 'html-table', tables: [], diagnostics: [], candidates: [] });

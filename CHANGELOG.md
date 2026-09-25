@@ -4,6 +4,11 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## Unreleased
 
+### Architecture
+
+- Moved ephemeral clipboard and file source metadata into `SourceSnapshot`; parser format preference is now passed explicitly, and parse errors use one App-owned feedback path.
+- Added paired clipboard serialization and routed preview queries directly through `QueryService`.
+
 ### Fixes
 
 - Preserve HTML clipboard table snapshots when the browser normalizes pasted CRLF line endings to LF, preventing multiline cells from falling through to split TSV rows.

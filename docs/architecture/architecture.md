@@ -15,6 +15,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `OTA` (module-loader) | Local module registry: `define`, `require`, `start` (`src/core/module-loader.js`) |
 | `runtime` | DOM query helpers (`$`, `createEl`), `Tooltip`, `Toast` |
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
+| `SourceSnapshot` | Ephemeral clipboard/file source metadata, bounded diagnostic previews, and tab/text matching |
 | `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
 | `QueryService` | Pure derived-result pipeline for JOIN resolution, filtering, focus projection, pagination metadata, and bounded result caching. |
 | `dispatch` (`src/core/dispatch.js`) | Thin command bus: `dispatch(action, payload)` delegates to `Store.transition`. |
@@ -30,7 +31,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | Module | Responsibility |
 | --- | --- |
 | `Exporter` | Browser downloads and dependency-free XLSX ZIP/XML generation |
-| `ClipboardFormatter` | TSV/CSV/Markdown/ASCII/Lua text serialization, format-specific HTML clipboard payloads, and spreadsheet formula-prefix protection |
+| `ClipboardFormatter` | Paired text/HTML clipboard serialization with shared header policy, format-specific rendering, and spreadsheet formula-prefix protection |
 
 ### Parsing (`src/parsing/`)
 
@@ -42,8 +43,8 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
 | `parser-helpers` | Shared utilities for text/aligned/CLI parsers |
 | Parser adapters (`src/parsing/parsers/`) | 12 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
-| `ImportEngine` | Manual/automatic adapter selection, candidates, normalized result and diagnostics |
-| `legacy-facade` | Historical backward-compatible `Parser` entry point |
+| `ImportEngine` | Manual/automatic adapter selection, explicit last-successful-format preference, candidates, normalized result and diagnostics |
+| `legacy-facade` | Historical backward-compatible `Parser` entry point that returns structured errors without UI feedback |
 
 ### Transform (`src/transform/`)
 
@@ -58,13 +59,13 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed page data from `QueryService` and renders filterable `<table>` elements. |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
-| `SourceController` | Source text input, file drag-and-drop import, fullscreen editor lifecycle, input resizer, format detection from file extension, and ephemeral clipboard/source-format snapshots |
+| `SourceController` | Source text input, clipboard/FileReader adaptation, file drag-and-drop import, fullscreen editor lifecycle, input resizer, and format detection from file extension |
 | `CellEditController` | Inline cell editing with Enter/Tab/Escape/blur, non-destructive overlay persistence, 100-step undo/redo stacks |
 | `FilterController` | Per-column "contains" filter popover positioned near column headers, apply/clear/close actions |
 | `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
 | `TabController` | Tab bar rendering, inline rename (F2/dblclick), drag-and-drop reorder, keyboard navigation (arrows/Enter/Delete) |
 | `ExportController` | XLSX export (raw/full/preview), workspace JSON backup/restore, config JSON export/import with title-based matching, copy format selection |
-| `App` | UI orchestration, parsing, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading. Delegates derived preview queries to `QueryService` and table DOM building to `TableBuilder`. |
+| `App` | UI orchestration, parsing, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading, and centralized parse-error feedback. Calls `QueryService` for derived preview results and `TableBuilder` for table DOM. |
 
 The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor.md); the complete acceptance checklist is in [Refactor requirements](../planning/refactor-requirements.md).
 
@@ -126,7 +127,7 @@ When the source text, imported file, parser format, or header mode changes, the 
 
 ### Ephemeral paste/source snapshot
 
-`SourceController` keeps the most recent paste or HTML-file source in a session-only snapshot rather than in `Store`. The snapshot records the active document id, available clipboard MIME types, bounded previews for diagnostic display, parser inputs (`text/plain` and `text/html`), rich-text/custom format metadata, and file/item metadata. It is cleared when the source no longer matches the captured plain text, when the active tab changes, or when the source is cleared.
+`SourceSnapshot` keeps the most recent clipboard or file source in a session-only snapshot rather than in `Store`. `SourceController` adapts browser clipboard and `FileReader` inputs into that interface. The snapshot records the active document id, available clipboard MIME types, bounded previews for diagnostic display, parser inputs (`text/plain` and `text/html`), rich-text/custom format metadata, and file/item metadata. It is cleared when the source no longer matches the captured plain text, when the active tab changes, or when the source is cleared.
 
 The source editor continues to display plain text. `App.getParseOptions()` reuses the matching HTML payload for the existing HTML-table priority path, while the optional “粘贴源” diagnostic opens escaped code previews and reports the format actually selected. No clipboard payload is persisted to workspace storage, and raw HTML is never rendered by the diagnostic view.
 
@@ -169,11 +170,13 @@ reused accidentally.
 
 ```text
 paste / drop / file / fullscreen editor
-  → source text + ephemeral source-format snapshot + optional clipboard HTML
+  → source text + SourceSnapshot metadata + optional clipboard HTML
+  → App passes parse options and last successful format to ImportEngine
   → ImportEngine format scoring or manual adapter
   → adapter parse (TextLayout supplies position-aware aligned parsing)
   → HeaderResolver and TableUtils normalization
-  → diagnostics + normalized tables
+  → diagnostics + normalized tables or structured error result
+  → App owns user-facing parse-error feedback
   → persisted correction overlay + edit undo/redo
   → QueryService: JOIN resolution + FilterEngine filtering/highlighting/focus + bounded cache
   → paginated DOM preview (large datasets materialize one selected table)
@@ -215,7 +218,7 @@ All test files use Node's built-in test runner and live under `tests/`:
 - `tests/unit/parser.test.js` and `parser-facade.test.js`: all 12 parser adapters, malformed input, diagnostics, normalization, and legacy compatibility.
 - `tests/unit/filter-engine.test.js`, `joiner.test.js`, and `query-service.test.js`: filtering, JOIN semantics, the shared preview result contract, and bounded-cache invalidation.
 - `tests/unit/clipboard.test.js` and `export-controller.test.js`: copy formats, HTML clipboard payloads, formula protection, Lua serialization, and export projections.
-- `tests/unit/store.test.js`, `dispatch.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, clipboard/source snapshot capture, command/event behavior, and tab lifecycle.
+- `tests/unit/store.test.js`, `dispatch.test.js`, `source-snapshot.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, clipboard/file snapshot capture, browser adaptation, command/event behavior, and tab lifecycle.
 - `tests/unit/modal-controller.test.js`, `filter-controller.test.js`, and `cell-edit-controller.test.js`: dialog, filter, and correction-controller contracts.
 - `tests/integration/build.test.js`, `ui-smoke.test.js`, and `accessibility.test.js`: deterministic release construction, bootstrap behavior, render coalescing, paste-source diagnostics, keyboard/UI contracts, live regions, and responsive markers.
 - `tools/validate-release.cjs`: version consistency, single inline script, offline assets/APIs, and required community files.

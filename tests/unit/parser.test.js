@@ -71,6 +71,11 @@ describe('TSV (excel-paste) parser', () => {
     assert.equal(firstTable(r).headers[1], 'name');
   });
 
+  it('uses the caller-provided last successful format before automatic detection', () => {
+    const r = parse('id\tname\n1\tAlice', { lastSuccessfulFormat: 'csv' });
+    assert.equal(r.format, 'csv');
+  });
+
   it('converts <br> tags to newlines', () => {
     const r = parse('id\tdesc\n1\tline1<br>line2\n2\tlineA&lt;br /&gt;lineB', { format: 'excel-paste' });
     assert.equal(firstTable(r).rows[0][1], 'line1\nline2');

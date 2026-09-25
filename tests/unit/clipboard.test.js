@@ -17,6 +17,31 @@ const { OTA } = loadModules(
 const { ClipboardFormatter: F } = OTA.require('clipboard');
 const { Exporter: E } = OTA.require('exporter');
 
+describe('ClipboardFormatter.toClipboardPayload', () => {
+  it('applies one effective header and formula-safety policy to both clipboard formats', () => {
+    const payload = F.toClipboardPayload([['value'], ['=CMD()']], {
+      format: 'default',
+      includeHeaders: false,
+    });
+
+    assert.equal(payload.includeHeaders, false);
+    assert.equal(payload.text, "'=CMD()");
+    assert.equal(payload.html.includes('<thead>'), false);
+    assert.ok(payload.html.includes('&#39;=CMD()'));
+  });
+
+  it('keeps Lua headers in both clipboard formats even when the preference is off', () => {
+    const payload = F.toClipboardPayload([['fieldA'], ['value']], {
+      format: 'lua-inline',
+      includeHeaders: false,
+    });
+
+    assert.equal(payload.includeHeaders, true);
+    assert.ok(payload.text.includes('["fieldA"] = "value"'));
+    assert.ok(payload.html.includes('[&quot;fieldA&quot;] = &quot;value&quot;'));
+  });
+});
+
 // ---------------------------------------------------------------------------
 describe('ClipboardFormatter — text formats', () => {
   const matrix = [['id', 'name'], ['1', 'Alice'], ['2', 'Bob, Jr.']];

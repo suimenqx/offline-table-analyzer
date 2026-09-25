@@ -1191,6 +1191,106 @@ const TableUtils = {
     return { TableUtils };
 });
 
+/* @module core/source-snapshot.js: ephemeral clipboard and file source metadata */
+OTA.define('source-snapshot', ['table-utils'], ({TableUtils}) => {
+/* SourceSnapshot owns ephemeral source metadata that must match a document and
+   its current text before the parser or diagnostics can use it. */
+const SourceSnapshot = {
+    PREVIEW_LIMIT: 200000,
+    KNOWN_CLIPBOARD_TYPES: ['text/plain', 'text/html', 'text/rtf', 'text/csv', 'text/uri-list'],
+    _lastSnapshot: null,
+
+    createSourceFormat(type, value='') {
+        const text = String(value || '');
+        return {
+            type,
+            length: text.length,
+            preview: text.slice(0, this.PREVIEW_LIMIT),
+            truncated: text.length > this.PREVIEW_LIMIT,
+        };
+    },
+
+    createSourceSnapshot({ kind='clipboard', docId, plain='', html='', types=[], formats=[], files=[], items=[], fileName='' } = {}) {
+        const safePlain = String(plain || '');
+        const safeHtml = String(html || '');
+        const typeSet = new Set((Array.isArray(types) ? types : []).map(type => String(type || '')).filter(Boolean));
+        if (safePlain && !typeSet.has('text/plain')) typeSet.add('text/plain');
+        if (safeHtml && !typeSet.has('text/html')) typeSet.add('text/html');
+        const knownFormats = (Array.isArray(formats) ? formats : []).map(item => {
+            if (!item || !item.type) return null;
+            if (typeof item.preview === 'string' && Number.isFinite(item.length)) {
+                return {
+                    type: item.type,
+                    length: item.length,
+                    preview: item.preview,
+                    truncated: Boolean(item.truncated),
+                };
+            }
+            return this.createSourceFormat(item.type, item.value);
+        }).filter(Boolean);
+        const knownTypes = new Set(knownFormats.map(item => item.type));
+        if (safePlain && !knownTypes.has('text/plain')) knownFormats.push(this.createSourceFormat('text/plain', safePlain));
+        if (safeHtml && !knownTypes.has('text/html')) knownFormats.push(this.createSourceFormat('text/html', safeHtml));
+        return {
+            kind,
+            docId,
+            fileName: String(fileName || ''),
+            plain: safePlain,
+            html: safeHtml,
+            types: Array.from(typeSet),
+            formats: knownFormats,
+            files: Array.isArray(files) ? files.slice() : [],
+            items: Array.isArray(items) ? items.slice() : [],
+            hasHtmlTable: /<table[\s>]/i.test(safeHtml) && /<tr[\s>]/i.test(safeHtml),
+        };
+    },
+
+    captureClipboard({ docId, plain='', html='', types=[], formats=[], files=[], items=[] } = {}) {
+        return this.set(this.createSourceSnapshot({
+            kind: 'clipboard', docId, plain, html, types, formats, files, items,
+        }));
+    },
+
+    captureFile({ docId, fileName='', text='', format='auto' } = {}) {
+        const source = String(text || '');
+        const isHtml = format === 'html-table';
+        const type = isHtml ? 'text/html' : 'text/plain';
+        return this.set(this.createSourceSnapshot({
+            kind: 'file',
+            docId,
+            fileName,
+            plain: source,
+            html: isHtml ? source : '',
+            types: [type],
+            formats: [{ type, value: source }],
+        }));
+    },
+
+    set(snapshot) {
+        this._lastSnapshot = snapshot || null;
+        return this._lastSnapshot;
+    },
+
+    getLastPaste() {
+        return this._lastSnapshot;
+    },
+
+    getCurrentPaste({ docId, text='' } = {}) {
+        const snapshot = this._lastSnapshot;
+        if (!snapshot || snapshot.docId !== docId) return null;
+        if (TableUtils.normalizeText(snapshot.plain).trim() !== TableUtils.normalizeText(text).trim()) return null;
+        return snapshot;
+    },
+
+    clear() {
+        this._lastSnapshot = null;
+        return null;
+    },
+};
+
+    return { SourceSnapshot };
+});
+
 /* @module core/filter-engine.js: pure filtering / highlighting logic */
 OTA.define('filter-engine', ["table-utils"], ({TableUtils}) => {
 /* FilterEngine — pure filtering, highlighting, and column-projection logic.
@@ -2004,8 +2104,8 @@ const Store = {
 
             // ── Parse ──
             case 'parse:completed': {
-                // Emitted by App.run() after Parser.parse() succeeds.
-                // Payload: { tables, elapsed, diagnostics }
+                // Emitted by App.run() after a parse attempt settles, including failures.
+                // Payload: { tables, elapsed, diagnostics, format }
                 const doc = this.getDocument(payload && payload.docId) || this.curr();
                 const parsePayload = payload || {};
                 const resultRevision = Number.isInteger(parsePayload.sourceRevision) ? parsePayload.sourceRevision : doc.sourceRevision;
@@ -2692,6 +2792,15 @@ const ClipboardFormatter = {
             case 'default':
             default: return this.toDelimited(rows, '\t');
         }
+    },
+    toClipboardPayload(matrix, { format='default', includeHeaders=true } = {}) {
+        const isLua = format === 'lua-inline' || format === 'lua-expanded';
+        const effectiveHeaders = isLua || includeHeaders !== false;
+        return {
+            text: this.toText(matrix, format, effectiveHeaders),
+            html: this.toHtml(matrix, format, effectiveHeaders),
+            includeHeaders: effectiveHeaders,
+        };
     },
     label(format='default') {
         return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
@@ -4843,7 +4952,7 @@ const ImportEngine = {
 
             // ── 1. 记忆格式优先试探 ──
             if (!chosen && !selectedType) {
-                const lastFmt = (typeof Store !== 'undefined' && Store.lastSuccessfulFormat) || null;
+                const lastFmt = options.lastSuccessfulFormat || null;
                 if (lastFmt && lastFmt !== 'html-table') {
                     const cachedParser = this.getParser(lastFmt);
                     if (cachedParser && cachedParser.id !== 'plain-text') {
@@ -4945,7 +5054,7 @@ const ImportEngine = {
 });
 
 /* @module parsing/legacy-facade.js: legacy parser facade */
-OTA.define('parser-facade', ["import-engine","runtime"], ({ImportEngine}, {Toast}) => {
+OTA.define('parser-facade', ["import-engine"], ({ImportEngine}) => {
 /* Parser */
 const Parser = {
     lastResult: { tables:[], format:'empty', label:'空输入' },
@@ -4957,8 +5066,6 @@ const Parser = {
             // (tables, format, diagnostics, and candidates), not only tables.
             return result;
         } catch(e) {
-            console.error(e);
-            Toast.show('解析出错: ' + e.message, true);
             this.lastResult = { tables:[], format:'error', label:'解析错误', diagnostics:[{ severity:'error', code:'PARSE_ERROR', message:e.message || String(e) }], candidates:[] };
             return this.lastResult;
         }
@@ -5753,16 +5860,17 @@ const Select = {
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
         const format = Store.state.copyFormat || 'default';
         const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        // Lua output uses column names as field keys, so it always retains the
-        // header even when the general copy preference is disabled.
-        const includeHeaders = isLua || Store.state.copyWithHeaders !== false;
         const matrix = isLua
             ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
-        e.clipboardData.setData('text/html', ClipboardFormatter.toHtml(matrix, format, includeHeaders));
-        e.clipboardData.setData('text/plain', ClipboardFormatter.toText(matrix, format, includeHeaders));
+        const payload = ClipboardFormatter.toClipboardPayload(matrix, {
+            format,
+            includeHeaders: Store.state.copyWithHeaders !== false,
+        });
+        e.clipboardData.setData('text/html', payload.html);
+        e.clipboardData.setData('text/plain', payload.text);
         const rowCount = Math.max(0, matrix.length - 1);
-        const headerLabel = includeHeaders ? '含表头' : '不含表头';
+        const headerLabel = payload.includeHeaders ? '含表头' : '不含表头';
         Toast.show(`已复制 ${rowCount} 行 · ${ClipboardFormatter.label(format)} · ${headerLabel}`);
     }
 };
@@ -7017,7 +7125,7 @@ const ViewManager = {
 });
 
 /* @module ui/source-controller.js: source editor and file import */
-OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller", "table-utils"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}, {TableUtils}) => {
+OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller", "source-snapshot"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}, {SourceSnapshot}) => {
 /* SourceController — manages source text input, file import, fullscreen editor,
    and input resizer. Delegates all state changes to dispatch().
 
@@ -7036,9 +7144,8 @@ OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controll
 const SourceController = {
     AUTO_PARSE_MAX_BYTES: 1024 * 1024,
     AUTO_PARSE_DELAY: 500,
-    CLIPBOARD_PREVIEW_LIMIT: 200000,
-    CLIPBOARD_KNOWN_TYPES: ['text/plain', 'text/html', 'text/rtf', 'text/csv', 'text/uri-list'],
-    _lastPaste: null,
+    CLIPBOARD_PREVIEW_LIMIT: SourceSnapshot.PREVIEW_LIMIT,
+    CLIPBOARD_KNOWN_TYPES: SourceSnapshot.KNOWN_CLIPBOARD_TYPES,
     // ── Timers (held here rather than on App) ──
     _persistTimer: null,
     _statsTimer: null,
@@ -7081,10 +7188,11 @@ const SourceController = {
 
     notifyPasteSourceChanged() {
         if (typeof document === 'undefined' || !document.dispatchEvent || typeof CustomEvent !== 'function') return;
+        const snapshot = SourceSnapshot.getLastPaste();
         document.dispatchEvent(new CustomEvent('ota:pasteSourceChanged', {
             detail: {
-                hasSource: Boolean(this._lastPaste),
-                docId: this._lastPaste && this._lastPaste.docId,
+                hasSource: Boolean(snapshot),
+                docId: snapshot && snapshot.docId,
             },
         }));
     },
@@ -7094,44 +7202,10 @@ const SourceController = {
         try { return String(data.getData(type) || ''); } catch (_) { return ''; }
     },
 
-    createSourceFormat(type, value='') {
-        const text = String(value || '');
-        return {
-            type,
-            length: text.length,
-            preview: text.slice(0, this.CLIPBOARD_PREVIEW_LIMIT),
-            truncated: text.length > this.CLIPBOARD_PREVIEW_LIMIT,
-        };
-    },
-
-    createSourceSnapshot({ kind='clipboard', docId=Store.state.activeId, plain='', html='', types=[], formats=[], files=[], items=[], fileName='' } = {}) {
-        const safePlain = String(plain || '');
-        const safeHtml = String(html || '');
-        const typeSet = new Set((Array.isArray(types) ? types : []).map(type => String(type || '')).filter(Boolean));
-        if (safePlain && !typeSet.has('text/plain')) typeSet.add('text/plain');
-        if (safeHtml && !typeSet.has('text/html')) typeSet.add('text/html');
-        const knownFormats = Array.isArray(formats) ? formats.slice() : [];
-        const knownTypes = new Set(knownFormats.map(item => item && item.type).filter(Boolean));
-        if (safePlain && !knownTypes.has('text/plain')) knownFormats.push(this.createSourceFormat('text/plain', safePlain));
-        if (safeHtml && !knownTypes.has('text/html')) knownFormats.push(this.createSourceFormat('text/html', safeHtml));
-        return {
-            kind,
-            docId,
-            fileName: String(fileName || ''),
-            plain: safePlain,
-            html: safeHtml,
-            types: Array.from(typeSet),
-            formats: knownFormats,
-            files: Array.isArray(files) ? files.slice() : [],
-            items: Array.isArray(items) ? items.slice() : [],
-            hasHtmlTable: /<table[\s>]/i.test(safeHtml) && /<tr[\s>]/i.test(safeHtml),
-        };
-    },
-
     setPasteSnapshot(snapshot) {
-        this._lastPaste = snapshot || null;
+        SourceSnapshot.set(snapshot);
         this.notifyPasteSourceChanged();
-        return this._lastPaste;
+        return SourceSnapshot.getLastPaste();
     },
 
     /**
@@ -7147,7 +7221,7 @@ const SourceController = {
         candidateTypes.forEach(type => {
             if (type.toLowerCase() === 'files') return;
             const value = this.readClipboardText(data, type);
-            if (value || declaredTypes.includes(type)) formats.push(this.createSourceFormat(type, value));
+            if (value || declaredTypes.includes(type)) formats.push({ type, value });
         });
         const files = Array.from(data.files || []).map(file => ({
             name: String(file && file.name || ''),
@@ -7161,17 +7235,16 @@ const SourceController = {
         const plain = this.readClipboardText(data, 'text/plain');
         const html = this.readClipboardText(data, 'text/html');
         if (!formats.length && !files.length && !items.length) return this.setPasteSnapshot(null);
-        return this.setPasteSnapshot(this.createSourceSnapshot({
-            kind: 'clipboard', docId, plain, html, types: declaredTypes, formats, files, items,
-        }));
+        const snapshot = SourceSnapshot.captureClipboard({
+            docId, plain, html, types: declaredTypes, formats, files, items,
+        });
+        this.notifyPasteSourceChanged();
+        return snapshot;
     },
 
     /** Return the current source snapshot only when it still matches the editor. */
     getCurrentPaste(text='') {
-        const snapshot = this._lastPaste;
-        if (!snapshot || snapshot.docId !== Store.state.activeId) return null;
-        if (TableUtils.normalizeText(snapshot.plain).trim() !== TableUtils.normalizeText(text).trim()) return null;
-        return snapshot;
+        return SourceSnapshot.getCurrentPaste({ docId: Store.state.activeId, text });
     },
 
     scheduleAutoParse({ text='', syncToMain=false } = {}) {
@@ -7232,15 +7305,11 @@ const SourceController = {
         });
     },
 
-    /** Return the last ephemeral clipboard/file source snapshot, if any. */
-    getLastPaste() {
-        return SourceController._lastPaste || null;
-    },
-
     /** Clear stored paste metadata. */
     clearLastPaste() {
-        if (!SourceController._lastPaste) return;
-        SourceController.setPasteSnapshot(null);
+        if (!SourceSnapshot.getLastPaste()) return;
+        SourceSnapshot.clear();
+        SourceController.notifyPasteSourceChanged();
     },
 
     // ── File import ──
@@ -7307,15 +7376,8 @@ const SourceController = {
             }
 
             if (Store.state.activeId === targetDocId) {
-                SourceController.setPasteSnapshot(SourceController.createSourceSnapshot({
-                    kind: 'file',
-                    docId: Store.state.activeId,
-                    fileName: file.name,
-                    plain: text,
-                    html: detected === 'html-table' ? text : '',
-                    types: [detected === 'html-table' ? 'text/html' : 'text/plain'],
-                    formats: [SourceController.createSourceFormat(detected === 'html-table' ? 'text/html' : 'text/plain', text)],
-                }));
+                SourceSnapshot.captureFile({ docId: targetDocId, fileName: file.name, text, format: detected });
+                SourceController.notifyPasteSourceChanged();
             }
 
             if (Store.state.activeId === targetDocId) {
@@ -9005,7 +9067,7 @@ const ExportController = {
 });
 
 /* @module ui/app.js: application orchestration and UI */
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}) => {
+OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -9092,7 +9154,7 @@ const App = {
                     this.updSelects();
                     this.updChips();
                     this.requestRender();
-                    if (payload && payload.elapsed > 800) {
+                    if (payload && payload.format !== 'error' && payload.elapsed > 800) {
                         Toast.show(`\u89e3\u6790\u5b8c\u6210 \u00b7 ${payload.elapsed} ms`);
                     }
                     break;
@@ -9474,7 +9536,7 @@ const App = {
         const headerEl = $('headerModeSelect');
         const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
         const headerMode = (headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
-        return { html, format, headerMode };
+        return { html, format, headerMode, lastSuccessfulFormat: Store.lastSuccessfulFormat || null };
     },
 
     showPasteSource() {
@@ -9512,7 +9574,19 @@ const App = {
 
     getFullExportTables() { return ExportController._getFullExportTables(); },
 
-    getPreviewProcessedTables() { return ExportController._getPreviewProcessedTables(); },
+    getPreviewProcessedTables() {
+        const doc = Store.curr();
+        return QueryService.getPreview({
+            rawTables: TableRegistry.getRaw(),
+            globalViews: Store.state.globalViews,
+            ui: doc.ui,
+            docId: doc.id,
+            sourceRevision: doc.sourceRevision,
+            stateRevision: Store.revision,
+            viewRevision: Store.viewRevision,
+            queryRevision: Store.queryRevision,
+        }).tables;
+    },
 
     getPreviewExportTables() { return ExportController._getPreviewExportTables(); },
 
@@ -9841,15 +9915,27 @@ validflag Time      Level   Message                 Code
     },
 
     run(render=true) {
+        let parseContext = null;
         try {
             SourceController.clearAutoParse();
             const started = performance.now();
             const sourceText = $('rawInput').value;
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
             if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
+            parseContext = {
+                docId: Store.state.activeId,
+                sourceRevision: Store.curr().sourceRevision,
+                started,
+            };
             const result = Parser.parse(sourceText, this.getParseOptions());
+            if (result.format === 'error') {
+                const message = result.diagnostics && result.diagnostics.find(item => item.severity === 'error')?.message;
+                throw new Error(message || result.label || '解析失败');
+            }
             TableRegistry.setResult(result);
-            Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
+            if (result.format !== 'empty' && result.tables.length) {
+                Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
+            }
             CellEditController.setRawTables(result.tables);
             this.applyStoredCellEdits();
             this.updateImportSummary();
@@ -9877,6 +9963,15 @@ validflag Time      Level   Message                 Code
                 diagnostics: [{ severity: 'error', code: 'PARSE_ERROR', message: msg }],
                 candidates: [],
             });
+            if (parseContext) {
+                dispatch('parse:completed', {
+                    docId: parseContext.docId,
+                    sourceRevision: parseContext.sourceRevision,
+                    format: 'error',
+                    tables: [],
+                    elapsed: Math.round(performance.now() - parseContext.started),
+                });
+            }
             CellEditController.setRawTables([]);
             this.updateImportSummary();
             this.updSelects();

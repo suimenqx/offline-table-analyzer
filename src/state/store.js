@@ -579,8 +579,8 @@ const Store = {
 
             // ── Parse ──
             case 'parse:completed': {
-                // Emitted by App.run() after Parser.parse() succeeds.
-                // Payload: { tables, elapsed, diagnostics }
+                // Emitted by App.run() after a parse attempt settles, including failures.
+                // Payload: { tables, elapsed, diagnostics, format }
                 const doc = this.getDocument(payload && payload.docId) || this.curr();
                 const parsePayload = payload || {};
                 const resultRevision = Number.isInteger(parsePayload.sourceRevision) ? parsePayload.sourceRevision : doc.sourceRevision;

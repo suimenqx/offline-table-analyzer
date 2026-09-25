@@ -9,6 +9,7 @@ import { loadModules } from '../helpers/load-modules.mjs';
 const { OTA } = loadModules(['parser-facade', 'table-registry']);
 const { Parser } = OTA.require('parser-facade');
 const { TableRegistry } = OTA.require('table-registry');
+const { ImportEngine } = OTA.require('import-engine');
 
 describe('Parser facade', () => {
   it('passes the complete parse result to the table registry', () => {
@@ -32,5 +33,17 @@ describe('Parser facade', () => {
     TableRegistry.setResult(result);
     assert.equal(TableRegistry.getRaw().length, 2);
     assert.deepEqual(TableRegistry.getRaw().map(table => table.name), ['Inventory', 'Orders']);
+  });
+
+  it('returns parse failures as structured data for the application to present', () => {
+    const previousParse = ImportEngine.parse;
+    ImportEngine.parse = () => { throw new Error('invalid source'); };
+    try {
+      const result = Parser.parse('broken');
+      assert.equal(result.format, 'error');
+      assert.equal(result.diagnostics[0].message, 'invalid source');
+    } finally {
+      ImportEngine.parse = previousParse;
+    }
   });
 });

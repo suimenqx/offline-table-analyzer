@@ -23,6 +23,7 @@ const MODULE_ORDER = [
   'core/module-loader.js',
   'core/runtime.js',
   'core/table-utils.js',
+  'core/source-snapshot.js',
   'core/filter-engine.js',
   'state/store.js',
   'core/dispatch.js',

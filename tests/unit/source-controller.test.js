@@ -6,7 +6,7 @@ import { strict as assert } from 'node:assert/strict';
 import { createStorageMock } from '../mocks/storage.js';
 import { loadModules } from '../helpers/load-modules.mjs';
 
-let storage, SourceController, Store, dispatch;
+let storage, SourceController, SourceSnapshot, Store, dispatch;
 
 const { OTA } = loadModules([], {});
 
@@ -25,6 +25,7 @@ beforeEach(() => {
   };
 
   SourceController = OTA.require('source-controller').SourceController;
+  SourceSnapshot = OTA.require('source-snapshot').SourceSnapshot;
   Store = OTA.require('store').Store;
   dispatch = OTA.require('dispatch').dispatch;
 
@@ -42,7 +43,7 @@ beforeEach(() => {
   Store.loadFailed = false;
   Store.lastSaveError = null;
   Store._listeners = null;
-  SourceController._lastPaste = null;
+  SourceController.clearLastPaste();
 });
 
 // ---------------------------------------------------------------------------
@@ -102,13 +103,13 @@ describe('SourceController auto-parse policy', () => {
 // ---------------------------------------------------------------------------
 describe('SourceController paste metadata', () => {
   it('starts with null lastPaste', () => {
-    assert.equal(SourceController.getLastPaste(), null);
+    assert.equal(SourceSnapshot.getLastPaste(), null);
   });
 
   it('clearLastPaste resets to null', () => {
-    SourceController._lastPaste = { html: '<table>', plain: 'x', docId: 'a' };
+    SourceController.setPasteSnapshot({ html: '<table>', plain: 'x', docId: 'a' });
     SourceController.clearLastPaste();
-    assert.equal(SourceController.getLastPaste(), null);
+    assert.equal(SourceSnapshot.getLastPaste(), null);
   });
 
   it('captures plain, HTML, rich-text, custom types, items, and file metadata', () => {

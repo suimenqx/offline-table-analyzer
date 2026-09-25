@@ -15,6 +15,7 @@ const MODULES = [
   ['core/module-loader.js',      'runtime module registry'],
   ['core/runtime.js',             'DOM utils, Tooltip, Toast'],
   ['core/table-utils.js',         'table normalization'],
+  ['core/source-snapshot.js',     'ephemeral clipboard and file source metadata'],
   ['core/filter-engine.js',       'pure filtering / highlighting logic'],
 
   // ── State ──

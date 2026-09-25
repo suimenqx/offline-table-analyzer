@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","import-engine","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {ImportEngine}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}) => {
+OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -85,7 +85,7 @@ const App = {
                     this.updSelects();
                     this.updChips();
                     this.requestRender();
-                    if (payload && payload.elapsed > 800) {
+                    if (payload && payload.format !== 'error' && payload.elapsed > 800) {
                         Toast.show(`\u89e3\u6790\u5b8c\u6210 \u00b7 ${payload.elapsed} ms`);
                     }
                     break;
@@ -467,7 +467,7 @@ const App = {
         const headerEl = $('headerModeSelect');
         const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
         const headerMode = (headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
-        return { html, format, headerMode };
+        return { html, format, headerMode, lastSuccessfulFormat: Store.lastSuccessfulFormat || null };
     },
 
     showPasteSource() {
@@ -506,7 +506,19 @@ const App = {
 
     getFullExportTables() { return ExportController._getFullExportTables(); },
 
-    getPreviewProcessedTables() { return ExportController._getPreviewProcessedTables(); },
+    getPreviewProcessedTables() {
+        const doc = Store.curr();
+        return QueryService.getPreview({
+            rawTables: TableRegistry.getRaw(),
+            globalViews: Store.state.globalViews,
+            ui: doc.ui,
+            docId: doc.id,
+            sourceRevision: doc.sourceRevision,
+            stateRevision: Store.revision,
+            viewRevision: Store.viewRevision,
+            queryRevision: Store.queryRevision,
+        }).tables;
+    },
 
     getPreviewExportTables() { return ExportController._getPreviewExportTables(); },
 
@@ -846,15 +858,27 @@ validflag Time      Level   Message                 Code
     },
 
     run(render=true) {
+        let parseContext = null;
         try {
             SourceController.clearAutoParse();
             const started = performance.now();
             const sourceText = $('rawInput').value;
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
             if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
+            parseContext = {
+                docId: Store.state.activeId,
+                sourceRevision: Store.curr().sourceRevision,
+                started,
+            };
             const result = Parser.parse(sourceText, this.getParseOptions());
+            if (result.format === 'error') {
+                const message = result.diagnostics && result.diagnostics.find(item => item.severity === 'error')?.message;
+                throw new Error(message || result.label || '解析失败');
+            }
             TableRegistry.setResult(result);
-            Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
+            if (result.format !== 'empty' && result.tables.length) {
+                Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
+            }
             CellEditController.setRawTables(result.tables);
             this.applyStoredCellEdits();
             this.updateImportSummary();
@@ -882,6 +906,15 @@ validflag Time      Level   Message                 Code
                 diagnostics: [{ severity: 'error', code: 'PARSE_ERROR', message: msg }],
                 candidates: [],
             });
+            if (parseContext) {
+                dispatch('parse:completed', {
+                    docId: parseContext.docId,
+                    sourceRevision: parseContext.sourceRevision,
+                    format: 'error',
+                    tables: [],
+                    elapsed: Math.round(performance.now() - parseContext.started),
+                });
+            }
             CellEditController.setRawTables([]);
             this.updateImportSummary();
             this.updSelects();
