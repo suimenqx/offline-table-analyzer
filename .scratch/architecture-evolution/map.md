@@ -18,10 +18,10 @@ A decision-backed architecture evolution blueprint that reduces coupling and reg
 
 - [Audit architecture friction across core flows](issues/01-architecture-friction-audit.md): strongest evidence clusters at source-to-parse, paired clipboard output, and preview-query caller seams; preserve the deep core modules.
 - [Choose the first workflow seam for the architecture blueprint](issues/04-first-workflow-seam.md): implement all three audited seams, starting with source-to-parse, then clipboard serialization, then preview-query access.
+- [Choose which future capabilities should shape the architecture](issues/02-roadmap-capability-horizon.md): none are active architecture constraints; keep the near-term horizon on browser regression, parser correctness, and maintainable offline UI, and revisit later candidates when prioritized.
 
 ## Not yet specified
 
-- Which roadmap capabilities, if any, should shape later architecture stages.
 - Which module/release authoring changes, if any, are justified beyond the current source modules and deterministic single-file build.
 
 ## Out of scope
