@@ -91,7 +91,7 @@ Offline Table Analyzer 是一个隐私优先、完全离线的表格整理与分
 
 ## 浏览器支持
 
-发布目标为 Windows、macOS、Linux 上最新两版 Chrome、Edge、Firefox，以及 macOS 最新版 Safari。移动端布局提供可用的降级体验，但密集的数据编辑与 JOIN 设计建议在桌面端完成。
+本项目是桌面浏览器应用。发布目标为 Windows、macOS、Linux 上最新两版 Chrome、Edge、Firefox，以及 macOS 最新版 Safari。移动端布局仅提供降级体验；使用手机作为开发设备，不代表 Android 浏览器或触控交互是主要验收目标。
 
 应用使用 `localStorage`、`FileReader`、`DOMParser`、`Blob`、`TextEncoder` 和 Clipboard 事件 API 等现代浏览器 API。
 
@@ -143,11 +143,12 @@ npm run validate:architecture # 架构边界与确定性构建检查
 
 测试套件覆盖解析器格式、复制序列化、状态/存储行为、JOIN 正确性、语法检查、UI 约定、无障碍标记和离线发布约束。
 
-本地运行浏览器测试：先安装 Chromium：`node node_modules/playwright/cli.js install chromium --only-shell`，再运行 `npm run test:e2e`。Playwright 不支持 Termux/Android；CI 会在 Ubuntu 上运行该任务。不支持创建符号链接的文件系统可用 `npm ci --bin-links=false` 安装依赖。
+在受支持的桌面系统上，先安装 Chromium：`node node_modules/playwright/cli.js install chromium --only-shell`，再运行 `npm run test:e2e`。Playwright 的托管浏览器无法在 Termux/Android 运行；CI 会在 Ubuntu 上运行 Chromium 流程。在 Termux 中开发时，可按 [Termux 浏览器验证指南](docs/testing/termux.md)使用桌面 Firefox 进行本机实测。不支持创建符号链接的文件系统可用 `npm ci --bin-links=false` 安装依赖。
 
 ## 更多文档
 
 - [用户指南](docs/guides/user-guide.md)
+- [Termux 浏览器验证](docs/testing/termux.md)
 - [需求与范围](docs/planning/requirements.md)
 - [架构说明](docs/architecture/architecture.md)
 - [重构需求清单](docs/planning/refactor-requirements.md)

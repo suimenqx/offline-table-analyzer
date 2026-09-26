@@ -25,7 +25,7 @@ npm run validate:architecture
 
 Open `index.html` directly for manual testing. A static server may be used when a browser restricts local-file APIs.
 
-Browser E2E and coverage are separate workflows. Install Chromium with `node node_modules/playwright/cli.js install chromium --only-shell`, then use `npm run test:e2e`. Playwright does not support Termux/Android; CI runs the browser workflow on Ubuntu. Use `npm run test:coverage` to produce the Node suite's LCOV report. On filesystems that do not allow symlinks, install with `npm ci --bin-links=false`.
+Browser E2E and coverage are separate workflows. Install Chromium with `node node_modules/playwright/cli.js install chromium --only-shell`, then use `npm run test:e2e`. Playwright's managed browser does not run in Termux/Android; CI runs the Chromium workflow on Ubuntu. Developers using Termux can run a local desktop Firefox check with the [Termux guide](docs/testing/termux.md). Use `npm run test:coverage` to produce the Node suite's LCOV report. On filesystems that do not allow symlinks, install with `npm ci --bin-links=false`.
 
 For the red-green-refactor loop and guidance on choosing unit, integration, browser, and architecture checks, follow the [testing strategy](docs/testing/strategy.md).
 

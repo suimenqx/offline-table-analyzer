@@ -6,6 +6,8 @@ The workspace schema remains version `20`; the current application release is **
 
 Offline Table Analyzer is a local-first workbench for turning copied or text-file tabular data into inspectable, filterable, joinable, and exportable tables. It is not intended to replace a spreadsheet, a database, or a cloud BI product.
 
+The intended end-user environment is a desktop browser. A phone can host the development tools through Termux, but Android browser behavior and touch interaction are not the primary release target. The existing narrow-screen layout remains a fallback.
+
 The defining constraints are:
 
 - no server and no network dependency;

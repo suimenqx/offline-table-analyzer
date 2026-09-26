@@ -2,6 +2,7 @@
 
 ## Product and architecture invariants
 
+- Target desktop browsers. A phone running Termux may be the development host; its Android browser and mobile viewport are not the product's primary acceptance target. Preserve the existing narrow-screen fallback.
 - Keep the product private, offline, and usable as one self-contained `index.html` with zero runtime dependencies. Runtime code makes no network requests and loads no external assets.
 - Treat `src/` as the application source of truth. `index.html` is generated from the template, stylesheet, and ordered module manifest in `tools/build-release.cjs`; edit those sources and regenerate the artifact instead of hand-editing the generated file.
 - Keep source modules in the OTA registry model. Declare module dependencies in `OTA.define`, keep dependencies earlier in the build manifest, and use the existing architecture validator to protect the manifest and release boundary.
@@ -34,6 +35,7 @@
 - Run `npm ci` after checkout or lockfile changes. Use `npm test` for the release build plus all Node unit and integration tests; assert public module behavior.
 - Put Node tests under `tests/unit/` or `tests/integration/`; put real-browser workflows under `e2e/`.
 - Use `npm run test:e2e` for changes that cross the browser UI. It rebuilds `index.html` and exercises paste, parse, filter, JOIN, copy, and XLSX export/readback in Chromium.
+- On Termux, follow [`docs/testing/termux.md`](docs/testing/termux.md) for local desktop Firefox/WebDriver checks; report them separately from the CI Chromium E2E result.
 - Use `npm run validate:release` and `npm run validate:architecture` when changing release boundaries, build inputs, module dependencies, or Store command flow.
 - Use `npm run test:coverage` to inspect the Node suite's LCOV report. CI stores the report as a baseline artifact; add module-specific gates only after reviewing baseline coverage.
 - Keep Playwright and the XLSX reader in development dependencies. The generated HTML must remain self-contained and have no runtime dependencies.

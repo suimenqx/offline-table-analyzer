@@ -37,6 +37,6 @@ Prefer assertions on exported module behavior and user-observable results. Test 
 
 CI runs on pushes and pull requests. It tests the Node suite on Node 20, 22, and 24; validates release and architecture constraints; uploads the LCOV baseline; and runs the Chromium workflow on Ubuntu. The LCOV file is retained as a CI artifact for 14 days. Treat coverage as a signal for missing behavior cases; add a threshold only after reviewing the baseline and agreeing on a module-specific gate.
 
-Playwright's managed Chromium workflow requires a supported desktop Linux, macOS, or Windows host. On Android/Termux, run the Node tests and applicable validators locally, then rely on the Ubuntu browser job for E2E. Report that limitation accurately; a skipped local browser run is not an E2E pass.
+Playwright's managed Chromium workflow requires a supported desktop Linux, macOS, or Windows host. On Android/Termux, run the Node tests and applicable validators locally. The [Termux Firefox/WebDriver guide](termux.md) provides an additional real desktop-browser check on the phone itself, including direct `file://` loading and screenshots. Report that result as Firefox coverage; the Ubuntu Chromium job remains the required Chromium E2E check. A skipped local Playwright run is not a Chromium E2E pass.
 
 GitHub Pages deployment is separate from CI: its workflow rebuilds and validates the release before publishing it. A green Pages deployment confirms publication, not test coverage; use the CI result for that.

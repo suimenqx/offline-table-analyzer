@@ -91,7 +91,7 @@ No server is required. A local static server is useful only during development.
 
 ## Browser support
 
-The release target is the latest two versions of Chrome, Edge, and Firefox on Windows, macOS, and Linux, plus the latest Safari on macOS. Mobile layouts provide a usable fallback, but dense editing and JOIN design are best on a desktop-sized screen.
+This is a desktop-browser application. The release target is the latest two versions of Chrome, Edge, and Firefox on Windows, macOS, and Linux, plus the latest Safari on macOS. Mobile layouts are a fallback; developing from a phone does not make Android browsers or touch interaction the primary acceptance target.
 
 The application uses modern browser APIs including `localStorage`, `FileReader`, `DOMParser`, `Blob`, `TextEncoder`, and the Clipboard event API.
 
@@ -143,11 +143,12 @@ npm run validate:architecture # architecture and deterministic-build check
 
 The test suite covers parser formats, copy serialization, state/storage behavior, JOIN correctness, syntax checks, UI contracts, accessibility markers, and offline release constraints.
 
-To run browser tests locally, install Chromium with `node node_modules/playwright/cli.js install chromium --only-shell`, then run `npm run test:e2e`. Playwright does not support Termux/Android; CI runs this job on Ubuntu. On filesystems that do not allow symlinks, install dependencies with `npm ci --bin-links=false`.
+On a supported desktop host, install Chromium with `node node_modules/playwright/cli.js install chromium --only-shell`, then run `npm run test:e2e`. Playwright's managed browser does not run in Termux/Android; CI runs this Chromium job on Ubuntu. For a real desktop Firefox check while developing in Termux, use the [Termux browser-validation guide](docs/testing/termux.md). On filesystems that do not allow symlinks, install dependencies with `npm ci --bin-links=false`.
 
 ## Documentation
 
 - [User guide](docs/guides/user-guide.md)
+- [Termux browser validation](docs/testing/termux.md)
 - [Requirements and scope](docs/planning/requirements.md)
 - [Architecture](docs/architecture/architecture.md)
 - [Refactor requirements](docs/planning/refactor-requirements.md)
