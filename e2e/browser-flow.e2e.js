@@ -50,7 +50,7 @@ test('paste, parse, filter, join, copy, and export the offline release', async (
   await page.locator('#viewsTrigger').click();
   await page.locator('#modalOverlay .checkbox-row input[value="OrderProducts"]').check();
   await page.locator('#saveMod').click();
-  await page.locator('#sidebarDataTabBtn').click();
+  await page.locator('.acc-item[data-acc="rules"] .acc-head').click();
   await expect(page.locator('#globalFilter')).toBeVisible();
   await page.locator('#globalFilter').fill('Status=shipped');
 
