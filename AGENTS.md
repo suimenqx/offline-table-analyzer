@@ -27,3 +27,11 @@
 - Before adding/reordering source modules or changing the build, loader, or single-file release model, read `docs/architecture/refactor.md` and inspect `tools/build-release.cjs` plus `tools/validate-architecture.cjs`.
 - Before adding a capability or expanding product scope, read `docs/planning/roadmap.md` and `docs/planning/refactor-requirements.md`.
 - Before changing persisted fields, migrations, import/export compatibility, or workspace limits, read `docs/planning/requirements.md` and the related Store and migration tests.
+
+## Test workflow
+
+- Run `npm ci` after checkout or lockfile changes. Use `npm test` for the release build plus all Node unit and integration tests. Place these tests under `tests/` and assert public module behavior.
+- Use `npm run test:e2e` for changes that cross the browser UI. It rebuilds `index.html` and exercises paste, parse, filter, JOIN, copy, and XLSX export/readback in Chromium.
+- Use `npm run validate:release` and `npm run validate:architecture` when changing release boundaries, build inputs, module dependencies, or Store command flow.
+- Use `npm run test:coverage` to inspect the Node suite's LCOV report. CI stores the report as a baseline artifact; add module-specific gates only after reviewing baseline coverage.
+- Keep Playwright and the XLSX reader in development dependencies. The generated HTML must remain self-contained and have no runtime dependencies.

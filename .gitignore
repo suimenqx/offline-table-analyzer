@@ -10,6 +10,9 @@ npm-debug.log*
 
 # Generated release/download artifacts
 dist/
+coverage/
+playwright-report/
+test-results/
 *.xlsx
 *.zip
 *_workspace_*.json
@@ -17,4 +20,3 @@ dist/
 # Local screenshots and temporary files
 tmp/
 *.tmp
-

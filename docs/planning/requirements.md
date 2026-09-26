@@ -141,8 +141,8 @@ The defining constraints are:
 - Include README, license, privacy, security, contribution, conduct, changelog, architecture, user guide, roadmap, CI, and issue templates.
 - One authoritative application file (`index.html`).
 - Production test hooks and historical duplicate HTML files removed.
-- Node's built-in test runner executes all unit and integration files under `tests/**/*.test.js`; release validation is provided by `npm run validate:release`, and architecture validation is provided by `npm run validate:architecture`.
-- CI runs the test matrix on `ubuntu-latest` with Node 20, 22, and 24, plus a Node 20 release-validation job.
+- Node's built-in test runner executes unit and integration files under `tests/`; `npm run test:e2e` runs the generated release in Chromium and reads exported XLSX files with a development-only reader. Release and architecture validation use their named npm scripts.
+- CI runs Node tests on Node 20, 22, and 24, Chromium E2E on Node 22, LCOV coverage reporting on Node 24, and release plus architecture validation on Node 20.
 
 ## 4. v20 additions delivered
 

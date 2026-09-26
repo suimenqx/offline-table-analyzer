@@ -213,7 +213,7 @@ Parsing, filtering, JOINs, and XLSX generation currently run on the main thread.
 
 ## 8. Testing architecture
 
-All test files use Node's built-in test runner and live under `tests/`:
+Node unit and integration tests use the built-in test runner under `tests/`:
 
 - `tests/unit/parser.test.js` and `parser-facade.test.js`: all 12 parser adapters, malformed input, diagnostics, normalization, and legacy compatibility.
 - `tests/unit/filter-engine.test.js`, `joiner.test.js`, and `query-service.test.js`: filtering, JOIN semantics, the shared preview result contract, and bounded-cache invalidation.
@@ -221,9 +221,12 @@ All test files use Node's built-in test runner and live under `tests/`:
 - `tests/unit/store.test.js`, `dispatch.test.js`, `source-snapshot.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, clipboard/file snapshot capture, browser adaptation, command/event behavior, and tab lifecycle.
 - `tests/unit/modal-controller.test.js`, `filter-controller.test.js`, and `cell-edit-controller.test.js`: dialog, filter, and correction-controller contracts.
 - `tests/integration/build.test.js`, `ui-smoke.test.js`, and `accessibility.test.js`: deterministic release construction, bootstrap behavior, render coalescing, paste-source diagnostics, keyboard/UI contracts, live regions, and responsive markers.
+- `tests/integration/xlsx-roundtrip.test.js`: actual XLSX download bytes read back through a separate spreadsheet reader.
+- `tests/unit/load-modules.test.js`: fresh module registries and module singletons for independent test environments.
+- `e2e/browser-flow.e2e.js`: generated release behavior in Chromium, from paste through XLSX readback, with a check that the app makes no external requests.
 - `tools/validate-release.cjs`: version consistency, single inline script, offline assets/APIs, and required community files.
 - `tools/validate-architecture.cjs`: Store command boundary, offline and large-data boundaries, schema/version consistency, complete module inventory, declared and dynamic dependency resolution/order, and deterministic `index.html` output.
 
-`npm test` rebuilds the release and runs every `tests/**/*.test.js` file. Release delivery additionally requires `npm run validate:release` and `npm run validate:architecture`.
+`npm test` builds the release and runs the Node suite. `npm run test:e2e` builds the same release and runs the browser suite. `npm run test:coverage` writes an LCOV report for the Node suite. CI runs Node tests across versions 20, 22, and 24, Chromium E2E, coverage reporting, and both release and architecture validation.
 
-The static UI contract suite is intentionally not described as full E2E coverage. Browser interaction remains part of release QA and is a roadmap target for automated CI.
+Browser coverage currently targets Chromium; WebKit/Safari clipboard and download behavior remains a separate compatibility target.

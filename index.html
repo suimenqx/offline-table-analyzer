@@ -2475,7 +2475,14 @@ const Exporter = {
         });
     },
     buildSheetXml({headers=[], rows=[]}) {
-        const cell = (v) => {
+        const columnName = (index) => {
+            let name = '';
+            for(let value = index + 1; value > 0; value = Math.floor((value - 1) / 26)) {
+                name = String.fromCharCode(65 + ((value - 1) % 26)) + name;
+            }
+            return name;
+        };
+        const cell = (v, address) => {
             if(v === null || v === undefined) v = '';
             const trimmed = String(v).trim();
             const numericLike = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(trimmed);
@@ -2487,14 +2494,22 @@ const Exporter = {
                 .replace(/^0+/, '').length;
             const safeNumericText = numericLike && !hasLeadingZeros && significantDigits <= 15 && Number.isFinite(Number(trimmed));
             const isNum = (typeof v === 'number' && Number.isFinite(v)) || safeNumericText;
-            if(isNum) return `<c t="n"><v>${trimmed}</v></c>`;
+            if(isNum) return `<c r="${address}" t="n"><v>${trimmed}</v></c>`;
             const text = this.escapeXml(String(v));
-            return `<c t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
+            return `<c r="${address}" t="inlineStr"><is><t xml:space="preserve">${text}</t></is></c>`;
         };
+        const serializeRow = (values, rowNo) =>
+            `<row r="${rowNo}">${(values || []).map((value, column) => cell(value, `${columnName(column)}${rowNo}`)).join('')}</row>`;
         const rowsXml = [];
         let rowNo = 1;
-        if(headers.length) rowsXml.push(`<row r="${rowNo++}">${headers.map(cell).join('')}</row>`);
-        rows.forEach((r) => rowsXml.push(`<row r="${rowNo++}">${(r || []).map(cell).join('')}</row>`));
+        if(headers.length) {
+            rowsXml.push(serializeRow(headers, rowNo));
+            rowNo++;
+        }
+        rows.forEach((r) => {
+            rowsXml.push(serializeRow(r, rowNo));
+            rowNo++;
+        });
         return `<?xml version="1.0" encoding="UTF-8"?>` +
             `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
             `<sheetData>${rowsXml.join('')}</sheetData>` +

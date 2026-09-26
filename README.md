@@ -129,16 +129,21 @@ Read [PRIVACY_POLICY.md](PRIVACY_POLICY.md) before using the tool with sensitive
 
 ## Development
 
-Runtime dependencies are intentionally zero. Node.js is used only for validation.
+The browser runtime has no dependencies. Development dependencies provide Chromium E2E automation and XLSX readback.
 
 ```bash
+npm ci
 npm test              # rebuilds the release and runs all unit/integration tests
+npm run test:coverage # runs Node tests and writes coverage/lcov.info
+npm run test:e2e      # builds the release and runs the Chromium browser workflow
 npm run build:release # rebuilds the single-file release from src/
 npm run validate:release  # release readiness check
 npm run validate:architecture # architecture and deterministic-build check
 ```
 
 The test suite covers parser formats, copy serialization, state/storage behavior, JOIN correctness, syntax checks, UI contracts, accessibility markers, and offline release constraints.
+
+To run browser tests locally, install Chromium with `node node_modules/playwright/cli.js install chromium --only-shell`, then run `npm run test:e2e`. Playwright does not support Termux/Android; CI runs this job on Ubuntu. On filesystems that do not allow symlinks, install dependencies with `npm ci --bin-links=false`.
 
 ## Documentation
 

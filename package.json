@@ -7,13 +7,19 @@
   "license": "MIT",
   "scripts": {
     "build:release": "node tools/build-release.cjs",
-    "test": "node tools/build-release.cjs && node --test-reporter=spec --test",
+    "test": "npm run build:release && npm run test:unit",
+    "test:unit": "node --test-reporter=spec --test tests/unit/*.test.js tests/integration/*.test.js",
     "test:watch": "node --test --watch tests/",
-    "test:coverage": "node --experimental-test-coverage --test-reporter=spec --test-reporter=lcov --test-reporter-destination=coverage/lcov.info --test tests/",
+    "test:coverage": "npm run build:release && node -e \"require('node:fs').mkdirSync('coverage', { recursive: true })\" && node --experimental-test-coverage --test-reporter=spec --test-reporter=lcov --test-reporter-destination=stdout --test-reporter-destination=coverage/lcov.info --test tests/unit/*.test.js tests/integration/*.test.js",
+    "test:e2e": "npm run build:release && node node_modules/@playwright/test/cli.js test",
     "validate:release": "node tools/build-release.cjs && node tools/validate-release.cjs",
     "validate:architecture": "node tools/build-release.cjs && node tools/validate-architecture.cjs"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "read-excel-file": "9.3.10"
   }
 }

@@ -6,11 +6,10 @@ v22 completes the current reliability pass: a command/event protocol (`Store.tra
 
 ## 22.x — reliability and browser coverage (current)
 
-- Real browser E2E automation for paste → parse → filter → JOIN → copy → export.
+- Chromium E2E automation for paste → parse → filter → JOIN → copy → XLSX download and readback.
 - Cross-browser clipboard and download matrix, including Safari.
-- XLSX round-trip validation with a real reader in development tests.
 - Improved focus trapping and screen-reader announcements for complex dialogs.
-- Additional malformed HTML/CSV fixtures and fuzz tests.
+- Deterministic malformed HTML/CSV boundary and parser mutation tests.
 
 ## Deferred architecture
 

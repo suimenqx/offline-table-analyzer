@@ -47,6 +47,12 @@ describe('CSV parser', () => {
     assert.ok(r.diagnostics.some(d => d.code === 'UNCLOSED_QUOTE'));
   });
 
+  it('keeps the remaining source inside an unclosed quoted field', () => {
+    const r = parse('id,name\n1,"Alice\n2,Bob', { format: 'csv' });
+    assert.deepEqual(firstTable(r).rows, [['1', 'Alice\n2,Bob']]);
+    assert.ok(r.diagnostics.some(d => d.code === 'UNCLOSED_QUOTE'));
+  });
+
   it('preserves tabs inside quoted CSV fields', () => {
     const r = parse('id,note\n1,"hello\tworld"');
     assert.equal(r.format, 'csv');
@@ -663,6 +669,51 @@ describe('HTML parser', () => {
     const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td><br>first<br><br>third<br></td></tr></table>';
     const r = ImportEngine.parse({ text: '', html });
     assert.equal(firstTable(r).rows[0][1], 'first\n\nthird');
+  });
+
+  it('keeps pasted cell text while discarding embedded executable markup', () => {
+    const html = '<table><tr><th>id</th><th>name</th></tr><tr><td>1</td><td>Widget<!-- note -->&amp;<script>alert(1)</script><b>_A</b></td></tr></table>';
+    const r = ImportEngine.parse({ text: '', html });
+    assert.deepEqual(firstTable(r).rows[0], ['1', 'Widget&_A']);
+  });
+});
+
+describe('Parser malformed-input boundaries', () => {
+  it('preserves the normalized result contract across deterministic malformed fragments', () => {
+    const fragments = [
+      'plain text', '<b>open bold', '</td><script>ignored()</script>',
+      '&unknown;', '\u0000value', '"unfinished', '<img src=x onerror=alert(1)>',
+      'line one\nline two', 'comma,value', '<!-- open comment',
+    ];
+    let seed = 0x5eed1234;
+    const next = (limit) => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      return (seed >>> 0) % limit;
+    };
+
+    const assertResultShape = (result) => {
+      assert.ok(Array.isArray(result.tables));
+      assert.ok(Array.isArray(result.diagnostics));
+      for (const table of result.tables) {
+        assert.ok(Array.isArray(table.headers));
+        assert.ok(Array.isArray(table.rows));
+        for (const row of table.rows) assert.ok(Array.isArray(row));
+      }
+    };
+
+    for (let index = 0; index < 64; index++) {
+      const fragment = Array.from({ length: 1 + next(4) }, () => fragments[next(fragments.length)]).join(' ');
+      const csvFragment = fragment.replaceAll('"', '""');
+      const csv = parse(`id,value\n${index},"${csvFragment}`, { format: 'csv' });
+      const html = ImportEngine.parse({
+        text: '',
+        html: `<table><tr><th>id</th><th>value</th></tr><tr><td>${index}</td><td>${fragment}</td></tr></table>`,
+      });
+      assertResultShape(csv);
+      assertResultShape(html);
+    }
   });
 });
 

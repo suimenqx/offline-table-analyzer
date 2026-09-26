@@ -14,15 +14,18 @@ Thank you for improving Offline Table Analyzer.
 
 ## Development setup
 
-Node.js 20 or newer is recommended. There are no runtime or package dependencies.
+Node.js 20 or newer is recommended. The browser runtime has no dependencies; development dependencies provide browser E2E and XLSX readback.
 
 ```bash
+npm ci
 npm test
 npm run validate:release
 npm run validate:architecture
 ```
 
 Open `index.html` directly for manual testing. A static server may be used when a browser restricts local-file APIs.
+
+Browser E2E and coverage are separate workflows. Install Chromium with `node node_modules/playwright/cli.js install chromium --only-shell`, then use `npm run test:e2e`. Playwright does not support Termux/Android; CI runs the browser workflow on Ubuntu. Use `npm run test:coverage` to produce the Node suite's LCOV report. On filesystems that do not allow symlinks, install with `npm ci --bin-links=false`.
 
 ## Pull requests
 
