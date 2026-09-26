@@ -57,7 +57,7 @@ const ExportController = {
         // Copy format selector
         const copyFormatSelect = $('copyFormatSelect');
         if (copyFormatSelect) {
-            copyFormatSelect.value = Store.state.copyFormat || 'default';
+            copyFormatSelect.value = Store.state.copyFormat === 'json' ? 'json-expanded' : Store.state.copyFormat || 'default';
             copyFormatSelect.onchange = (e) => {
                 dispatch('ui:copyFormat', { format: e.target.value });
             };

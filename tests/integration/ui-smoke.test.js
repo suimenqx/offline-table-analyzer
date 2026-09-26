@@ -207,11 +207,23 @@ describe('Selection.buildRecordClipboardMatrix', () => {
 });
 
 describe('Selection.copy', () => {
+  it('maps the saved JSON format to the expanded selector option', () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { Store } = OTA.require('store');
+    Store.state.copyFormat = 'json';
+    Store.state.copyWithHeaders = false;
+    App.syncCopyFormatControl();
+    App.syncCopyHeaderControl();
+    assert.equal(document.getElementById('copyFormatSelect').value, 'json-expanded');
+    assert.equal(document.getElementById('copySettingsLabel').textContent, '复制: JSON 展开');
+    assert.equal(document.getElementById('copyHeadersToggle').disabled, true);
+  });
+
   it('copies row-header selections as JSON records', () => {
     setupDOM();
     const { Select } = OTA.require('selection');
     const { Store } = OTA.require('store');
-    Store.state.copyFormat = 'json';
     Store.state.copyWithHeaders = false;
     const values = { '0:0':'001', '0:1':'002', '1:0':'Alice', '1:1':'Bob' };
     const fakeTable = {
@@ -234,15 +246,20 @@ describe('Selection.copy', () => {
     Select.end = { idx:0, r:1, c:1 };
     const copied = {};
     try {
-      Select.copy({ clipboardData:{ setData(type, value) { copied[type] = value; } } });
+      for (const format of ['json', 'json-inline', 'json-expanded']) {
+        Store.state.copyFormat = format;
+        Select.copy({ clipboardData:{ setData(type, value) { copied[type] = value; } } });
+        assert.deepEqual(JSON.parse(copied['text/plain']), [
+          { id:'001', name:'Alice' }, { id:'002', name:'Bob' },
+        ]);
+        assert.ok(copied['text/html'].startsWith('<pre><code>'));
+        if (format === 'json-inline') assert.ok(copied['text/plain'].includes('  {"id":"001","name":"Alice"}'));
+        else assert.ok(copied['text/plain'].includes('    "id": "001"'));
+      }
     } finally {
       document.querySelector = originalQuery;
       Select.clear();
     }
-    assert.deepEqual(JSON.parse(copied['text/plain']), [
-      { id:'001', name:'Alice' }, { id:'002', name:'Bob' },
-    ]);
-    assert.ok(copied['text/html'].startsWith('<pre><code>'));
   });
 
   it('omits the header when the copy preference is disabled', () => {

@@ -383,7 +383,8 @@ Choose the clipboard text format from the dropdown in the top toolbar:
 | **ASCII** | Box-drawn table with `+`, `-`, and `|`. |
 | **Lua inline** | A Lua table with one record per line. Field expressions are aligned by column when values have different widths. |
 | **Lua expanded** | A Lua table with one record per child table and one field per line, using four-space indentation. |
-| **JSON** | An array of objects, one object per selected record. Selected column names become keys and cell values remain strings. |
+| **JSON inline** | An array of objects with one compact object on each line. Selected column names become keys and cell values remain strings. |
+| **JSON expanded** | An array of objects with each field on its own line. Existing saved JSON copy preferences use this layout. |
 
 Lua adds no separate configuration panel or export dialog. The current selection alone determines which fields and records are copied, and the selected copy format is saved as the existing global copy preference.
 
@@ -395,6 +396,8 @@ Copy writes **both** plain text and HTML to the clipboard:
 - **HTML** remains a complete `<table>` element for TSV/CSV/Markdown/ASCII. JSON and Lua use `<pre><code>` with HTML-escaped text so rich-text editors preserve code formatting.
 
 The selected rectangle determines both the copied rows and columns. In **Column header** mode, the selected column headers become JSON/Lua field names and each selected data row becomes one record. Existing text formats include the synthetic "字段" (Field) header column in **Row header** mode; JSON and Lua instead restore the selected transposed rectangle to the same field-header-plus-record-row structure as Column header mode, without exporting that synthetic column. JSON and Lua always include selected headers because they provide field names.
+
+For example, selecting `id,name` and two rows produces `[{"id":"001","name":"Alice"},{"id":"002","name":"Bob"}]` as a JSON array. The inline option prints each object on one line inside the array; the expanded option prints each field on a separate line. Both use the same selected values and JSON escaping.
 
 Lua does not treat `validflag` specially: it is copied whenever it is inside the selected rectangle and omitted when it is outside it. Record indexes always start at `[1]` and increase in selected row order; original source row numbers are not used.
 

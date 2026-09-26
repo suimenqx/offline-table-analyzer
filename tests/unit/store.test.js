@@ -167,6 +167,17 @@ describe('Store — copy format', () => {
     assert.equal(Store.state.copyFormat, 'json');
   });
 
+  it('persists both JSON layouts in the existing copy format field', () => {
+    for (const format of ['json-inline', 'json-expanded']) {
+      Store.setCopyFormat(format);
+      assert.equal(Store.state.copyFormat, format);
+      assert.equal(JSON.parse(storage.getItem('ota_v20_workspace')).copyFormat, format);
+      Store.state.copyFormat = 'default';
+      Store.init();
+      assert.equal(Store.state.copyFormat, format);
+    }
+  });
+
   it('resets to default for invalid format', () => {
     Store.setCopyFormat('invalid');
     assert.equal(Store.state.copyFormat, 'default');

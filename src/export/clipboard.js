@@ -67,12 +67,16 @@ const ClipboardFormatter = {
         lines.push('}');
         return lines.join('\n');
     },
-    toJson(matrix) {
+    isRecordFormat(format) {
+        return ['json', 'json-inline', 'json-expanded', 'lua-inline', 'lua-expanded'].includes(format);
+    },
+    toJson(matrix, layout='expanded') {
         if(!matrix || matrix.length < 2) return '[]';
         const headers = Array.isArray(matrix[0]) ? matrix[0] : [];
         const records = matrix.slice(1).map(row => Object.fromEntries(headers.map((header, index) =>
             [String(header), String(row && row[index] != null ? row[index] : '')]
         )));
+        if(layout === 'inline') return `[\n${records.map(record => `  ${JSON.stringify(record)}`).join(',\n')}\n]`;
         return JSON.stringify(records, null, 2);
     },
     protectSpreadsheetFormula(value='') {
@@ -133,8 +137,10 @@ const ClipboardFormatter = {
         return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
     },
     toHtml(matrix, format='default', includeHeaders=true) {
-        if(format === 'lua-inline' || format === 'lua-expanded' || format === 'json') {
-            const text = format === 'json' ? this.toJson(matrix) : this.toLua(matrix, format === 'lua-expanded' ? 'expanded' : 'inline');
+        if(this.isRecordFormat(format)) {
+            const text = format.startsWith('json')
+                ? this.toJson(matrix, format === 'json-inline' ? 'inline' : 'expanded')
+                : this.toLua(matrix, format === 'lua-expanded' ? 'expanded' : 'inline');
             return `<pre><code>${this.escapeHtml(text)}</code></pre>`;
         }
         if(!matrix || !matrix.length) return '<table></table>';
@@ -145,7 +151,7 @@ const ClipboardFormatter = {
         return `<table border="1">${header}<tbody>${rows.map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
     toText(matrix, format='default', includeHeaders=true) {
-        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const needsHeaders = this.isRecordFormat(format);
         const effectiveHeaders = needsHeaders || includeHeaders !== false;
         const rows = effectiveHeaders ? matrix : (matrix || []).slice(1);
         switch(format) {
@@ -155,12 +161,14 @@ const ClipboardFormatter = {
             case 'lua-inline': return this.toLua(matrix, 'inline');
             case 'lua-expanded': return this.toLua(matrix, 'expanded');
             case 'json': return this.toJson(matrix);
+            case 'json-inline': return this.toJson(matrix, 'inline');
+            case 'json-expanded': return this.toJson(matrix, 'expanded');
             case 'default':
             default: return this.toDelimited(rows, '\t');
         }
     },
     toClipboardPayload(matrix, { format='default', includeHeaders=true } = {}) {
-        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const needsHeaders = this.isRecordFormat(format);
         const effectiveHeaders = needsHeaders || includeHeaders !== false;
         return {
             text: this.toText(matrix, format, effectiveHeaders),
@@ -169,7 +177,7 @@ const ClipboardFormatter = {
         };
     },
     label(format='default') {
-        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', json:'JSON', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
+        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', json:'JSON 展开', 'json-inline':'JSON 单行', 'json-expanded':'JSON 展开', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
     }
 };
 

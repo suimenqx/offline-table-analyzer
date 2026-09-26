@@ -422,7 +422,7 @@ const App = {
     syncCopyFormatControl() {
         const format = Store.state.copyFormat || 'default';
         const el = $('copyFormatSelect');
-        if(el) el.value = format;
+        if(el) el.value = format === 'json' ? 'json-expanded' : format;
         const label = $('copySettingsLabel');
         if(label) {
             const display = format === 'default' ? 'TSV' : ClipboardFormatter.label(format);
@@ -434,7 +434,7 @@ const App = {
         const el = $('copyHeadersToggle');
         if(!el) return;
         const format = Store.state.copyFormat || 'default';
-        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const needsHeaders = ClipboardFormatter.isRecordFormat(format);
         const includeHeaders = needsHeaders || Store.state.copyWithHeaders !== false;
         el.checked = includeHeaders;
         el.disabled = needsHeaders;

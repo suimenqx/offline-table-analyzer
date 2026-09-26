@@ -805,7 +805,8 @@
                                 <option value="csv">复制: CSV</option>
                                 <option value="markdown">复制: Markdown</option>
                                 <option value="ascii">复制: ASCII</option>
-                                <option value="json">复制: JSON</option>
+                                <option value="json-inline">复制: JSON 单行</option>
+                                <option value="json-expanded">复制: JSON 展开</option>
                                 <option value="lua-inline">复制: Lua 单行</option>
                                 <option value="lua-expanded">复制: Lua 展开</option>
                             </select>
@@ -1533,7 +1534,7 @@ const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
-const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'json', 'lua-inline', 'lua-expanded']);
+const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'json', 'json-inline', 'json-expanded', 'lua-inline', 'lua-expanded']);
 
 const MIGRATIONS = Object.freeze({
     0(payload) {
@@ -2728,12 +2729,16 @@ const ClipboardFormatter = {
         lines.push('}');
         return lines.join('\n');
     },
-    toJson(matrix) {
+    isRecordFormat(format) {
+        return ['json', 'json-inline', 'json-expanded', 'lua-inline', 'lua-expanded'].includes(format);
+    },
+    toJson(matrix, layout='expanded') {
         if(!matrix || matrix.length < 2) return '[]';
         const headers = Array.isArray(matrix[0]) ? matrix[0] : [];
         const records = matrix.slice(1).map(row => Object.fromEntries(headers.map((header, index) =>
             [String(header), String(row && row[index] != null ? row[index] : '')]
         )));
+        if(layout === 'inline') return `[\n${records.map(record => `  ${JSON.stringify(record)}`).join(',\n')}\n]`;
         return JSON.stringify(records, null, 2);
     },
     protectSpreadsheetFormula(value='') {
@@ -2794,8 +2799,10 @@ const ClipboardFormatter = {
         return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
     },
     toHtml(matrix, format='default', includeHeaders=true) {
-        if(format === 'lua-inline' || format === 'lua-expanded' || format === 'json') {
-            const text = format === 'json' ? this.toJson(matrix) : this.toLua(matrix, format === 'lua-expanded' ? 'expanded' : 'inline');
+        if(this.isRecordFormat(format)) {
+            const text = format.startsWith('json')
+                ? this.toJson(matrix, format === 'json-inline' ? 'inline' : 'expanded')
+                : this.toLua(matrix, format === 'lua-expanded' ? 'expanded' : 'inline');
             return `<pre><code>${this.escapeHtml(text)}</code></pre>`;
         }
         if(!matrix || !matrix.length) return '<table></table>';
@@ -2806,7 +2813,7 @@ const ClipboardFormatter = {
         return `<table border="1">${header}<tbody>${rows.map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
     toText(matrix, format='default', includeHeaders=true) {
-        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const needsHeaders = this.isRecordFormat(format);
         const effectiveHeaders = needsHeaders || includeHeaders !== false;
         const rows = effectiveHeaders ? matrix : (matrix || []).slice(1);
         switch(format) {
@@ -2816,12 +2823,14 @@ const ClipboardFormatter = {
             case 'lua-inline': return this.toLua(matrix, 'inline');
             case 'lua-expanded': return this.toLua(matrix, 'expanded');
             case 'json': return this.toJson(matrix);
+            case 'json-inline': return this.toJson(matrix, 'inline');
+            case 'json-expanded': return this.toJson(matrix, 'expanded');
             case 'default':
             default: return this.toDelimited(rows, '\t');
         }
     },
     toClipboardPayload(matrix, { format='default', includeHeaders=true } = {}) {
-        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const needsHeaders = this.isRecordFormat(format);
         const effectiveHeaders = needsHeaders || includeHeaders !== false;
         return {
             text: this.toText(matrix, format, effectiveHeaders),
@@ -2830,7 +2839,7 @@ const ClipboardFormatter = {
         };
     },
     label(format='default') {
-        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', json:'JSON', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
+        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', json:'JSON 展开', 'json-inline':'JSON 单行', 'json-expanded':'JSON 展开', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
     }
 };
 
@@ -5971,7 +5980,7 @@ const Select = {
         const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
         const format = Store.state.copyFormat || 'default';
-        const needsRecords = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const needsRecords = ClipboardFormatter.isRecordFormat(format);
         const matrix = needsRecords
             ? this.buildRecordClipboardMatrix(tbl, minR, maxR, minC, maxC)
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
@@ -8934,7 +8943,7 @@ const ExportController = {
         // Copy format selector
         const copyFormatSelect = $('copyFormatSelect');
         if (copyFormatSelect) {
-            copyFormatSelect.value = Store.state.copyFormat || 'default';
+            copyFormatSelect.value = Store.state.copyFormat === 'json' ? 'json-expanded' : Store.state.copyFormat || 'default';
             copyFormatSelect.onchange = (e) => {
                 dispatch('ui:copyFormat', { format: e.target.value });
             };
@@ -9604,7 +9613,7 @@ const App = {
     syncCopyFormatControl() {
         const format = Store.state.copyFormat || 'default';
         const el = $('copyFormatSelect');
-        if(el) el.value = format;
+        if(el) el.value = format === 'json' ? 'json-expanded' : format;
         const label = $('copySettingsLabel');
         if(label) {
             const display = format === 'default' ? 'TSV' : ClipboardFormatter.label(format);
@@ -9616,7 +9625,7 @@ const App = {
         const el = $('copyHeadersToggle');
         if(!el) return;
         const format = Store.state.copyFormat || 'default';
-        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const needsHeaders = ClipboardFormatter.isRecordFormat(format);
         const includeHeaders = needsHeaders || Store.state.copyWithHeaders !== false;
         el.checked = includeHeaders;
         el.disabled = needsHeaders;

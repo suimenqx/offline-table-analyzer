@@ -82,7 +82,7 @@ activeId
 theme
 globalViews[]
 nextAnalysisSeq
-copyFormat (`default`/`csv`/`markdown`/`ascii`/`json`/`lua-inline`/`lua-expanded`)
+copyFormat (`default`/`csv`/`markdown`/`ascii`/`json-inline`/`json-expanded`/`lua-inline`/`lua-expanded`; legacy `json` means `json-expanded`)
 spreadsheetSafe
 persistRaw
 lastSavedAt
@@ -144,7 +144,7 @@ diagnostics[]
 
 All downstream operations consume this shape regardless of the original source format.
 
-`JsonTableParser` accepts arrays of objects, two-dimensional arrays, a single object record, or an object whose values are table arrays. Object keys become headers in first-seen order; nested values become compact JSON cell text. JSON clipboard output is an array of objects built from the selected headers and record rows. Cell values remain strings to preserve the normalized table contract and string identifiers such as `"001"`. JSON and Lua copy restore transposed selections to record orientation and always include selected headers as field names. The existing `copyFormat` preference stores `json`; schema 20 and the migration chain remain unchanged.
+`JsonTableParser` accepts arrays of objects, two-dimensional arrays, a single object record, or an object whose values are table arrays. Object keys become headers in first-seen order; nested values become compact JSON cell text. JSON clipboard output is an array of objects built from the selected headers and record rows. `json-inline` puts one compact object on each line, while `json-expanded` puts each field on its own line. Cell values remain strings to preserve the normalized table contract and string identifiers such as `"001"`. JSON and Lua copy restore transposed selections to record orientation and always include selected headers as field names. The existing `copyFormat` field stores the new options; saved `json` values retain the expanded layout. Schema 20 and the migration chain remain unchanged.
 
 ### Command, revision, and rendering contract
 

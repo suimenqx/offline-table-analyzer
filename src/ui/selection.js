@@ -190,7 +190,7 @@ const Select = {
         const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
         const format = Store.state.copyFormat || 'default';
-        const needsRecords = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const needsRecords = ClipboardFormatter.isRecordFormat(format);
         const matrix = needsRecords
             ? this.buildRecordClipboardMatrix(tbl, minR, maxR, minC, maxC)
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);

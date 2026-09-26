@@ -95,7 +95,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 
 - 单元格修正以非破坏 overlay 保存，原始文本不被覆盖。
 - 支持最多 100 步撤销/重做，并在来源变化时清空历史。
-- 复制支持 TSV、CSV、Markdown、ASCII、JSON、Lua 单行和 Lua 展开。TSV/CSV/Markdown/ASCII 生成 HTML 表格，JSON/Lua 生成保持换行缩进的 `<pre><code>` HTML。
+- 复制支持 TSV、CSV、Markdown、ASCII、JSON 单行和 JSON 展开、Lua 单行和 Lua 展开。JSON 单行每条记录占一行，JSON 展开每个字段占一行；TSV/CSV/Markdown/ASCII 生成 HTML 表格，JSON/Lua 生成保持换行缩进的 `<pre><code>` HTML。
 - Lua 使用选区中的表头作为字符串键、每条选中数据行为一个子 Table，外层索引从 `[1]` 连续递增；行头视图必须先恢复为标准字段/记录方向。
 - Lua 值格式化必须支持十六进制零值归一化、非零十六进制保留、十进制数、布尔值、空字符串和 Lua 字符串转义。
 - 默认防止以 `=`, `+`, `@` 或非数字 `-` 开头的内容触发电子表格公式执行；该前缀保护不应用于 JSON 和 Lua。
@@ -106,7 +106,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 ### FR-07 持久化、迁移与恢复
 
 - 权威键为 `ota_v20_workspace`，schema 为 20；旧键只在 v20 成功写入后删除。
-- `copyFormat` 继续使用现有全局持久化字段，允许值包括 `default`、`csv`、`markdown`、`ascii`、`json`、`lua-inline` 和 `lua-expanded`；不增加专用持久化字段或配置界面。
+- `copyFormat` 继续使用现有全局持久化字段，允许值包括 `default`、`csv`、`markdown`、`ascii`、`json-inline`、`json-expanded`、`lua-inline` 和 `lua-expanded`；旧值 `json` 继续按 JSON 展开处理，不增加专用持久化字段或配置界面。
 - 捕获 quota/security 写入失败，显示具体状态，且内存工作区继续可用。
 - 显示保存状态、时间戳、估算字节数和使用率。
 - `persistRaw=false` 时序列化空 raw，但内存中的 raw 保持可用。

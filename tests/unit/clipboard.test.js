@@ -55,6 +55,29 @@ describe('ClipboardFormatter.toClipboardPayload', () => {
     assert.ok(payload.html.startsWith('<pre><code>'));
     assert.ok(payload.html.includes('&quot;=CMD()&quot;'));
   });
+
+  it('copies JSON inline with one selected record per line', () => {
+    const matrix = [['id', 'name'], ['001', 'Alice'], ['002', 'Bob']];
+    const payload = F.toClipboardPayload(matrix, { format:'json-inline', includeHeaders:false });
+    assert.equal(payload.includeHeaders, true);
+    assert.equal(payload.text, '[\n  {"id":"001","name":"Alice"},\n  {"id":"002","name":"Bob"}\n]');
+    assert.equal(JSON.stringify(JSON.parse(payload.text)), JSON.stringify([{ id:'001', name:'Alice' }, { id:'002', name:'Bob' }]));
+    assert.ok(payload.html.startsWith('<pre><code>'));
+    assert.ok(payload.html.includes('&quot;id&quot;'));
+    assert.equal(F.toText([['id', 'name']], 'json-inline'), '[]');
+    assert.equal(F.label('json-inline'), 'JSON 单行');
+  });
+
+  it('copies JSON expanded and keeps the legacy json format equivalent', () => {
+    const matrix = [['id', 'note'], ['001', 'a"b\n=1']];
+    const expected = '[\n  {\n    "id": "001",\n    "note": "a\\"b\\n=1"\n  }\n]';
+    assert.equal(F.toText(matrix, 'json-expanded'), expected);
+    assert.equal(F.toText(matrix, 'json'), expected);
+    assert.equal(F.toClipboardPayload(matrix, { format:'json-expanded', includeHeaders:false }).includeHeaders, true);
+    assert.equal(F.toText([['id', 'note']], 'json-expanded'), '[]');
+    assert.equal(F.label('json-expanded'), 'JSON 展开');
+    assert.equal(F.label('json'), 'JSON 展开');
+  });
 });
 
 // ---------------------------------------------------------------------------
