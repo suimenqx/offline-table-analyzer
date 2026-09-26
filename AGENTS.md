@@ -30,7 +30,9 @@
 
 ## Test workflow
 
-- Run `npm ci` after checkout or lockfile changes. Use `npm test` for the release build plus all Node unit and integration tests. Place these tests under `tests/` and assert public module behavior.
+- Before choosing a regression-test boundary or applying the test-first loop, read [`docs/testing/strategy.md`](docs/testing/strategy.md).
+- Run `npm ci` after checkout or lockfile changes. Use `npm test` for the release build plus all Node unit and integration tests; assert public module behavior.
+- Put Node tests under `tests/unit/` or `tests/integration/`; put real-browser workflows under `e2e/`.
 - Use `npm run test:e2e` for changes that cross the browser UI. It rebuilds `index.html` and exercises paste, parse, filter, JOIN, copy, and XLSX export/readback in Chromium.
 - Use `npm run validate:release` and `npm run validate:architecture` when changing release boundaries, build inputs, module dependencies, or Store command flow.
 - Use `npm run test:coverage` to inspect the Node suite's LCOV report. CI stores the report as a baseline artifact; add module-specific gates only after reviewing baseline coverage.

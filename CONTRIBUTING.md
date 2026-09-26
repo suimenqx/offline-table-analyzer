@@ -27,13 +27,15 @@ Open `index.html` directly for manual testing. A static server may be used when 
 
 Browser E2E and coverage are separate workflows. Install Chromium with `node node_modules/playwright/cli.js install chromium --only-shell`, then use `npm run test:e2e`. Playwright does not support Termux/Android; CI runs the browser workflow on Ubuntu. Use `npm run test:coverage` to produce the Node suite's LCOV report. On filesystems that do not allow symlinks, install with `npm ci --bin-links=false`.
 
-## Pull requests
+For the red-green-refactor loop and guidance on choosing unit, integration, browser, and architecture checks, follow the [testing strategy](docs/testing/strategy.md).
+
+## Before pushing
 
 - Keep changes focused and explain the user-facing outcome.
 - Add parser fixtures for format changes and edge cases.
 - Add JOIN tests for matching semantics and null/empty behavior.
 - Test light/dark themes, keyboard navigation, and at least one narrow viewport for UI changes.
-- Run `npm test`, `npm run validate:release`, and `npm run validate:architecture` before submitting a change.
+- Run `npm test`, `npm run validate:release`, and `npm run validate:architecture` before pushing a change.
 - Update `CHANGELOG.md` under an Unreleased section.
 - Do not commit generated downloads, screenshots containing sensitive data, or duplicated release HTML files.
 
