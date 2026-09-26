@@ -2,11 +2,11 @@
 
 v21 delivered the first wave of architecture modularisation: domain logic extraction (`FilterEngine`, `TableBuilder`) and a stable public filtering API.
 
-v22 completes the current reliability pass: a command/event protocol (`Store.transition` / `onChange` / `dispatch`), source-revision isolation, the pure `QueryService` preview pipeline, 41 deterministic source modules, accessible status/chips/dialog behavior, and architecture validation.
+v22 completed the reliability pass: a command/event protocol (`Store.transition` / `onChange` / `dispatch`), source-revision isolation, the pure `QueryService` preview pipeline, 42 deterministic source modules, accessible status/chips/dialog behavior, and architecture validation.
 
 ## 22.x — reliability and browser coverage (current)
 
-- Chromium E2E automation for paste → parse → filter → JOIN → copy → XLSX download and readback.
+- Chromium E2E automation for paste → parse → filter → JOIN → copy → XLSX download and readback is implemented and configured in CI.
 - Cross-browser clipboard and download matrix, including Safari.
 - Improved focus trapping and screen-reader announcements for complex dialogs.
 - Deterministic malformed HTML/CSV boundary and parser mutation tests.

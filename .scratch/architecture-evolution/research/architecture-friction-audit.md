@@ -1,6 +1,8 @@
 # Architecture friction audit
 
-Scope: current core flows, recent changes, and the fixed single-file/offline release model. This is evidence for later decisions, not a target design. Existing tests and history were inspected; tests were not run.
+Historical snapshot: module counts and line references below describe the checkout examined at the time. For the current module list, see `docs/architecture/refactor.md` and `tools/build-release.cjs`.
+
+Scope: core flows and recent changes at audit time, under the fixed single-file/offline release model. This is evidence for later decisions, not a target design. Existing tests and history were inspected; tests were not run.
 
 ## Findings
 

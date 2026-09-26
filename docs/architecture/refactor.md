@@ -1,17 +1,17 @@
 # 重构架构分析与设计
 
-## 1. 当前架构诊断
+## 1. 重构前的问题与当前状态
 
-当前产品功能已经比较完整，但发布源只有一个 `index.html`：约 28 万字节的 CSS、HTML 和 JavaScript 共存于同一文件。逻辑顺序靠声明先后维持，测试通过字符串截取获取领域代码，导致以下问题：
+最初的产品将 CSS、HTML 和 JavaScript 直接维护在单体 `index.html` 中，测试通过字符串截取获取领域代码，当时存在以下问题：
 
 - 解析、状态、JOIN、复制和 UI 控制器之间的边界只能靠注释表达。
 - 一个小功能变更容易触发整页语法、渲染或保存回归。
 - 领域代码难以复用到 Node 测试或未来的 XLSX 导入模块。
 - 发布单文件的约束与开发源文件的可维护性相互冲突。
 
-已有代码的优点也必须保留：零运行时依赖、成熟的 v22 数据契约、完整的解析器和 JOIN 回归用例、明确的隐私边界，以及可以直接双击打开的发布体验。
+这些问题推动了源模块拆分。现在由 `src/` 维护业务代码，`tools/build-release.cjs` 将 42 个源模块内联为单文件发布产物；Node 测试通过同一构建清单加载源模块。发布产物仍可直接打开，保持零运行时依赖、v20 工作区契约、解析器与 JOIN 回归覆盖以及隐私边界。
 
-## 2. 方案比较
+## 2. 重构时的方案比较
 
 | 方案 | 优点 | 代价/风险 | 结论 |
 | --- | --- | --- | --- |
@@ -38,21 +38,19 @@
 依赖方向从底层到上层单向流动：
 
 ```text
-HTML/CSS shell
+template / styles → OTA registry / runtime / TableUtils / SourceSnapshot / FilterEngine
       ↓
-runtime utilities / feedback
+Store → dispatch
       ↓
-table normalization → FilterEngine (pure filtering)
+Exporter / ClipboardFormatter
       ↓
-Store / persistence
+HeaderResolver / TextLayout → parser adapters → ImportEngine
       ↓
-Clipboard / Exporter
+Joiner → QueryService
       ↓
-header inference → parser adapters → ImportEngine
+TableRegistry
       ↓
-Joiner
-      ↓
-TableBuilder (DOM rendering) → Selection → JoinEditor
+TableBuilder / Select / JoinEditor / other UI controllers
       ↓
 App orchestrator → bootstrap
 ```
@@ -78,6 +76,8 @@ App orchestrator → bootstrap
 | | `source-snapshot.js` | 临时剪贴板/文件来源元数据、诊断预览限长、页签与文本匹配 | `SourceSnapshot` |
 | | `filter-engine.js` | 纯过滤/高亮/列投影逻辑（token 解析、操作符匹配、正则），零 DOM 依赖 | `FilterEngine` |
 | | `query-service.js` | 统一 JOIN、过滤、Focus、分页和预览结果缓存 | `QueryService` |
+| | `dispatch.js` | UI 到 Store 的命令入口 | `dispatch` |
+| | `table-registry.js` | 解析结果及表/列元数据访问 | `TableRegistry` |
 | `state/` | `store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
 | `export/` | `exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
 | | `clipboard.js` | 剪贴板序列化 | `ClipboardFormatter` |
@@ -101,35 +101,42 @@ App orchestrator → bootstrap
 | `transform/` | `joiner.js` | JOIN 执行和依赖安全 | `Joiner` |
 | `ui/` | `selection.js` | 预览区域范围选择 | `Select` |
 | | `table-builder.js` | 预览表格 DOM 构建（列表头/行表头模式），消费 FilterEngine 输出 | `TableBuilder` |
+| | `modal-controller.js` | 通用模态框、焦点与诊断展示 | `ModalController` |
+| | `view-manager.js` | JOIN 视图管理 | `ViewManager` |
 | | `join-editor.js` | JOIN 编辑器 UI | `JoinEditor` |
 | | `source-controller.js` | 源文本、文件/剪贴板浏览器适配、全屏编辑器和输入尺寸控制 | `SourceController` |
 | | `cell-edit-controller.js` | 原始表单元格修正、撤销/重做和多行内联编辑 | `CellEditController` |
+| | `filter-controller.js` | 列筛选弹窗和交互 | `FilterController` |
+| | `tab-controller.js` | 页签创建、激活、排序与重命名 | `TabController` |
+| | `keyboard-controller.js` | 全局快捷键 | `KeyboardController` |
+| | `export-controller.js` | 导出、工作区备份与配置导入导出 | `ExportController` |
 | | `app.js` | 应用编排和 UI，委托过滤给 FilterEngine、表格构建给 TableBuilder | `App` |
 | （根） | `bootstrap.js` | 应用启动 | — |
 
-这一步先完成结构性拆分，再完成运行时模块隔离：业务代码通过 `OTA.define()` 声明依赖，`OTA.require()` 按需解析并缓存；App 与 JoinEditor 的天然循环依赖通过延迟代理打断。它避免一次性重写导致解析和数据安全行为同时漂移。
+结构性拆分和运行时模块隔离已落地：业务代码通过 `OTA.define()` 声明依赖，`OTA.require()` 按需解析并缓存；`TableRegistry` 为 App 与 JoinEditor 提供共享的解析表访问边界，避免彼此直接依赖。
 
 ## 6. 状态与事件设计
 
-Store 是唯一的可持久化状态拥有者。UI 使用以下方向更新：
+Store 是唯一的可持久化状态拥有者。已落地的命令与渲染方向为：
 
 ```text
 DOM event
-  → App command
-  → Store/domain transition
-  → scheduleSave / invalidate derived state
-  → render or targeted refresh
+  → UI controller / App
+  → dispatch(action, payload)
+  → Store.transition(action, payload)
+  → revision / event / persistence status
+  → App.requestRender() / targeted refresh
 ```
 
-关键状态转换：
+关键命令与边界：
 
-- `sourceChanged`：清理 cell edits、undo/redo 和 HTML clipboard 关联，保留用户原始输入。
-- `parseRequested`：读取当前 source/options，得到 normalized tables、candidates 和 diagnostics。
-- `tabActivated`：保存前页签输入，切换 Store.activeId，清理短生命周期 UI 状态，再加载新页签。
-- `viewChanged`：校验依赖图和输出列，成功后写入 globalViews，失败时不改变已保存配置。
-- `storageFailed`：保留内存状态，更新状态栏，不把失败误报为已保存。
+- `source:replace` 更新原文与来源修订号，并清理不再有效的单元格修正；`SourceController` 管理临时粘贴来源快照。
+- `App.setImportFormat()` 和 `App.setHeaderMode()` 先清理旧行索引修正，再通过 `import:setFormat`、`import:setHeaderMode` 更新解析选项。
+- `App.run()` 调用 `ImportEngine` 获取表、候选和诊断；`parse:completed` 拒绝来源修订号已过期的结果。
+- `tab:activate` 切换当前文档；相关 UI 控制器同步输入并清理短生命周期状态。
+- `view:upsert`、`view:replaceAll` 等命令更新 JOIN 视图；`workspace:save` 报告存储失败，同时保留内存工作区。
 
-后续阶段应将这些命令/事件提取为小型应用服务，并对每个 transition 添加状态性质测试；当前阶段先用既有 Store 和 UI 合同测试保护行为。
+`Store.transition`、`dispatch`、事件通知和修订号已落地，并由 Store、控制器及集成测试保护。后续仅在出现具体跨模块问题时调整命令边界。
 
 ## 7. 迁移路线
 
@@ -140,7 +147,7 @@ DOM event
 - 增加 `build:release`，使根 `index.html` 可从源完全生成。
 - 保持现有测试全部通过。
 
-### 阶段 B：领域模块纯化 ✅ (进行中)
+### 阶段 B：领域模块纯化（所列工作已完成）
 
 - ✅ 将 `FilterEngine` 提取为纯函数模块，无 DOM/storage 依赖，可独立在 Node 中测试。
 - ✅ `App.proc()` 从 ~100 行缩减为 7 行委托调用。
@@ -148,14 +155,17 @@ DOM event
 - ✅ `SourceSnapshot` 接管临时来源元数据和页签/文本匹配；`ImportEngine` 接收显式格式偏好。
 - ✅ 剪贴板成对序列化，App 直接调用 `QueryService` 获取预览结果。
 
-### 阶段 C：状态与 UI 控制器拆分
+### 阶段 C：状态与 UI 控制器拆分（所列工作已完成）
 
 - ✅ 将 `buildColumnHeaderTable` / `buildRowHeaderTable` 从 App 提取到 `TableBuilder`（~130 行 → ~12 行）。
 - ✅ 将过滤 token 引擎从 `App.proc()` 提取到 `FilterEngine.processTable()`。
+- ✅ `Store.transition` 与 `dispatch` 成为 UI 写入工作区状态的命令边界。
+- ✅ 来源、单元格编辑、筛选、页签、键盘、模态框、视图管理和导出行为由对应 UI 控制器负责。
 
-### 阶段 D：浏览器回归和用户流程验证
+### 阶段 D：浏览器回归和用户流程验证（Chromium 基础流程已落地）
 
-- 加入真实浏览器 headless 流程：粘贴 → 解析 → 筛选 → JOIN → 复制 → 导出。
+- `e2e/browser-flow.e2e.js` 已覆盖 Chromium 中的粘贴 → 解析 → 筛选 → JOIN → 复制 → XLSX 导出及读回；CI 已配置运行。
+- Safari 等跨浏览器剪贴板与下载行为仍需单独验证。
 - 保持 25 MB 输入上限、分页和单文件离线边界；不引入 Worker、IndexedDB、虚拟滚动或流式导出。
 
 ## 8. 分支与发布策略
@@ -164,7 +174,7 @@ DOM event
 
 后续规则：
 
-- 每个阶段一个可验证提交，合并到 `main` 后通过 GitHub Pages 自动发布。
+- 每个阶段以可验证提交直接落到 `main`，由 GitHub Pages 工作流构建并发布。
 - 同一人连续演进：直接在 `main` 上提交，每个阶段保持独立可回退。
 - 不创建主题分支或 PR；生成的 `index.html` 只由构建脚本更新。
 - 回退优先使用 `git revert`；不要用 destructive reset 覆盖已发布变更。
@@ -175,7 +185,7 @@ DOM event
 - **模块使用轻量 registry 而非 ESM**：保留它以支持 `file://` 单文件发布和零运行时依赖；开发期由架构校验检查模块清单、依赖存在性和加载顺序。只有出现明确且反复的作者体验问题，证明轻量工具不足以支撑已排定能力时，才重新评估 ESM 或更重的构建链。
 - **App 仍偏大**：先用测试保护行为，再按用户流程拆 controller；不进行没有回归保护的机械搬迁。
 - **主线程计算**：输入有 25 MB 保护和分页；性能 fixture 未证明前不提前引入复杂并发模型。
-- **浏览器兼容**：发布脚本保持标准语法；每次改动同时跑 Node 语法、静态 UI 合同和真实浏览器回归（若已配置）。
+- **浏览器兼容**：发布脚本保持标准语法；浏览器相关改动运行 Node/静态校验，并在受支持的平台或 CI 运行 Chromium 回归。Safari 等浏览器仍需补充验证。
 - **schema 演进**：任何 schema 变化必须增加迁移函数、旧 payload fixture、失败恢复测试和版本说明。
 
 ## 10. 当前验收标准
