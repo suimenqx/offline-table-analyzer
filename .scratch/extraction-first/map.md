@@ -13,6 +13,7 @@ Label: wayfinder:map
 - 私有离线、单文件交付、现有工作空间兼容性及“表格”边界均需明确决策。
 - 决策会话使用 grilling 与 domain-modeling；外部技术事实优先由 research 调查，交互不清楚时用 prototype 呈现。
 - 遵守本仓库 main 分支工作约定，不创建分支、工作树或 PR。
+- 用户已授权提前制作评估样本与可丢弃原型；它们是探针，不提前解决仍受产品边界阻塞的决策票。
 
 ## Decisions so far
 
