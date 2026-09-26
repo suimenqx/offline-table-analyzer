@@ -35,6 +35,7 @@ const SourceController = {
         const name = String(fileName || '').toLowerCase();
         if (/\.csv$/.test(name)) return 'csv';
         if (/\.tsv$/.test(name)) return 'excel-paste';
+        if (/\.json$/.test(name)) return 'json';
         if (/\.html?$/.test(name)) return 'html-table';
         if (/\.(md|markdown)$/.test(name)) return 'pipe-table';
         return 'auto';

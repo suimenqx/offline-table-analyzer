@@ -160,6 +160,13 @@ describe('Store — copy format', () => {
     assert.equal(Store.state.copyFormat, 'lua-inline');
   });
 
+  it('persists and restores JSON copy format', () => {
+    Store.setCopyFormat('json');
+    assert.equal(Store.state.copyFormat, 'json');
+    Store.init();
+    assert.equal(Store.state.copyFormat, 'json');
+  });
+
   it('resets to default for invalid format', () => {
     Store.setCopyFormat('invalid');
     assert.equal(Store.state.copyFormat, 'default');

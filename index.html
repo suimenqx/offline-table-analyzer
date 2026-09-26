@@ -615,14 +615,14 @@
                     </div>
                     <div class="card-body source-drop-zone" id="sourceDropZone">
                         <div class="textarea-shell">
-                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" placeholder="粘贴 CSV、TSV、网页表格、Markdown、ASCII 或 CLI table-data…" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
+                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" placeholder="粘贴 JSON、CSV、TSV、网页表格、Markdown、ASCII 或 CLI table-data…" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
                         <div class="source-actions">
                             <button class="sm" id="parseBtn" type="button" title="立即解析当前数据（Ctrl/⌘ + Enter）">立即解析</button>
-                            <button id="importSourceBtn" type="button" title="导入 CSV、TSV、TXT、HTML 或 Markdown 文件">选择文件</button>
+                            <button id="importSourceBtn" type="button" title="导入 CSV、TSV、JSON、TXT、HTML 或 Markdown 文件">选择文件</button>
                             <button id="clearBtn" type="button" title="清空当前数据源">清空</button>
-                            <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,text/html">
+                            <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.json,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,application/json,text/html">
                         </div>
                         <div class="source-options">
                             <select id="formatSelect" class="format-select" title="输入格式">
@@ -631,6 +631,7 @@
                                 <option value="data-block">Data-Block 数据块</option>
                                 <option value="cli-multi-block">CLI 多块定宽表</option>
                                 <option value="csv">CSV</option>
+                                <option value="json">JSON 表格</option>
                                 <option value="excel-paste">Excel/TSV</option>
                                 <option value="html-table">HTML 表格</option>
                                 <option value="semicolon-csv">分号分隔</option>
@@ -804,6 +805,7 @@
                                 <option value="csv">复制: CSV</option>
                                 <option value="markdown">复制: Markdown</option>
                                 <option value="ascii">复制: ASCII</option>
+                                <option value="json">复制: JSON</option>
                                 <option value="lua-inline">复制: Lua 单行</option>
                                 <option value="lua-expanded">复制: Lua 展开</option>
                             </select>
@@ -889,6 +891,7 @@
                     <option value="data-block">Data-Block 数据块</option>
                     <option value="cli-multi-block">CLI 多块定宽表</option>
                     <option value="csv">CSV</option>
+                    <option value="json">JSON 表格</option>
                     <option value="excel-paste">Excel/TSV</option>
                     <option value="html-table">HTML 表格</option>
                     <option value="semicolon-csv">分号分隔</option>
@@ -909,7 +912,7 @@
             </div>
         </div>
         <div class="source-editor-body">
-            <textarea id="rawInputLarge" wrap="off" placeholder="请粘贴 cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..."></textarea>
+            <textarea id="rawInputLarge" wrap="off" placeholder="请粘贴 JSON / cli-table-data / CSV / Excel 复制数据 / 网页表格 / Markdown / ASCII 表..."></textarea>
         </div>
         <div class="source-editor-foot">
             <span class="muted">自动解析开启时，输入稳定后会刷新预览；Ctrl/⌘ + Enter 可立即解析。</span>
@@ -1530,7 +1533,7 @@ const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
-const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'lua-inline', 'lua-expanded']);
+const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'json', 'lua-inline', 'lua-expanded']);
 
 const MIGRATIONS = Object.freeze({
     0(payload) {
@@ -2725,6 +2728,14 @@ const ClipboardFormatter = {
         lines.push('}');
         return lines.join('\n');
     },
+    toJson(matrix) {
+        if(!matrix || matrix.length < 2) return '[]';
+        const headers = Array.isArray(matrix[0]) ? matrix[0] : [];
+        const records = matrix.slice(1).map(row => Object.fromEntries(headers.map((header, index) =>
+            [String(header), String(row && row[index] != null ? row[index] : '')]
+        )));
+        return JSON.stringify(records, null, 2);
+    },
     protectSpreadsheetFormula(value='') {
         const text = this.normalizeCell(value);
         if(!Store.state || Store.state.spreadsheetSafe === false) return text;
@@ -2783,9 +2794,9 @@ const ClipboardFormatter = {
         return Array.from({length: width}, (_, i) => Math.max(3, ...(matrix || []).map(row => String(row[i] ?? '').length)));
     },
     toHtml(matrix, format='default', includeHeaders=true) {
-        if(format === 'lua-inline' || format === 'lua-expanded') {
-            const layout = format === 'lua-expanded' ? 'expanded' : 'inline';
-            return `<pre><code>${this.escapeHtml(this.toLua(matrix, layout))}</code></pre>`;
+        if(format === 'lua-inline' || format === 'lua-expanded' || format === 'json') {
+            const text = format === 'json' ? this.toJson(matrix) : this.toLua(matrix, format === 'lua-expanded' ? 'expanded' : 'inline');
+            return `<pre><code>${this.escapeHtml(text)}</code></pre>`;
         }
         if(!matrix || !matrix.length) return '<table></table>';
         const htmlCell = cell => this.escapeHtml(this.protectSpreadsheetFormula(cell)).replace(/\n/g, '<br>');
@@ -2795,8 +2806,8 @@ const ClipboardFormatter = {
         return `<table border="1">${header}<tbody>${rows.map(row => rowHtml(row, 'td')).join('')}</tbody></table>`;
     },
     toText(matrix, format='default', includeHeaders=true) {
-        const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        const effectiveHeaders = isLua || includeHeaders !== false;
+        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const effectiveHeaders = needsHeaders || includeHeaders !== false;
         const rows = effectiveHeaders ? matrix : (matrix || []).slice(1);
         switch(format) {
             case 'csv': return this.toDelimited(rows, ',');
@@ -2804,13 +2815,14 @@ const ClipboardFormatter = {
             case 'ascii': return this.toAscii(matrix, effectiveHeaders);
             case 'lua-inline': return this.toLua(matrix, 'inline');
             case 'lua-expanded': return this.toLua(matrix, 'expanded');
+            case 'json': return this.toJson(matrix);
             case 'default':
             default: return this.toDelimited(rows, '\t');
         }
     },
     toClipboardPayload(matrix, { format='default', includeHeaders=true } = {}) {
-        const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        const effectiveHeaders = isLua || includeHeaders !== false;
+        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const effectiveHeaders = needsHeaders || includeHeaders !== false;
         return {
             text: this.toText(matrix, format, effectiveHeaders),
             html: this.toHtml(matrix, format, effectiveHeaders),
@@ -2818,7 +2830,7 @@ const ClipboardFormatter = {
         };
     },
     label(format='default') {
-        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
+        return ({ default:'默认', csv:'CSV', markdown:'Markdown', ascii:'ASCII', json:'JSON', 'lua-inline':'Lua 单行', 'lua-expanded':'Lua 展开' })[format] || '默认';
     }
 };
 
@@ -3148,6 +3160,12 @@ function welfordVariance(w) {
 const SIGNATURES = [
     // ═══ 硬特征格式：100% 确定，不参与打分 ═══
     {
+        id: 'json',
+        label: 'JSON 表格',
+        hard: ['M_json'],
+        priority: 100,
+    },
+    {
         id: 'html-table',
         label: 'HTML 网页表格',
         hard: ['M_html'],
@@ -3306,7 +3324,7 @@ const SIGNATURES = [
             { f: 'S_emptyLineRatio',     w: 0.10, op: 'lt', v: 0.3 },
         ],
         // 任何可识别结构存在时，plain-text 都应让位
-        conflicts: ['M_html', 'M_cliTableData', 'M_dataBlock',
+        conflicts: ['M_json', 'M_html', 'M_cliTableData', 'M_dataBlock',
                      'M_mdSep', 'M_asciiBorder', 'M_alignedSep', 'M_cliBlockSep',
                      'D_tab_present', 'D_comma_present', 'D_semicolon_present',
                      'D_pipe_present', 'D_multiSpace_present'],
@@ -3325,6 +3343,7 @@ function extractFeatures(rawText) {
     const chunk = text.length > MAX_SCAN_BYTES ? text.slice(0, MAX_SCAN_BYTES) : text;
 
     const f = {
+        M_json: /^\s*(?:\{\s*(?:"|\})|\[\s*(?:\{|\[|"|-?\d|true\b|false\b|null\b|\]))/.test(chunk),
         M_html: false,
         M_cliTableData: false,
         M_dataBlock: false,
@@ -3508,6 +3527,7 @@ function normalizeFeatures(f) {
     const present = (w) => w.mean > 0.15;
 
     return {
+        M_json: f.M_json,
         M_html: f.M_html,
         M_cliTableData: f.M_cliTableData,
         M_dataBlock: f.M_dataBlock,
@@ -4189,6 +4209,74 @@ const HtmlTableParser = {
 };
 
     return { HtmlTableParser };
+});
+
+/* @module parsing/parsers/json-parser.js: JSON table parser */
+OTA.define('json-parser', ["table-utils", "header-resolver"], ({TableUtils}, {HeaderResolver}) => {
+const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
+const cellText = value => value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+
+function parseTable(values, name, options) {
+    if(!values.length) throw new Error(`JSON 表格“${name}”没有记录`);
+    if(values.every(isRecord)) {
+        const keys = [];
+        const seen = new Set();
+        values.forEach(record => Object.keys(record).forEach(key => {
+            if(!seen.has(key)) { seen.add(key); keys.push(key); }
+        }));
+        if(!keys.length) throw new Error(`JSON 表格“${name}”没有字段`);
+        return {
+            name,
+            headers:TableUtils.ensureUniqueHeaders(keys),
+            rows:values.map(record => keys.map(key => cellText(record[key]))),
+            sourceType:'json',
+            meta:{ hasHeader:true, generatedHeaders:false },
+            diagnostics:[]
+        };
+    }
+    if(values.every(Array.isArray)) {
+        const matrix = values.map(row => row.map(cellText));
+        const resolved = HeaderResolver.infer(matrix, { ...options, tableName:name });
+        if(!resolved.headers.length) throw new Error(`JSON 表格“${name}”没有列`);
+        return {
+            name,
+            headers:resolved.headers,
+            rows:resolved.rows,
+            sourceType:'json',
+            meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders, headerConfidence:resolved.headerConfidence, headerReasons:resolved.headerReasons },
+            diagnostics:resolved.diagnostics
+        };
+    }
+    throw new Error(`JSON 表格“${name}”须为对象记录数组或二维数组，且各行类型一致`);
+}
+
+const JsonTableParser = {
+    id:'json',
+    label:'JSON 表格',
+    parse(source, options={}) {
+        let value;
+        try { value = JSON.parse(source.text || ''); }
+        catch(error) { throw new Error(`JSON 格式错误：${error.message}`); }
+        const used = new Set();
+        const tables = [];
+        if(Array.isArray(value)) {
+            tables.push(parseTable(value, TableUtils.makeTableName('JSON Table 1', 0, used), options));
+        } else if(isRecord(value)) {
+            const keys = Object.keys(value);
+            if(keys.length && keys.every(key => Array.isArray(value[key]) &&
+                (!value[key].length || value[key].every(isRecord) || value[key].every(Array.isArray)))) {
+                keys.forEach((key, index) => tables.push(parseTable(value[key], TableUtils.makeTableName(key, index, used), options)));
+            } else {
+                tables.push(parseTable([value], TableUtils.makeTableName('JSON Table 1', 0, used), options));
+            }
+        } else {
+            throw new Error('JSON 表格须为对象记录数组、二维数组或含表格数组的对象');
+        }
+        return { tables, diagnostics:tables.flatMap(table => table.diagnostics) };
+    }
+};
+
+    return { JsonTableParser };
 });
 
 /* @module parsing/parsers/delimited-parsers.js: CSV, TSV, and parser factories */
@@ -4918,9 +5006,9 @@ return CliTableDataParser;
 });
 
 /* @module parsing/import-engine.js: parser selection and diagnostics */
-OTA.define('import-engine', ["table-utils","format-sniffer","html-parser","delimited-parsers","pipe-table-parser","ascii-table-parser","fixed-width-parser","cli-multi-block-parser","aligned-table-parser","plain-text-parser","cli-table-data-parser","data-block-parser"], ({TableUtils}, {FormatSniffer}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, PipeTableParser, AsciiTableParser, FixedWidthParser, CliMultiBlockParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, {DataBlockParser}) => {
+OTA.define('import-engine', ["table-utils","format-sniffer","html-parser","json-parser","delimited-parsers","pipe-table-parser","ascii-table-parser","fixed-width-parser","cli-multi-block-parser","aligned-table-parser","plain-text-parser","cli-table-data-parser","data-block-parser"], ({TableUtils}, {FormatSniffer}, {HtmlTableParser}, {JsonTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, PipeTableParser, AsciiTableParser, FixedWidthParser, CliMultiBlockParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, {DataBlockParser}) => {
 const ImportEngine = {
-    parsers: [CliTableDataParser, DataBlockParser, HtmlTableParser, CliMultiBlockParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
+    parsers: [CliTableDataParser, DataBlockParser, HtmlTableParser, JsonTableParser, CliMultiBlockParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
     parseQuality(parsed) {
         const tables = parsed && Array.isArray(parsed.tables) ? parsed.tables : [];
@@ -4963,6 +5051,15 @@ const ImportEngine = {
             if (source.html && /<table[\s>]/i.test(source.html) && /<tr[\s>]/i.test(source.html)) {
                 chosen = this.getParser('html-table');
                 if (chosen) scored = [{ parser: chosen, score: 1 }];
+            }
+
+            // JSON structure wins over a remembered delimiter format.
+            if(!chosen && !selectedType) {
+                const first = getSniff().candidates[0];
+                if(first && first.id === 'json' && first.method === 'hard') {
+                    chosen = JsonTableParser;
+                    scored = [{ parser:chosen, score:1 }];
+                }
             }
 
             // ── 1. 记忆格式优先试探 ──
@@ -5848,13 +5945,13 @@ const Select = {
         }
         return matrix;
     },
-    buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC) {
+    buildRecordClipboardMatrix(tbl, minR, maxR, minC, maxC) {
         const mode = tbl.dataset.viewMode || 'column-header';
         if(mode !== 'row-header') return this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
 
-        // Row-header previews display the original matrix transposed. For Lua,
+        // Row-header previews display the original matrix transposed. For record formats,
         // restore the selected rectangle to field headers plus record rows so
-        // each original record remains one Lua child table.
+        // each original record remains one output object/table.
         const headers = [];
         for(let r=minR; r<=maxR; r++) headers.push(this.getRowHeaderText(tbl, r));
         const matrix = [headers];
@@ -5874,9 +5971,9 @@ const Select = {
         const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
         const format = Store.state.copyFormat || 'default';
-        const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        const matrix = isLua
-            ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
+        const needsRecords = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const matrix = needsRecords
+            ? this.buildRecordClipboardMatrix(tbl, minR, maxR, minC, maxC)
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
         const payload = ClipboardFormatter.toClipboardPayload(matrix, {
             format,
@@ -7587,6 +7684,7 @@ const SourceController = {
         const name = String(fileName || '').toLowerCase();
         if (/\.csv$/.test(name)) return 'csv';
         if (/\.tsv$/.test(name)) return 'excel-paste';
+        if (/\.json$/.test(name)) return 'json';
         if (/\.html?$/.test(name)) return 'html-table';
         if (/\.(md|markdown)$/.test(name)) return 'pipe-table';
         return 'auto';
@@ -9518,23 +9616,23 @@ const App = {
         const el = $('copyHeadersToggle');
         if(!el) return;
         const format = Store.state.copyFormat || 'default';
-        const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        const includeHeaders = isLua || Store.state.copyWithHeaders !== false;
+        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const includeHeaders = needsHeaders || Store.state.copyWithHeaders !== false;
         el.checked = includeHeaders;
-        el.disabled = isLua;
+        el.disabled = needsHeaders;
         const row = el.closest ? el.closest('.copy-settings-row') : null;
         const hint = $('copyHeaderHint');
         if(row) {
-            row.classList.toggle('is-disabled', isLua);
-            row.title = isLua
-                ? 'Lua 格式使用表头作为字段名，因此始终包含表头'
+            row.classList.toggle('is-disabled', needsHeaders);
+            row.title = needsHeaders
+                ? 'JSON 和 Lua 格式使用表头作为字段名，因此始终包含表头'
                 : '复制选中区域时是否包含列名';
         }
-        if(hint) hint.textContent = isLua ? 'Lua 字段名依赖表头' : '复制选中区域时包含列名';
+        if(hint) hint.textContent = needsHeaders ? '字段名依赖表头' : '复制选中区域时包含列名';
 
         const trigger = $('copySettingsBtn');
         const dot = $('copyHeaderStateDot');
-        const customized = !isLua && !includeHeaders;
+        const customized = !needsHeaders && !includeHeaders;
         if(trigger) {
             trigger.classList.toggle('is-customized', customized);
             trigger.title = customized ? '复制设置：不含表头' : '复制设置';
@@ -9926,7 +10024,7 @@ validflag Time      Level   Message                 Code
             <span>撤销 / 重做单元格编辑</span><span><kbd>Ctrl/⌘ Z</kbd> <kbd>Ctrl/⌘ Y</kbd></span>
             <span>重命名当前页签</span><kbd>F2</kbd>
             <span>全选当前预览表</span><kbd>Ctrl/⌘ A</kbd>
-        </div><p class="muted" style="margin:16px 0 0;">支持 CSV、TSV、HTML、Markdown、ASCII、固定宽度文本与 CLI table-data。数据不会发送到网络。</p>`);
+        </div><p class="muted" style="margin:16px 0 0;">支持 JSON、CSV、TSV、HTML、Markdown、ASCII、固定宽度文本与 CLI table-data。数据不会发送到网络。</p>`);
     },
 
     run(render=true) {

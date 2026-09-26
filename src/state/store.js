@@ -5,7 +5,7 @@ const WORKSPACE_SCHEMA_VERSION = 20;
 const STORE_KEY = 'ota_v20_workspace';
 const LEGACY_STORE_KEYS = ['v16_4_store'];
 const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
-const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'lua-inline', 'lua-expanded']);
+const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'json', 'lua-inline', 'lua-expanded']);
 
 const MIGRATIONS = Object.freeze({
     0(payload) {

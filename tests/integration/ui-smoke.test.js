@@ -175,7 +175,7 @@ describe('App bootstrap', () => {
   });
 });
 
-describe('Selection.buildLuaClipboardMatrix', () => {
+describe('Selection.buildRecordClipboardMatrix', () => {
   it('restores original record orientation for row-header mode', () => {
     setupDOM();
     const { Select } = OTA.require('selection');
@@ -201,12 +201,50 @@ describe('Selection.buildLuaClipboardMatrix', () => {
       },
     };
 
-    const restored = Select.buildLuaClipboardMatrix(fakeTable, 0, 1, 0, 1);
+    const restored = Select.buildRecordClipboardMatrix(fakeTable, 0, 1, 0, 1);
     assert.equal(JSON.stringify(restored), JSON.stringify([['fieldA', 'fieldB'], ['1', '3'], ['2', '4']]));
   });
 });
 
 describe('Selection.copy', () => {
+  it('copies row-header selections as JSON records', () => {
+    setupDOM();
+    const { Select } = OTA.require('selection');
+    const { Store } = OTA.require('store');
+    Store.state.copyFormat = 'json';
+    Store.state.copyWithHeaders = false;
+    const values = { '0:0':'001', '0:1':'002', '1:0':'Alice', '1:1':'Bob' };
+    const fakeTable = {
+      dataset: { viewMode:'row-header' },
+      querySelectorAll(selector) {
+        if(selector === 'tbody tr') return ['id', 'name'].map(name => ({
+          querySelector() { return { textContent:name }; },
+        }));
+        return [];
+      },
+      querySelector(selector) {
+        const match = /data-vr="(\d+)"\]\[data-vc="(\d+)"/.exec(selector);
+        return match && values[`${match[1]}:${match[2]}`] !== undefined
+          ? { textContent:values[`${match[1]}:${match[2]}`] } : null;
+      },
+    };
+    const originalQuery = document.querySelector;
+    document.querySelector = selector => selector === 'table[data-idx="0"]' ? fakeTable : null;
+    Select.start = { idx:0, r:0, c:0 };
+    Select.end = { idx:0, r:1, c:1 };
+    const copied = {};
+    try {
+      Select.copy({ clipboardData:{ setData(type, value) { copied[type] = value; } } });
+    } finally {
+      document.querySelector = originalQuery;
+      Select.clear();
+    }
+    assert.deepEqual(JSON.parse(copied['text/plain']), [
+      { id:'001', name:'Alice' }, { id:'002', name:'Bob' },
+    ]);
+    assert.ok(copied['text/html'].startsWith('<pre><code>'));
+  });
+
   it('omits the header when the copy preference is disabled', () => {
     setupDOM();
     const { Select } = OTA.require('selection');

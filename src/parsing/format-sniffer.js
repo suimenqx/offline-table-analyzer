@@ -31,6 +31,12 @@ function welfordVariance(w) {
 const SIGNATURES = [
     // ═══ 硬特征格式：100% 确定，不参与打分 ═══
     {
+        id: 'json',
+        label: 'JSON 表格',
+        hard: ['M_json'],
+        priority: 100,
+    },
+    {
         id: 'html-table',
         label: 'HTML 网页表格',
         hard: ['M_html'],
@@ -189,7 +195,7 @@ const SIGNATURES = [
             { f: 'S_emptyLineRatio',     w: 0.10, op: 'lt', v: 0.3 },
         ],
         // 任何可识别结构存在时，plain-text 都应让位
-        conflicts: ['M_html', 'M_cliTableData', 'M_dataBlock',
+        conflicts: ['M_json', 'M_html', 'M_cliTableData', 'M_dataBlock',
                      'M_mdSep', 'M_asciiBorder', 'M_alignedSep', 'M_cliBlockSep',
                      'D_tab_present', 'D_comma_present', 'D_semicolon_present',
                      'D_pipe_present', 'D_multiSpace_present'],
@@ -208,6 +214,7 @@ function extractFeatures(rawText) {
     const chunk = text.length > MAX_SCAN_BYTES ? text.slice(0, MAX_SCAN_BYTES) : text;
 
     const f = {
+        M_json: /^\s*(?:\{\s*(?:"|\})|\[\s*(?:\{|\[|"|-?\d|true\b|false\b|null\b|\]))/.test(chunk),
         M_html: false,
         M_cliTableData: false,
         M_dataBlock: false,
@@ -391,6 +398,7 @@ function normalizeFeatures(f) {
     const present = (w) => w.mean > 0.15;
 
     return {
+        M_json: f.M_json,
         M_html: f.M_html,
         M_cliTableData: f.M_cliTableData,
         M_dataBlock: f.M_dataBlock,

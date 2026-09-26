@@ -18,6 +18,43 @@ const { Joiner } = OTA.require('joiner');
 const parse = (input, opts = {}) => ImportEngine.parse(input, opts);
 const firstTable = (r) => r.tables[0];
 
+describe('JSON table parser', () => {
+  it('auto-detects object records and preserves fields across rows', () => {
+    const r = parse('[{"id":1,"name":"Alice","note":"<script>x</script>"},{"id":2,"active":true,"nested":{"a":1}}]', { lastSuccessfulFormat:'csv' });
+    assert.equal(r.format, 'json');
+    assert.deepEqual(firstTable(r).headers, ['id', 'name', 'note', 'active', 'nested']);
+    assert.deepEqual(firstTable(r).rows, [
+      ['1', 'Alice', '<script>x</script>', '', ''],
+      ['2', '', '', 'true', '{"a":1}'],
+    ]);
+  });
+
+  it('parses a JSON matrix with a selected header mode', () => {
+    const r = parse('[["id","name"],[1,"Alice"],[2,"Bob"]]', { format:'json', headerMode:'first-row' });
+    assert.deepEqual(firstTable(r).headers, ['id', 'name']);
+    assert.deepEqual(firstTable(r).rows, [['1', 'Alice'], ['2', 'Bob']]);
+  });
+
+  it('parses named table arrays from a JSON object', () => {
+    const r = parse('{"Users":[{"id":1}],"Orders":[{"id":2}]}');
+    assert.equal(r.format, 'json');
+    assert.deepEqual(r.tables.map(table => table.name), ['Users', 'Orders']);
+    assert.deepEqual(r.tables[1].rows, [['2']]);
+  });
+
+  it('keeps a single record with array-valued fields as one row', () => {
+    const r = parse('{"tags":["a","b"],"flags":[true,false]}');
+    assert.equal(r.format, 'json');
+    assert.deepEqual(firstTable(r).headers, ['tags', 'flags']);
+    assert.deepEqual(firstTable(r).rows, [['["a","b"]', '[true,false]']]);
+  });
+
+  it('returns visible errors for malformed or non-tabular JSON', () => {
+    assert.throws(() => parse('[{"id":1}', { format:'json' }), /JSON/);
+    assert.throws(() => parse('[1,2,3]', { format:'json' }), /JSON/);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // CSV
 // ---------------------------------------------------------------------------

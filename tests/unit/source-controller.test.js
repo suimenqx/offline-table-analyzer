@@ -69,9 +69,12 @@ describe('SourceController.detectFormat', () => {
     assert.equal(SourceController.detectFormat('data.markdown'), 'pipe-table');
   });
 
+  it('detects JSON', () => {
+    assert.equal(SourceController.detectFormat('data.json'), 'json');
+  });
+
   it('returns auto for unknown extensions', () => {
     assert.equal(SourceController.detectFormat('data.txt'), 'auto');
-    assert.equal(SourceController.detectFormat('data.json'), 'auto');
     assert.equal(SourceController.detectFormat(''), 'auto');
   });
 

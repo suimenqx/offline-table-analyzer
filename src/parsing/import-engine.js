@@ -1,6 +1,6 @@
-OTA.define('import-engine', ["table-utils","format-sniffer","html-parser","delimited-parsers","pipe-table-parser","ascii-table-parser","fixed-width-parser","cli-multi-block-parser","aligned-table-parser","plain-text-parser","cli-table-data-parser","data-block-parser"], ({TableUtils}, {FormatSniffer}, {HtmlTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, PipeTableParser, AsciiTableParser, FixedWidthParser, CliMultiBlockParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, {DataBlockParser}) => {
+OTA.define('import-engine', ["table-utils","format-sniffer","html-parser","json-parser","delimited-parsers","pipe-table-parser","ascii-table-parser","fixed-width-parser","cli-multi-block-parser","aligned-table-parser","plain-text-parser","cli-table-data-parser","data-block-parser"], ({TableUtils}, {FormatSniffer}, {HtmlTableParser}, {JsonTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, PipeTableParser, AsciiTableParser, FixedWidthParser, CliMultiBlockParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, {DataBlockParser}) => {
 const ImportEngine = {
-    parsers: [CliTableDataParser, DataBlockParser, HtmlTableParser, CliMultiBlockParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
+    parsers: [CliTableDataParser, DataBlockParser, HtmlTableParser, JsonTableParser, CliMultiBlockParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
     parseQuality(parsed) {
         const tables = parsed && Array.isArray(parsed.tables) ? parsed.tables : [];
@@ -43,6 +43,15 @@ const ImportEngine = {
             if (source.html && /<table[\s>]/i.test(source.html) && /<tr[\s>]/i.test(source.html)) {
                 chosen = this.getParser('html-table');
                 if (chosen) scored = [{ parser: chosen, score: 1 }];
+            }
+
+            // JSON structure wins over a remembered delimiter format.
+            if(!chosen && !selectedType) {
+                const first = getSniff().candidates[0];
+                if(first && first.id === 'json' && first.method === 'hard') {
+                    chosen = JsonTableParser;
+                    scored = [{ parser:chosen, score:1 }];
+                }
             }
 
             // ── 1. 记忆格式优先试探 ──

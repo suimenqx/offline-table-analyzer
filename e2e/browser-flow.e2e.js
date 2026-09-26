@@ -80,3 +80,24 @@ test('paste, parse, filter, join, copy, and export the offline release', async (
   expect(joinedSheet.data.slice(1)).toEqual([[5001, 'shipped', 'Widget_A']]);
   expect(unexpectedRequests).toEqual([]);
 });
+
+test('parse JSON records and copy the selected table as JSON', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin:'http://127.0.0.1:4173' });
+  await page.goto('/index.html');
+  await page.locator('#autoParseToggle').uncheck();
+  await page.locator('#rawInput').fill('[{"id":"001","name":"Alice"},{"id":"002","name":"Bob"}]');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#parseStatusText')).toContainText('JSON 表格');
+  await expect(page.locator('#previewArea')).toContainText('Alice');
+
+  await page.locator('#copySettingsBtn').click();
+  await page.locator('#copyFormatSelect').selectOption('json');
+  await page.locator('#copySettingsCloseBtn').click();
+  await page.locator('#previewArea tbody td').first().click();
+  await page.keyboard.press('Control+A');
+  await page.keyboard.press('Control+C');
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  expect(JSON.parse(copied)).toEqual([
+    { id:'001', name:'Alice' }, { id:'002', name:'Bob' },
+  ]);
+});

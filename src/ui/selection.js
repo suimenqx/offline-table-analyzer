@@ -164,13 +164,13 @@ const Select = {
         }
         return matrix;
     },
-    buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC) {
+    buildRecordClipboardMatrix(tbl, minR, maxR, minC, maxC) {
         const mode = tbl.dataset.viewMode || 'column-header';
         if(mode !== 'row-header') return this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
 
-        // Row-header previews display the original matrix transposed. For Lua,
+        // Row-header previews display the original matrix transposed. For record formats,
         // restore the selected rectangle to field headers plus record rows so
-        // each original record remains one Lua child table.
+        // each original record remains one output object/table.
         const headers = [];
         for(let r=minR; r<=maxR; r++) headers.push(this.getRowHeaderText(tbl, r));
         const matrix = [headers];
@@ -190,9 +190,9 @@ const Select = {
         const minR=Math.min(this.start.r,this.end.r), maxR=Math.max(this.start.r,this.end.r);
         const minC=Math.min(this.start.c,this.end.c), maxC=Math.max(this.start.c,this.end.c);
         const format = Store.state.copyFormat || 'default';
-        const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        const matrix = isLua
-            ? this.buildLuaClipboardMatrix(tbl, minR, maxR, minC, maxC)
+        const needsRecords = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const matrix = needsRecords
+            ? this.buildRecordClipboardMatrix(tbl, minR, maxR, minC, maxC)
             : this.buildClipboardMatrix(tbl, minR, maxR, minC, maxC);
         const payload = ClipboardFormatter.toClipboardPayload(matrix, {
             format,

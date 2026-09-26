@@ -31,7 +31,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | Module | Responsibility |
 | --- | --- |
 | `Exporter` | Browser downloads and dependency-free XLSX ZIP/XML generation |
-| `ClipboardFormatter` | Paired text/HTML clipboard serialization with shared header policy, format-specific rendering, and spreadsheet formula-prefix protection |
+| `ClipboardFormatter` | Paired text/HTML clipboard serialization with shared header policy, format-specific rendering (including JSON records), and spreadsheet formula-prefix protection |
 
 ### Parsing (`src/parsing/`)
 
@@ -42,7 +42,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `FormatSniffer` | Statistical fingerprint-based single-pass format detection |
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
 | `parser-helpers` | Shared utilities for text/aligned/CLI parsers |
-| Parser adapters (`src/parsing/parsers/`) | 12 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
+| Parser adapters (`src/parsing/parsers/`) | 13 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `JsonTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
 | `ImportEngine` | Manual/automatic adapter selection, explicit last-successful-format preference, candidates, normalized result and diagnostics |
 | `legacy-facade` | Historical backward-compatible `Parser` entry point that returns structured errors without UI feedback |
 
@@ -82,7 +82,7 @@ activeId
 theme
 globalViews[]
 nextAnalysisSeq
-copyFormat (`default`/`csv`/`markdown`/`ascii`/`lua-inline`/`lua-expanded`)
+copyFormat (`default`/`csv`/`markdown`/`ascii`/`json`/`lua-inline`/`lua-expanded`)
 spreadsheetSafe
 persistRaw
 lastSavedAt
@@ -144,6 +144,8 @@ diagnostics[]
 
 All downstream operations consume this shape regardless of the original source format.
 
+`JsonTableParser` accepts arrays of objects, two-dimensional arrays, a single object record, or an object whose values are table arrays. Object keys become headers in first-seen order; nested values become compact JSON cell text. JSON clipboard output is an array of objects built from the selected headers and record rows. Cell values remain strings to preserve the normalized table contract and string identifiers such as `"001"`. JSON and Lua copy restore transposed selections to record orientation and always include selected headers as field names. The existing `copyFormat` preference stores `json`; schema 20 and the migration chain remain unchanged.
+
 ### Command, revision, and rendering contract
 
 `Store` is the only owner of persistent workspace state. UI controllers read through
@@ -204,7 +206,7 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 - Workspace import: `kind` must be `'ota-workspace'` or `'table-tool-tabs'`, depth limit 12 levels, max 100 docs, max 2000 keys per object, prototype poison keys (`__proto__`, `prototype`, `constructor`) rejected. Config import: `kind` must be `'table-tool-config'`, file size capped at 5 MB.
 - Table/view names that map to JavaScript prototype keys are rejected or replaced.
 - JOIN compound keys use typed JSON tuples.
-- Clipboard TSV/CSV/Markdown/ASCII payloads prefix common spreadsheet-formula starters by default; Lua payloads serialize values as Lua literals and never apply that prefix.
+- Clipboard TSV/CSV/Markdown/ASCII payloads prefix common spreadsheet-formula starters by default; JSON and Lua code payloads keep exact cell text and never apply that prefix.
 - Release validation rejects external scripts/styles and network API references.
 
 ## 7. Performance model

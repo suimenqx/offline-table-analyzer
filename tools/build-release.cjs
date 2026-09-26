@@ -35,6 +35,7 @@ const MODULES = [
 
   // ── Format-specific parsers ──
   ['parsing/parsers/html-parser.js',              'HTML clipboard parser'],
+  ['parsing/parsers/json-parser.js',              'JSON table parser'],
   ['parsing/parsers/delimited-parsers.js',        'CSV, TSV, and parser factories'],
   ['parsing/parsers/data-block-parser.js',        'data-block structured text parser'],
   ['parsing/parsers/pipe-table-parser.js',        'pipe/Markdown table parser'],

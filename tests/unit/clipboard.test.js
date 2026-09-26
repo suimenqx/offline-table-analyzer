@@ -40,6 +40,21 @@ describe('ClipboardFormatter.toClipboardPayload', () => {
     assert.ok(payload.text.includes('["fieldA"] = "value"'));
     assert.ok(payload.html.includes('[&quot;fieldA&quot;] = &quot;value&quot;'));
   });
+
+  it('copies JSON records with headers, safe property names, and escaped code HTML', () => {
+    const payload = F.toClipboardPayload([['__proto__', 'id', 'value'], ['safe', '0012', '=CMD()']], {
+      format: 'json', includeHeaders: false,
+    });
+    assert.equal(payload.includeHeaders, true);
+    const records = JSON.parse(payload.text);
+    assert.deepEqual(Object.keys(records[0]), ['__proto__', 'id', 'value']);
+    assert.equal(records[0].__proto__, 'safe');
+    assert.equal(records[0].id, '0012');
+    assert.equal(records[0].value, '=CMD()');
+    assert.equal(Object.hasOwn(records[0], '__proto__'), true);
+    assert.ok(payload.html.startsWith('<pre><code>'));
+    assert.ok(payload.html.includes('&quot;=CMD()&quot;'));
+  });
 });
 
 // ---------------------------------------------------------------------------

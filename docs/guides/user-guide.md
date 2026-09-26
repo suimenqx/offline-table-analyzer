@@ -6,9 +6,9 @@
 
 | Method | How |
 | --- | --- |
-| **Paste** | Paste text directly into the left-panel source editor. The editor accepts CSV, TSV, HTML tables, Markdown/pipe tables, ASCII tables, fixed-width and aligned fixed-width tables, CLI `table-data` blocks, CLI multi-block tables, Data-Block `data <table> [...]` blocks, and plain whitespace-delimited text. |
+| **Paste** | Paste text directly into the left-panel source editor. The editor accepts JSON table data, CSV, TSV, HTML tables, Markdown/pipe tables, ASCII tables, fixed-width and aligned fixed-width tables, CLI `table-data` blocks, CLI multi-block tables, Data-Block `data <table> [...]` blocks, and plain whitespace-delimited text. |
 | **Drag file** | Drag a supported text file onto the editor area. A visible drop zone highlight confirms detection. |
-| **Select file** | Click **Select file** (or press `Ctrl/Cmd+O`) and choose a file. Accepted extensions: `.csv`, `.tsv`, `.txt`, `.log`, `.md`, `.markdown`, `.html`, `.htm`. |
+| **Select file** | Click **Select file** (or press `Ctrl/Cmd+O`) and choose a file. Accepted extensions: `.csv`, `.tsv`, `.json`, `.txt`, `.log`, `.md`, `.markdown`, `.html`, `.htm`. |
 
 Files larger than **25 MB** are rejected with a safety message.
 
@@ -20,6 +20,7 @@ When a file is opened by drag or click, the extension is used to pre-populate th
 | --- | --- |
 | `.csv` | CSV |
 | `.tsv` | Excel/TSV |
+| `.json` | JSON table |
 | `.html`, `.htm` | HTML table |
 | `.md`, `.markdown` | Markdown/Pipe table |
 | Anything else | Auto detect |
@@ -28,25 +29,30 @@ If the auto-detected format was already set to "Auto detect", the selector is up
 
 ### 1.3 Format selection
 
-The **Format** dropdown includes thirteen options:
+The **Format** dropdown includes fourteen options:
 
 1. **Auto detect** — runs all parsers and picks the highest-confidence match (recommended).
 2. **CLI table-data** — multi-table blocks with `table-data <name>` headers and `validflag` rows.
 3. **Data-Block** — named tables using `data <table> [...]`, with one output table per block.
 4. **CLI multi-block** — repeated aligned CLI blocks with independent table names.
 5. **CSV** — comma-delimited, with quoted-field support.
-6. **Excel/TSV** — tab-delimited data (e.g., copy-paste from spreadsheet apps).
-7. **Semicolon CSV** — semicolon-delimited (common in some European locales).
-8. **HTML table** — extracts `<table>` elements from HTML markup.
-9. **Markdown/Pipe table** — GitHub-flavored pipe tables with optional alignment separators.
-10. **ASCII table** — box-drawn tables using `+`, `-`, and `|` characters.
-11. **Fixed width** — columns inferred from repeated spacing patterns.
-12. **Aligned fixed width** — delimiter-free aligned output whose column positions are inferred from the header row.
-13. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
+6. **JSON table** — arrays of records, two-dimensional arrays, a single object record, or a top-level object containing named table arrays.
+7. **Excel/TSV** — tab-delimited data (e.g., copy-paste from spreadsheet apps).
+8. **Semicolon CSV** — semicolon-delimited (common in some European locales).
+9. **HTML table** — extracts `<table>` elements from HTML markup.
+10. **Markdown/Pipe table** — GitHub-flavored pipe tables with optional alignment separators.
+11. **ASCII table** — box-drawn tables using `+`, `-`, and `|` characters.
+12. **Fixed width** — columns inferred from repeated spacing patterns.
+13. **Aligned fixed width** — delimiter-free aligned output whose column positions are inferred from the header row.
+14. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
 
 **When auto-detection is wrong:** Open the **Details** panel (beside the parse status indicator). It lists format candidates with confidence scores (e.g., "Excel/TSV — 87%"). Click any candidate to switch format and re-parse immediately.
 
 CLI `table-data` mode additionally auto-detects each data block's internal format (TSV, CSV, pipe, or fixed-width) based on the content of the `validflag` header row.
+
+JSON object fields become columns in first-seen order; missing fields become empty cells. Nested arrays and objects appear as compact JSON text inside one cell. Two-dimensional arrays use the selected header mode. Invalid JSON and non-tabular arrays show a parse error.
+
+Keep identifiers with leading zeros or more than 15 digits as JSON strings; JSON numbers follow JavaScript numeric precision.
 
 ### 1.4 Aligned fixed-width tables
 
@@ -377,6 +383,7 @@ Choose the clipboard text format from the dropdown in the top toolbar:
 | **ASCII** | Box-drawn table with `+`, `-`, and `|`. |
 | **Lua inline** | A Lua table with one record per line. Field expressions are aligned by column when values have different widths. |
 | **Lua expanded** | A Lua table with one record per child table and one field per line, using four-space indentation. |
+| **JSON** | An array of objects, one object per selected record. Selected column names become keys and cell values remain strings. |
 
 Lua adds no separate configuration panel or export dialog. The current selection alone determines which fields and records are copied, and the selected copy format is saved as the existing global copy preference.
 
@@ -384,10 +391,10 @@ Lua adds no separate configuration panel or export dialog. The current selection
 
 Copy writes **both** plain text and HTML to the clipboard:
 
-- **Plain text** uses the selected format (TSV/CSV/Markdown/ASCII/Lua).
-- **HTML** remains a complete `<table>` element for TSV/CSV/Markdown/ASCII. Lua uses `<pre><code>` with HTML-escaped Lua text so rich-text editors preserve code indentation instead of rendering a data table.
+- **Plain text** uses the selected format (TSV/CSV/Markdown/ASCII/JSON/Lua).
+- **HTML** remains a complete `<table>` element for TSV/CSV/Markdown/ASCII. JSON and Lua use `<pre><code>` with HTML-escaped text so rich-text editors preserve code formatting.
 
-The selected rectangle determines both the copied rows and columns. In **Column header** mode, the selected column headers become Lua field names and each selected data row becomes one child table. Existing text formats include the synthetic "字段" (Field) header column in **Row header** mode; Lua instead restores the selected transposed rectangle to the same field-header-plus-record-row structure as Column header mode, without exporting that synthetic column.
+The selected rectangle determines both the copied rows and columns. In **Column header** mode, the selected column headers become JSON/Lua field names and each selected data row becomes one record. Existing text formats include the synthetic "字段" (Field) header column in **Row header** mode; JSON and Lua instead restore the selected transposed rectangle to the same field-header-plus-record-row structure as Column header mode, without exporting that synthetic column. JSON and Lua always include selected headers because they provide field names.
 
 Lua does not treat `validflag` specially: it is copied whenever it is inside the selected rectangle and omitted when it is outside it. Record indexes always start at `[1]` and increase in selected row order; original source row numbers are not used.
 
@@ -438,7 +445,7 @@ When enabled (default), cells that start with potentially executable spreadsheet
 | `-` followed by non-numeric | Yes |
 | `-` followed by a number (e.g., `-42`) | No — treated as a negative number |
 
-This prevents pasted data from being interpreted as formulas in Excel, Google Sheets, and similar tools. Disable formula protection in **Config → Export options** when you need exact formula text and trust the destination. Lua formats never apply this spreadsheet prefix: a cell such as `=value` becomes the Lua string `"=value"` regardless of the toggle.
+This prevents pasted data from being interpreted as formulas in Excel, Google Sheets, and similar tools. Disable formula protection in **Config → Export options** when you need exact formula text and trust the destination. JSON and Lua formats never apply this spreadsheet prefix: a cell such as `=value` remains a JSON or Lua string regardless of the toggle.
 
 ---
 
@@ -483,7 +490,7 @@ Toggle in the sidebar Data tab. When **enabled** (default), all source text is p
 
 ### 14.2 Spreadsheet formula protection
 
-Toggle in Config → Export options. Controls whether a leading apostrophe is added to dangerous formula-starting cells when copying spreadsheet-oriented text formats (see §12.5). It does not affect Lua formats or the Excel export.
+Toggle in Config → Export options. Controls whether a leading apostrophe is added to dangerous formula-starting cells when copying spreadsheet-oriented text formats (see §12.5). It does not affect JSON/Lua formats or the Excel export.
 
 ### 14.3 Clear local data
 

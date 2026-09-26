@@ -91,6 +91,7 @@ App orchestrator → bootstrap
 | `parsing/parsers/` | `html-parser.js` | HTML 表格及跨度展开 | `HtmlTableParser` |
 | | `delimited-parsers.js` | CSV、分号 CSV、TSV | `CsvParser`, `SemicolonCsvParser`, `ExcelPasteParser` |
 | | `data-block-parser.js` | data-block 多表块解析 | `DataBlockParser` |
+| | `json-parser.js` | JSON 对象记录、二维数组及命名多表解析 | `JsonTableParser` |
 | | `pipe-table-parser.js` | Markdown/竖线表格 | `PipeTableParser` |
 | | `ascii-table-parser.js` | ASCII/终端表格 | `AsciiTableParser` |
 | | `fixed-width-parser.js` | 固定宽度表格 | `FixedWidthParser` |

@@ -434,23 +434,23 @@ const App = {
         const el = $('copyHeadersToggle');
         if(!el) return;
         const format = Store.state.copyFormat || 'default';
-        const isLua = format === 'lua-inline' || format === 'lua-expanded';
-        const includeHeaders = isLua || Store.state.copyWithHeaders !== false;
+        const needsHeaders = format === 'json' || format === 'lua-inline' || format === 'lua-expanded';
+        const includeHeaders = needsHeaders || Store.state.copyWithHeaders !== false;
         el.checked = includeHeaders;
-        el.disabled = isLua;
+        el.disabled = needsHeaders;
         const row = el.closest ? el.closest('.copy-settings-row') : null;
         const hint = $('copyHeaderHint');
         if(row) {
-            row.classList.toggle('is-disabled', isLua);
-            row.title = isLua
-                ? 'Lua 格式使用表头作为字段名，因此始终包含表头'
+            row.classList.toggle('is-disabled', needsHeaders);
+            row.title = needsHeaders
+                ? 'JSON 和 Lua 格式使用表头作为字段名，因此始终包含表头'
                 : '复制选中区域时是否包含列名';
         }
-        if(hint) hint.textContent = isLua ? 'Lua 字段名依赖表头' : '复制选中区域时包含列名';
+        if(hint) hint.textContent = needsHeaders ? '字段名依赖表头' : '复制选中区域时包含列名';
 
         const trigger = $('copySettingsBtn');
         const dot = $('copyHeaderStateDot');
-        const customized = !isLua && !includeHeaders;
+        const customized = !needsHeaders && !includeHeaders;
         if(trigger) {
             trigger.classList.toggle('is-customized', customized);
             trigger.title = customized ? '复制设置：不含表头' : '复制设置';
@@ -854,7 +854,7 @@ validflag Time      Level   Message                 Code
             <span>撤销 / 重做单元格编辑</span><span><kbd>Ctrl/⌘ Z</kbd> <kbd>Ctrl/⌘ Y</kbd></span>
             <span>重命名当前页签</span><kbd>F2</kbd>
             <span>全选当前预览表</span><kbd>Ctrl/⌘ A</kbd>
-        </div><p class="muted" style="margin:16px 0 0;">支持 CSV、TSV、HTML、Markdown、ASCII、固定宽度文本与 CLI table-data。数据不会发送到网络。</p>`);
+        </div><p class="muted" style="margin:16px 0 0;">支持 JSON、CSV、TSV、HTML、Markdown、ASCII、固定宽度文本与 CLI table-data。数据不会发送到网络。</p>`);
     },
 
     run(render=true) {
