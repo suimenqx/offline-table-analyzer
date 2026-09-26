@@ -131,7 +131,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 - **性能**：25 MB 输入能被拒绝或有明确反馈；预览渲染受分页约束；重复解析不应产生无界 DOM。
 - **兼容性**：支持最新两版 Chrome、Edge、Firefox，以及最新 Safari 桌面版；Node 校验环境为 20+。
 - **可维护性**：业务职责按模块分离，模块依赖方向明确，发布产物由确定性构建生成。
-- **可测试性**：领域逻辑可在无真实浏览器环境运行；UI 合同可静态验证；关键流程有浏览器回归测试扩展点。
+- **可测试性**：领域逻辑可在无真实浏览器环境运行；UI 合同可静态验证；关键流程由 Chromium 浏览器回归测试覆盖。
 - **可回退性**：每个迁移阶段可单独提交、验证和回退；生成的 `index.html` 不作为手工编辑源。
 
 ## 5. 稳定数据契约
@@ -179,7 +179,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 | 状态单元 | 默认状态、迁移、去重、临时数据、配额失败、撤销/重做 | Node + VM 隔离存储测试 |
 | 模块集成 | ImportEngine → normalized table、Store → App、Joiner → Preview、Exporter | 公开契约测试和构建后脚本测试 |
 | UI 合同 | 关键 ID、ARIA、快捷键、回归方法、离线约束 | 静态契约 + JS 语法校验 |
-| 浏览器回归 | 粘贴 → 解析 → 筛选 → JOIN → 复制 → 导出、移动端、主题、文件导入 | CI 可选 headless 浏览器矩阵 |
+| 浏览器回归 | 粘贴 → 解析 → 筛选 → JOIN → 复制 → XLSX 导出及读回 | CI 中的 Chromium E2E；Safari 等跨浏览器行为另行验证 |
 | 发布 | 单 HTML、无外链、版本一致、构建可重复 | `npm run validate:release` |
 
 ## 7. 完成定义
@@ -188,7 +188,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 
 - 需求/架构决策已经记录，变更范围和回退方式明确。
 - 新旧行为契约测试均通过，新增代码有对应测试或静态验收说明。
-- `npm test`、`npm run validate:release` 和 `npm run build:release` 全部通过。
+- `npm test`、`npm run validate:release` 和 `npm run validate:architecture` 全部通过；浏览器流程变更还需在受支持的平台或 CI 运行 Chromium E2E。
 - 生成的 `index.html` 可在无服务器环境直接打开，且无外部资源。
 - 没有把测试 hook、调试数据或原始用户数据带入生产发布。
 - 工作区状态干净，提交粒度足以单独回退。
