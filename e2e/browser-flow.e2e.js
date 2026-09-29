@@ -118,11 +118,14 @@ test('parse a copied JSON fragment and show recovery diagnostics', async ({ page
   await page.locator('#rawInput').fill('"name":"cut"},\n{id: 1, name: \'Alice\'},\n{id: 2, name:');
   await page.locator('#parseBtn').click();
   await expect(page.locator('#parseStatusText')).toContainText('JSON 表格');
-  await expect(page.locator('#parseStatusText')).toContainText('1 行');
+  await expect(page.locator('#parseStatusText')).toContainText('2 行');
   await expect(page.locator('#previewArea')).toContainText('Alice');
+  await expect(page.locator('#previewArea tbody tr')).toHaveCount(2);
+  await expect(page.locator('#previewArea tbody tr').last().locator('td').first()).toHaveText('2');
   await expect(page.locator('#previewArea')).not.toContainText('cut');
   await page.locator('#diagnosticsBtn').click();
   await expect(page.locator('#modalOverlay')).toContainText('JSON_FRAGMENT_RECOVERED');
+  await expect(page.locator('#modalOverlay')).toContainText('JSON_PARTIAL_RECORD');
 });
 
 test('recognize a data block after JSON and keep marker text inside CSV cells', async ({ page }) => {

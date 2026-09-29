@@ -70,20 +70,63 @@ describe('JSON table parser', () => {
   it('recovers complete records from a fragment cut through neighboring records', () => {
     const r = parse('"name":"cut"},\n{"id":1,"name":"Alice"},\n{"id":2,"name":', { format:'json' });
     assert.deepEqual(firstTable(r).headers, ['id', 'name']);
-    assert.deepEqual(firstTable(r).rows, [['1', 'Alice']]);
+    assert.deepEqual(firstTable(r).rows, [['1', 'Alice'], ['2', '']]);
     assert.ok(r.diagnostics.some(d => d.code === 'JSON_FRAGMENT_RECOVERED'));
     const tail = parse('[{"id":1,"name":"Alice"},{"id":2,"name":', { format:'json' });
-    assert.deepEqual(firstTable(tail).rows, [['1', 'Alice']]);
+    assert.deepEqual(firstTable(tail).rows, [['1', 'Alice'], ['2', '']]);
     assert.ok(tail.diagnostics.some(d => d.code === 'JSON_FRAGMENT_RECOVERED'));
     const midString = parse('lice"}, {"id":3,"name":"Carol"}', { format:'json' });
     assert.deepEqual(firstTable(midString).rows, [['3', 'Carol']]);
     assert.ok(midString.diagnostics.some(d => d.code === 'JSON_FRAGMENT_RECOVERED'));
   });
 
+  it('keeps confirmed fields from a row cut inside a string or number', () => {
+    for(const source of ['[{"id":1,"name":"Ali', '[{"id":1,"value":1e', '[{"id":1,/* cut']) {
+      const r = parse(source, { format:'json' });
+      assert.deepEqual(firstTable(r).headers, ['id']);
+      assert.deepEqual(firstTable(r).rows, [['1']]);
+      assert.ok(r.diagnostics.some(d => d.code === 'JSON_PARTIAL_RECORD'));
+    }
+  });
+
+  it('keeps a partial final row beside complete records without inventing its value', () => {
+    const r = parse('[{"id":1,"name":"Alice"},{"id":2,"name":"Bo', { format:'json' });
+    assert.deepEqual(firstTable(r).headers, ['id', 'name']);
+    assert.deepEqual(firstTable(r).rows, [['1', 'Alice'], ['2', '']]);
+    assert.ok(r.diagnostics.some(d => d.code === 'JSON_PARTIAL_RECORD'));
+    const automatic = parse('[{"id":1},{"id":2,"name":"Bo', { lastSuccessfulFormat:'csv' });
+    assert.equal(automatic.format, 'json');
+    assert.deepEqual(firstTable(automatic).rows, [['1'], ['2']]);
+    assert.ok(automatic.diagnostics.some(d => d.code === 'JSON_PARTIAL_RECORD'));
+  });
+
+  it('marks a cut record with array-valued fields as partial', () => {
+    const r = parse('{"id":1,"tags":["one","tw', { format:'json' });
+    assert.deepEqual(firstTable(r).headers, ['id']);
+    assert.deepEqual(firstTable(r).rows, [['1']]);
+    assert.ok(r.diagnostics.some(d => d.code === 'JSON_PARTIAL_RECORD'));
+    const nested = parse('{"id":1,"details":{"status":"ope', { format:'json' });
+    assert.deepEqual(firstTable(nested).rows, [['1']]);
+    assert.ok(nested.diagnostics.some(d => d.code === 'JSON_PARTIAL_RECORD'));
+  });
+
+  it('retains a partial record in a named table array', () => {
+    const r = parse('{"Users":[{"id":1},{"id":2,"name":"Bo', { format:'json' });
+    assert.equal(firstTable(r).name, 'Users');
+    assert.deepEqual(firstTable(r).rows, [['1'], ['2']]);
+    assert.ok(r.diagnostics.some(d => d.code === 'JSON_PARTIAL_RECORD'));
+    const copied = parse('"cut"}, {"Users":[{"id":2,"name":"Bo', { format:'json' });
+    assert.equal(firstTable(copied).name, 'Users');
+    assert.deepEqual(firstTable(copied).rows, [['2']]);
+  });
+
   it('parses a copied object body and warns when an outer collection is cut off', () => {
     const fields = parse("id: '001', name: 'Alice'", { lastSuccessfulFormat:'csv' });
     assert.equal(fields.format, 'json');
     assert.deepEqual(firstTable(fields).rows, [['001', 'Alice']]);
+    const cutField = parse('id: 1, name:', { format:'json' });
+    assert.deepEqual(firstTable(cutField).rows, [['1']]);
+    assert.ok(cutField.diagnostics.some(d => d.code === 'JSON_PARTIAL_RECORD'));
     const truncated = parse('"Users": [{"id":1},{"id":2},', { format:'json' });
     assert.equal(truncated.tables[0].name, 'Users');
     assert.deepEqual(firstTable(truncated).rows, [['1'], ['2']]);

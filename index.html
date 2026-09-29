@@ -4224,6 +4224,10 @@ const HtmlTableParser = {
 OTA.define('json-parser', ["table-utils", "header-resolver"], ({TableUtils}, {HeaderResolver}) => {
 const isRecord = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const cellText = value => value == null ? '' : typeof value === 'object' ? JSON.stringify(value) : String(value);
+const isTableRows = rows => Array.isArray(rows) &&
+    (!rows.length || rows.every(isRecord) || rows.every(Array.isArray));
+const isNamedTableCollection = value => isRecord(value) && Object.keys(value).length > 0 &&
+    Object.values(value).every(isTableRows);
 
 // Parse copied JSON-like data without evaluating it as JavaScript. The lexer keeps
 // punctuation inside strings inert, so braces and commas in cell values are safe.
@@ -4246,7 +4250,7 @@ function looseLexer(text) {
                 if(text.startsWith('/*', offset)) {
                     relaxed = true;
                     const end = text.indexOf('*/', offset + 2);
-                    if(end < 0) throw new Error('注释未闭合');
+                    if(end < 0) return { type:'incomplete', start:offset, end:text.length };
                     offset = end + 2;
                     continue;
                 }
@@ -4268,7 +4272,8 @@ function looseLexer(text) {
                     if(escaped === 'u' || escaped === 'x') {
                         const size = escaped === 'u' ? 4 : 2;
                         const digits = text.slice(offset, offset + size);
-                        if(digits.length !== size || !/^[0-9a-fA-F]+$/.test(digits)) throw new Error('字符串转义无效');
+                        if(digits.length !== size) return { type:'incomplete', start, end:text.length };
+                        if(!/^[0-9a-fA-F]+$/.test(digits)) throw new Error('字符串转义无效');
                         value += String.fromCharCode(parseInt(digits, 16));
                         offset += size;
                         if(escaped === 'x') relaxed = true;
@@ -4280,13 +4285,17 @@ function looseLexer(text) {
                         value += Object.hasOwn(escapes, escaped) ? escapes[escaped] : escaped;
                     }
                 }
-                throw new Error('字符串未闭合');
+                return { type:'incomplete', start, end:text.length };
             }
             if(ch === '-' || /[0-9]/.test(ch)) {
                 numberPattern.lastIndex = start;
                 const number = numberPattern.exec(text);
-                if(!number) throw new Error('数字格式无效');
+                if(!number) {
+                    if(text.slice(start) === '-') return { type:'incomplete', start, end:text.length };
+                    throw new Error('数字格式无效');
+                }
                 offset = start + number[0].length;
+                if(/^(?:\.|[eE][+-]?)$/.test(text.slice(offset))) return { type:'incomplete', start, end:text.length };
                 return { type:'number', value:Number(number[0]), start, end:offset };
             }
             if(/[A-Za-z_$]/.test(ch)) {
@@ -4304,8 +4313,14 @@ function parseLooseCore(text) {
     let cropped = false;
     let fragment = false;
     const incomplete = new WeakSet();
+    const incompleteValue = Symbol('incomplete JSON value');
     const advance = () => { token = lexer.next(); };
     const fail = () => { throw new Error(`位置 ${token.start + 1} 附近缺少有效字段或分隔符`); };
+    const keepPartial = record => {
+        cropped = true;
+        incomplete.add(record);
+        return record;
+    };
     const value = (depth=0) => {
         if(depth > 100) throw new Error('嵌套层级过深');
         if(token.type === '{') {
@@ -4313,30 +4328,43 @@ function parseLooseCore(text) {
             const record = Object.create(null);
             let count = 0;
             while(token.type !== '}') {
-                if(token.type === 'eof') {
-                    if(!count) fail();
-                    cropped = true;
-                    incomplete.add(record);
-                    return record;
+                if(token.type === 'eof' || token.type === 'incomplete') {
+                    if(!count) throw incompleteValue;
+                    return keepPartial(record);
                 }
                 if(token.type !== 'string' && token.type !== 'identifier') fail();
                 if(token.type === 'identifier') fragment = true;
                 const key = token.value;
                 advance();
-                if(token.type !== ':') fail();
-                advance();
-                if(token.type === 'eof' && count) {
-                    cropped = true;
-                    incomplete.add(record);
-                    return record;
+                if(token.type !== ':') {
+                    if((token.type === 'eof' || token.type === 'incomplete') && count) return keepPartial(record);
+                    fail();
                 }
-                record[key] = value(depth + 1);
-                if(record[key] && typeof record[key] === 'object' && incomplete.has(record[key])) incomplete.add(record);
+                advance();
+                if(token.type === 'eof' || token.type === 'incomplete') {
+                    if(!count) throw incompleteValue;
+                    return keepPartial(record);
+                }
+                let field;
+                try { field = value(depth + 1); }
+                catch(error) {
+                    if(error !== incompleteValue) throw error;
+                    if(!count) throw error;
+                    return keepPartial(record);
+                }
+                if(field && typeof field === 'object' && incomplete.has(field)) {
+                    if(!isTableRows(field)) {
+                        if(!count) throw incompleteValue;
+                        return keepPartial(record);
+                    }
+                    incomplete.add(record);
+                }
+                record[key] = field;
                 count++;
                 if(token.type === ',') {
                     advance();
                     if(token.type === '}') fragment = true;
-                } else if(token.type !== '}' && token.type !== 'eof') fail();
+                } else if(token.type !== '}' && token.type !== 'eof' && token.type !== 'incomplete') fail();
             }
             advance();
             return record;
@@ -4345,23 +4373,29 @@ function parseLooseCore(text) {
             advance();
             const items = [];
             while(token.type !== ']') {
-                if(token.type === 'eof') {
-                    if(!items.length) fail();
-                    cropped = true;
-                    return items;
+                if(token.type === 'eof' || token.type === 'incomplete') {
+                    if(!items.length) throw incompleteValue;
+                    return keepPartial(items);
                 }
-                const item = value(depth + 1);
-                if(item && typeof item === 'object' && incomplete.has(item)) cropped = true;
-                else items.push(item);
+                let item;
+                try { item = value(depth + 1); }
+                catch(error) {
+                    if(error !== incompleteValue) throw error;
+                    if(!items.length) throw error;
+                    return keepPartial(items);
+                }
+                items.push(item);
+                if(item && typeof item === 'object' && incomplete.has(item)) incomplete.add(items);
                 if(token.type === ',') {
                     advance();
                     if(token.type === ']') fragment = true;
-                } else if(token.type !== ']' && token.type !== 'eof') fail();
+                } else if(token.type !== ']' && token.type !== 'eof' && token.type !== 'incomplete') fail();
             }
             advance();
             return items;
         }
         const current = token;
+        if(current.type === 'incomplete' || current.type === 'eof') throw incompleteValue;
         if(current.type === 'string' || current.type === 'number') { advance(); return current.value; }
         if(current.type === 'identifier') {
             advance();
@@ -4386,10 +4420,31 @@ function parseLooseCore(text) {
             advance();
             if(token.type === 'eof') {
                 if(!Object.keys(record).length) fail();
-                cropped = true;
+                keepPartial(record);
                 break;
             }
-            record[key] = value(1);
+            if(token.type === 'incomplete') {
+                if(!Object.keys(record).length) fail();
+                keepPartial(record);
+                break;
+            }
+            let field;
+            try { field = value(1); }
+            catch(error) {
+                if(error !== incompleteValue) throw error;
+                if(!Object.keys(record).length) fail();
+                keepPartial(record);
+                break;
+            }
+            if(field && typeof field === 'object' && incomplete.has(field)) {
+                if(!isTableRows(field)) {
+                    if(!Object.keys(record).length) fail();
+                    keepPartial(record);
+                    break;
+                }
+                incomplete.add(record);
+            }
+            record[key] = field;
             if(token.type === 'eof') break;
             if(token.type !== ',') fail();
             advance();
@@ -4408,11 +4463,16 @@ function parseLooseCore(text) {
             if(token.type === 'eof') { fragment = true; break; }
             values.push(value());
         }
-        if(token.type !== 'eof') fail();
+        if(token.type !== 'eof' && !(token.type === 'incomplete' && cropped)) fail();
         if(values.length > 1) fragment = true;
         result = values.length === 1 ? values[0] : values;
     }
-    return { value:result, relaxed:lexer.relaxed || fragment, cropped };
+    const partialRecords = Array.isArray(result)
+        ? result.filter(item => item && typeof item === 'object' && incomplete.has(item)).length
+        : isNamedTableCollection(result)
+            ? Object.values(result).flat().filter(item => item && typeof item === 'object' && incomplete.has(item)).length
+            : Number(isRecord(result) && incomplete.has(result));
+    return { value:result, relaxed:lexer.relaxed || fragment, cropped, partialRecords };
 }
 
 function recoverCompleteRecords(text, attempts=0) {
@@ -4422,7 +4482,7 @@ function recoverCompleteRecords(text, attempts=0) {
     try {
         while(true) {
             const token = lexer.next();
-            if(token.type === 'eof') break;
+            if(token.type === 'eof' || token.type === 'incomplete') break;
             if(token.type === '{' || token.type === '[') stack.push(token);
             else if(token.type === '}' || token.type === ']') {
                 const opening = stack.pop();
@@ -4443,6 +4503,20 @@ function recoverCompleteRecords(text, attempts=0) {
         try { return parseLooseCore(text.slice(span.start, span.end)).value; }
         catch(_) { return null; }
     }).filter(isRecord);
+    let partialRecords = 0;
+    const tail = stack.find(opening => opening.type === '{' && opening.start >= lastEnd);
+    if(tail) {
+        try {
+            const parsed = parseLooseCore(text.slice(tail.start));
+            if(!records.length && isNamedTableCollection(parsed.value) && parsed.partialRecords) {
+                return { ...parsed, relaxed:true, cropped:true };
+            }
+            if(isRecord(parsed.value) && Object.keys(parsed.value).length && parsed.partialRecords) {
+                records.push(parsed.value);
+                partialRecords = parsed.partialRecords;
+            }
+        } catch(_) { /* keep completed records when the trailing record cannot be recovered */ }
+    }
     if(!records.length && attempts < 20) {
         // The selection can start halfway through a quoted value. Resume at
         // the next apparent record boundary if that prefix confused the lexer.
@@ -4453,7 +4527,7 @@ function recoverCompleteRecords(text, attempts=0) {
         }
     }
     if(!records.length) throw new Error('无法从片段提取完整记录');
-    return { value:records, relaxed:true, cropped:true };
+    return { value:records, relaxed:true, cropped:true, partialRecords };
 }
 
 function parseTable(values, name, options) {
@@ -4509,9 +4583,14 @@ const JsonTableParser = {
                 code:recovered.cropped ? 'JSON_FRAGMENT_RECOVERED' : 'JSON_RELAXED_SYNTAX',
                 severity:recovered.cropped ? 'warning' : 'info',
                 message:recovered.cropped
-                    ? '输入在记录边界处不完整；仅呈现可恢复的字段或记录，请核对行数和内容'
+                    ? '输入片段不完整；仅呈现可恢复的字段或记录，请核对行数和内容'
                     : '已按宽松 JSON 语法解析，请核对字段和记录'
             }];
+            if(recovered.partialRecords) syntaxDiagnostics.push({
+                code:'JSON_PARTIAL_RECORD',
+                severity:'warning',
+                message:`${recovered.partialRecords} 条残缺记录仅保留已完整解析的字段；未完成的字段值未展示，请核对原文`
+            });
         }
         const used = new Set();
         const tables = [];
@@ -4519,8 +4598,7 @@ const JsonTableParser = {
             tables.push(parseTable(value, TableUtils.makeTableName('JSON Table 1', 0, used), options));
         } else if(isRecord(value)) {
             const keys = Object.keys(value);
-            if(keys.length && keys.every(key => Array.isArray(value[key]) &&
-                (!value[key].length || value[key].every(isRecord) || value[key].every(Array.isArray)))) {
+            if(isNamedTableCollection(value)) {
                 keys.forEach((key, index) => tables.push(parseTable(value[key], TableUtils.makeTableName(key, index, used), options)));
             } else {
                 tables.push(parseTable([value], TableUtils.makeTableName('JSON Table 1', 0, used), options));
