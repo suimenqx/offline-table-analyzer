@@ -214,7 +214,7 @@ function extractFeatures(rawText) {
     const chunk = text.length > MAX_SCAN_BYTES ? text.slice(0, MAX_SCAN_BYTES) : text;
 
     const f = {
-        M_json: /^\s*(?:\{\s*(?:"|\})|\[\s*(?:\{|\[|"|-?\d|true\b|false\b|null\b|\]))/.test(chunk),
+        M_json: /^\s*(?:\{\s*(?:["'}/]|[A-Za-z_$])|\[\s*(?:[\[{"'/]|-?\d|true\b|false\b|null\b|\])|(?:["'][^"'\n]{1,100}["']|[A-Za-z_$][\w$-]{0,99})\s*:\s*(?:["'{\[]|-?\d|true\b|false\b|null\b))/.test(chunk),
         M_html: false,
         M_cliTableData: false,
         M_dataBlock: false,

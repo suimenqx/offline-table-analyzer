@@ -111,3 +111,16 @@ test('parse JSON records and copy both JSON layouts', async ({ page, context }) 
   const inline = await page.evaluate(() => navigator.clipboard.readText());
   expect(inline).toBe('[\n  {"id":"001","name":"Alice"},\n  {"id":"002","name":"Bob"}\n]');
 });
+
+test('parse a copied JSON fragment and show recovery diagnostics', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.locator('#autoParseToggle').uncheck();
+  await page.locator('#rawInput').fill('"name":"cut"},\n{id: 1, name: \'Alice\'},\n{id: 2, name:');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#parseStatusText')).toContainText('JSON 表格');
+  await expect(page.locator('#parseStatusText')).toContainText('1 行');
+  await expect(page.locator('#previewArea')).toContainText('Alice');
+  await expect(page.locator('#previewArea')).not.toContainText('cut');
+  await page.locator('#diagnosticsBtn').click();
+  await expect(page.locator('#modalOverlay')).toContainText('JSON_FRAGMENT_RECOVERED');
+});

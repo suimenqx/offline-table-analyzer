@@ -628,6 +628,8 @@ const App = {
         $('clearBtn').onclick = doClear;
         const pasteSourceBtn = $('pasteSourceBtn');
         if(pasteSourceBtn) pasteSourceBtn.onclick = () => this.showPasteSource();
+        const diagnosticsBtn = $('diagnosticsBtn');
+        if(diagnosticsBtn) diagnosticsBtn.onclick = () => this.showDiagnostics();
         const formatSelect = $('formatSelect');
         if(formatSelect) formatSelect.onchange = e => this.setImportFormat(e.target.value);
         const headerModeSelect = $('headerModeSelect');

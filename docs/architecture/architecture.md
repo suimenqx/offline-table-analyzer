@@ -146,6 +146,8 @@ All downstream operations consume this shape regardless of the original source f
 
 `JsonTableParser` accepts arrays of objects, two-dimensional arrays, a single object record, or an object whose values are table arrays. Object keys become headers in first-seen order; nested values become compact JSON cell text. JSON clipboard output is an array of objects built from the selected headers and record rows. `json-inline` puts one compact object on each line, while `json-expanded` puts each field on its own line. Cell values remain strings to preserve the normalized table contract and string identifiers such as `"001"`. JSON and Lua copy restore transposed selections to record orientation and always include selected headers as field names. The existing `copyFormat` field stores the new options; saved `json` values retain the expanded layout. Schema 20 and the migration chain remain unchanged.
 
+For pasted JSON-like input, `JsonTableParser` tries standard JSON first, then a local text lexer for bare field names, single-quoted strings, comments, trailing commas, field bodies, and record lists without outer brackets. It can recover complete records from a selection cut through adjacent records. Truncation or skipped boundaries produce a visible `JSON_FRAGMENT_RECOVERED` diagnostic; other relaxed syntax produces `JSON_RELAXED_SYNTAX`. The parser never evaluates input, does not rewrite the stored source, and keeps normalized cells as strings. Workspace and configuration JSON imports continue to use strict JSON parsing.
+
 ### Command, revision, and rendering contract
 
 `Store` is the only owner of persistent workspace state. UI controllers read through

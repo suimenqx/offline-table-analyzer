@@ -27,6 +27,7 @@ describe('JSON table parser', () => {
       ['1', 'Alice', '<script>x</script>', '', ''],
       ['2', '', '', 'true', '{"a":1}'],
     ]);
+    assert.equal(r.diagnostics.some(d => d.code === 'JSON_RELAXED_SYNTAX' || d.code === 'JSON_FRAGMENT_RECOVERED'), false);
   });
 
   it('parses a JSON matrix with a selected header mode', () => {
@@ -49,8 +50,62 @@ describe('JSON table parser', () => {
     assert.deepEqual(firstTable(r).rows, [['["a","b"]', '[true,false]']]);
   });
 
+  it('accepts JSON-like records with bare keys, single quotes, comments, and trailing commas', () => {
+    const r = parse("[{id: '001', name: 'Alice', active: true,}, // next\n{id: '002', name: 'Bob', active: false,}]", { lastSuccessfulFormat:'csv' });
+    assert.equal(r.format, 'json');
+    assert.deepEqual(firstTable(r).headers, ['id', 'name', 'active']);
+    assert.deepEqual(firstTable(r).rows, [['001', 'Alice', 'true'], ['002', 'Bob', 'false']]);
+    assert.ok(r.diagnostics.some(d => d.code === 'JSON_RELAXED_SYNTAX'));
+    const commentFirst = parse("{/* source */ id: 3, name: 'Carol'}", { lastSuccessfulFormat:'csv' });
+    assert.equal(commentFirst.format, 'json');
+    assert.deepEqual(firstTable(commentFirst).rows, [['3', 'Carol']]);
+  });
+
+  it('accepts copied record lists without the surrounding array', () => {
+    const r = parse('{"id":1,"name":"Alice"},\n{"id":2,"name":"Bob"},');
+    assert.equal(r.format, 'json');
+    assert.deepEqual(firstTable(r).rows, [['1', 'Alice'], ['2', 'Bob']]);
+  });
+
+  it('recovers complete records from a fragment cut through neighboring records', () => {
+    const r = parse('"name":"cut"},\n{"id":1,"name":"Alice"},\n{"id":2,"name":', { format:'json' });
+    assert.deepEqual(firstTable(r).headers, ['id', 'name']);
+    assert.deepEqual(firstTable(r).rows, [['1', 'Alice']]);
+    assert.ok(r.diagnostics.some(d => d.code === 'JSON_FRAGMENT_RECOVERED'));
+    const tail = parse('[{"id":1,"name":"Alice"},{"id":2,"name":', { format:'json' });
+    assert.deepEqual(firstTable(tail).rows, [['1', 'Alice']]);
+    assert.ok(tail.diagnostics.some(d => d.code === 'JSON_FRAGMENT_RECOVERED'));
+    const midString = parse('lice"}, {"id":3,"name":"Carol"}', { format:'json' });
+    assert.deepEqual(firstTable(midString).rows, [['3', 'Carol']]);
+    assert.ok(midString.diagnostics.some(d => d.code === 'JSON_FRAGMENT_RECOVERED'));
+  });
+
+  it('parses a copied object body and warns when an outer collection is cut off', () => {
+    const fields = parse("id: '001', name: 'Alice'", { lastSuccessfulFormat:'csv' });
+    assert.equal(fields.format, 'json');
+    assert.deepEqual(firstTable(fields).rows, [['001', 'Alice']]);
+    const truncated = parse('"Users": [{"id":1},{"id":2},', { format:'json' });
+    assert.equal(truncated.tables[0].name, 'Users');
+    assert.deepEqual(firstTable(truncated).rows, [['1'], ['2']]);
+    assert.ok(truncated.diagnostics.some(d => d.code === 'JSON_FRAGMENT_RECOVERED'));
+  });
+
+  it('keeps escaped content inert and rejects fragments without complete fields', () => {
+    const r = parse("{__proto__: {polluted: true}, note: '<img src=x onerror=alert(1)>', text: 'a\\'b'}", { format:'json' });
+    assert.equal({}.polluted, undefined);
+    assert.deepEqual(firstTable(r).headers, ['__proto__', 'note', 'text']);
+    assert.equal(firstTable(r).rows[0][1], '<img src=x onerror=alert(1)>');
+    assert.equal(firstTable(r).rows[0][2], "a'b");
+    assert.throws(() => parse('{"id":', { format:'json' }), /JSON/);
+  });
+
+  it('keeps punctuation inside relaxed strings and nested values in their own cells', () => {
+    const r = parse("[{id: 1, note: 'a,{b}:c', nested: {x: 'v,1'}}]", { format:'json' });
+    assert.deepEqual(firstTable(r).rows, [['1', 'a,{b}:c', '{"x":"v,1"}']]);
+  });
+
   it('returns visible errors for malformed or non-tabular JSON', () => {
-    assert.throws(() => parse('[{"id":1}', { format:'json' }), /JSON/);
+    assert.throws(() => parse('[{"id":', { format:'json' }), /JSON/);
     assert.throws(() => parse('[1,2,3]', { format:'json' }), /JSON/);
   });
 });
