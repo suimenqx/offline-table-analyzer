@@ -63,6 +63,7 @@ Offline Table Analyzer 是一个本地优先、隐私优先的表格分析工作
 
 - 保持原有 12 类解析器，并支持 JSON：CLI `table-data`、Data-Block、HTML、CLI 多块定宽表、ASCII、Markdown/pipe、TSV、CSV、分号 CSV、固定宽度、对齐固定宽度、空白分隔文本、JSON 表格。
 - 自动识别返回最终格式、候选格式、置信度、规范化表格和诊断集合。
+- 自动识别先尊重明确的结构特征，再考虑上次成功格式；只有证据接近或缺少可用特征时才复用记忆格式。普通单元格里的格式标记不能强制切换解析器。
 - 支持 CSV 引号、转义引号、嵌入换行、HTML `rowspan`/`colspan`、Markdown 转义 pipe、BOM、CRLF、NBSP 和 `<br>`。
 - 支持自动表头、强制首行表头和生成 `ColumnN` 表头；空表头和重复表头必须稳定规范化。
 - 短行补空单元格；超出表头的单元格必须保留并生成 `ROW_WIDTH_MISMATCH` 诊断。

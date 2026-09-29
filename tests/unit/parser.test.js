@@ -169,9 +169,10 @@ describe('TSV (excel-paste) parser', () => {
     assert.equal(firstTable(r).headers[1], 'name');
   });
 
-  it('uses the caller-provided last successful format before automatic detection', () => {
+  it('does not reuse a delimiter parser when the input has a different delimiter', () => {
     const r = parse('id\tname\n1\tAlice', { lastSuccessfulFormat: 'csv' });
-    assert.equal(r.format, 'csv');
+    assert.equal(r.format, 'excel-paste');
+    assert.deepEqual(firstTable(r).rows, [['1', 'Alice']]);
   });
 
   it('converts <br> tags to newlines', () => {
@@ -636,6 +637,23 @@ describe('CLI multi-block parser', () => {
 // Data-block
 // ---------------------------------------------------------------------------
 describe('Data-block parser', () => {
+  it('keeps its named table when a previous JSON or CSV parse is remembered', () => {
+    for(const lastSuccessfulFormat of ['json', 'csv']) {
+      const r = parse('data T [{id:1}]', { lastSuccessfulFormat });
+      assert.equal(r.format, 'data-block');
+      assert.equal(firstTable(r).name, 'T');
+      assert.deepEqual(firstTable(r).rows, [['1']]);
+    }
+    assert.equal(parse('data T []', { lastSuccessfulFormat:'json' }).format, 'data-block');
+    assert.equal(parse('data T [{id:1}]', { format:'json', lastSuccessfulFormat:'data-block' }).format, 'json');
+  });
+
+  it('does not mistake a table-data value for a CLI table marker', () => {
+    const r = parse('data T [{id:1,note:"table-data"}]');
+    assert.equal(r.format, 'data-block');
+    assert.deepEqual(firstTable(r).rows, [['1', 'table-data']]);
+  });
+
   it('handles multiple named tables and sparse fields', () => {
     const input = `module MALL;\n\ndata First [
     {id : "0x01", name : "Alice", note : "a, b"},
@@ -693,6 +711,44 @@ data Second [{id:"0x01", category:ELECTRONICS},{id:"0x03", category:"HOME"}]`;
     const r = parse('module MALL;', { format: 'data-block' });
     assert.equal(r.tables.length, 0);
     assert.ok(r.diagnostics.some(d => d.code === 'NO_DATA_BLOCK'));
+  });
+});
+
+describe('Automatic format precedence', () => {
+  it('lets complete HTML and CLI structures beat a remembered CSV format', () => {
+    const html = parse('<table><tr><th>id</th></tr><tr><td>1</td></tr></table>', { lastSuccessfulFormat:'csv' });
+    assert.equal(html.format, 'html-table');
+    const cli = parse('table-data T\nvalidflag ID Name\n1 1 Alice', { lastSuccessfulFormat:'csv' });
+    assert.equal(cli.format, 'cli-table-data');
+  });
+
+  it('does not treat marker text inside CSV cells as another format', () => {
+    for(const text of ['id,note\n1,"<table>hello</table>"\n2,ok', 'id,note\n1,table-data\n2,ok']) {
+      const r = parse(text);
+      assert.equal(r.format, 'csv');
+      assert.equal(firstTable(r).rows.length, 2);
+    }
+  });
+
+  it('lets Markdown structure beat remembered delimited parsers', () => {
+    const r = parse('| id | name |\n| --- | --- |\n| 1 | Alice |', { lastSuccessfulFormat:'csv' });
+    assert.equal(r.format, 'pipe-table');
+    assert.deepEqual(firstTable(r).rows, [['1', 'Alice']]);
+  });
+
+  it('keeps bordered and sectioned tables ahead of remembered CSV', () => {
+    const cases = [
+      ['+----+-------+\n| id | name  |\n+----+-------+\n| 1  | Alice |\n+----+-------+', 'ascii-table'],
+      ['---\ncol1    col2\nval1    val2', 'aligned-table'],
+      ['Port status\n============================================================\nSlot/Port          Module Name      Oper State\n------------------------------------------------------------\n1/1/0              SNPX200ACL1     Up', 'cli-multi-block'],
+    ];
+    for(const [input, format] of cases) assert.equal(parse(input, { lastSuccessfulFormat:'csv' }).format, format);
+  });
+
+  it('keeps a remembered delimiter when two formats are genuinely ambiguous', () => {
+    const input = 'id,name;state\n1,Alice;ok';
+    assert.equal(parse(input).format, 'csv');
+    assert.equal(parse(input, { lastSuccessfulFormat:'semicolon-csv' }).format, 'semicolon-csv');
   });
 });
 

@@ -56,6 +56,7 @@ const SIGNATURES = [
         soft: [
             { f: 'M_dataBlock',  w: 1.0, op: 'nonzero' },
         ],
+        structuralFeature: 'M_dataBlock',
         priority: 95,
     },
 
@@ -118,6 +119,7 @@ const SIGNATURES = [
             { f: 'S_emptyLineRatio',  w: 0.05, op: 'lt', v: 0.3 },
         ],
         conflicts: ['M_asciiBorder', 'M_cliBlockSep'],
+        structuralFeature: 'M_mdSep',
         priority: 82,
     },
     {
@@ -133,6 +135,7 @@ const SIGNATURES = [
             { f: 'S_emptyLineRatio', w: 0.05, op: 'lt', v: 0.4 },
         ],
         conflicts: ['M_cliBlockSep'],
+        structuralFeature: 'M_asciiBorder',
         priority: 78,
     },
 
@@ -152,6 +155,7 @@ const SIGNATURES = [
         ],
         // CLI 多块表有自己的 === 分隔线，不要混淆
         conflicts: ['M_asciiBorder', 'M_mdSep', 'M_cliBlockSep'],
+        structuralFeature: 'M_alignedSep',
         priority: 65,
     },
     {
@@ -165,6 +169,7 @@ const SIGNATURES = [
             { f: 'D_tab_present',       w: 0.15, op: 'zero' },
             { f: 'D_pipe_mean',         w: 0.10, op: 'lt',  v: 2 },
         ],
+        structuralFeature: 'M_cliBlockSep',
         priority: 68,
     },
     {
@@ -215,8 +220,8 @@ function extractFeatures(rawText) {
 
     const f = {
         M_json: /^\s*(?:\{\s*(?:["'}/]|[A-Za-z_$])|\[\s*(?:[\[{"'/]|-?\d|true\b|false\b|null\b|\])|(?:["'][^"'\n]{1,100}["']|[A-Za-z_$][\w$-]{0,99})\s*:\s*(?:["'{\[]|-?\d|true\b|false\b|null\b))/.test(chunk),
-        M_html: false,
-        M_cliTableData: false,
+        M_html: /^\s*</.test(chunk) && /<table[\s>]/i.test(chunk),
+        M_cliTableData: /(?:^|\n)\s*(?:\[[^\]\n]{1,80}\]\s*)?(?:[>$#]\s*)?table[-_]data\b/i.test(chunk),
         M_dataBlock: false,
         M_mdSep: false,
         M_asciiBorder: false,
@@ -286,12 +291,6 @@ function extractFeatures(rawText) {
         if (ch !== ' ' && ch !== '\t' && ch !== '\r') currentLineNonSpace = true;
 
         // ── 硬标记检测 ──
-        if (!f.M_html && ch === '<' && /^<table[\s>]/i.test(chunk.slice(i, i + 10))) {
-            f.M_html = true;
-        }
-        if (!f.M_cliTableData && ch === 't' && /^table[-_]data\b/i.test(chunk.slice(i, i + 20))) {
-            f.M_cliTableData = true;
-        }
         if (!f.M_dataBlock && ch === 'd' && /^data\s+\S+.*\[/m.test(chunk.slice(Math.max(0, i - 5), i + 30))) {
             f.M_dataBlock = true;
         }
@@ -586,6 +585,7 @@ const FormatSniffer = {
                     score,
                     method: score > 0 ? 'soft' : 'gated',
                     reason: reasons.join('; ') || `得分 ${score.toFixed(3)}`,
+                    structural: Boolean(sig.structuralFeature && nf[sig.structuralFeature]),
                     priority: sig.priority || 0,
                 };
             })

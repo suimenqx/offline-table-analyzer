@@ -124,3 +124,22 @@ test('parse a copied JSON fragment and show recovery diagnostics', async ({ page
   await page.locator('#diagnosticsBtn').click();
   await expect(page.locator('#modalOverlay')).toContainText('JSON_FRAGMENT_RECOVERED');
 });
+
+test('recognize a data block after JSON and keep marker text inside CSV cells', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.locator('#autoParseToggle').uncheck();
+  await page.locator('#rawInput').fill('[{"id":1}]');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#parseStatusText')).toContainText('JSON 表格');
+
+  await page.locator('#rawInput').fill('data T [{id:1,note:"table-data"}]');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#parseStatusText')).toContainText('Data-Block 数据块');
+  await expect(page.locator('#previewArea')).toContainText('table-data');
+  await expect(page.locator('#targetTableSelect')).toHaveValue('T');
+
+  await page.locator('#rawInput').fill('id,note\n1,"<table>hello</table>"\n2,table-data');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#parseStatusText')).toContainText('CSV');
+  await expect(page.locator('#parseStatusText')).toContainText('2 行');
+});

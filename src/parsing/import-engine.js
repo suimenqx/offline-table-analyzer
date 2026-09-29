@@ -45,12 +45,24 @@ const ImportEngine = {
                 if (chosen) scored = [{ parser: chosen, score: 1 }];
             }
 
-            // JSON structure wins over a remembered delimiter format.
+            // Strong source structure takes precedence over a remembered format.
             if(!chosen && !selectedType) {
                 const first = getSniff().candidates[0];
-                if(first && first.id === 'json' && first.method === 'hard') {
-                    chosen = JsonTableParser;
-                    scored = [{ parser:chosen, score:1 }];
+                if(first && first.method === 'hard') {
+                    chosen = this.getParser(first.id);
+                    if(chosen) scored = [{ parser:chosen, score:first.score }];
+                } else if(first && first.structural) {
+                    const parser = this.getParser(first.id);
+                    if(parser) {
+                        try {
+                            const probeResult = parser.parse(source, options);
+                            if(probeResult.tables && probeResult.tables.length && this.parseQuality(probeResult) >= 0.2) {
+                                chosen = parser;
+                                parsed = probeResult;
+                                scored = [{ parser, score:first.score }];
+                            }
+                        } catch (_) { /* marker alone is not enough to select a parser */ }
+                    }
                 }
             }
 
@@ -59,7 +71,12 @@ const ImportEngine = {
                 const lastFmt = options.lastSuccessfulFormat || null;
                 if (lastFmt && lastFmt !== 'html-table') {
                     const cachedParser = this.getParser(lastFmt);
-                    if (cachedParser && cachedParser.id !== 'plain-text') {
+                    const candidates = getSniff().candidates || [];
+                    const first = candidates[0];
+                    const remembered = candidates.find(candidate => candidate.id === lastFmt);
+                    const compatible = !first || first.method === 'fallback' ||
+                        (remembered && first.score - remembered.score < 0.12);
+                    if (cachedParser && cachedParser.id !== 'plain-text' && compatible) {
                         try {
                             const probeResult = cachedParser.parse(source, options);
                             const quality = this.parseQuality(probeResult);
@@ -78,13 +95,7 @@ const ImportEngine = {
                 const sniff = getSniff();
                 const sniffCandidates = sniff.candidates || [];
 
-                if (sniffCandidates.length === 1 && sniffCandidates[0].method === 'hard') {
-                    // 硬特征命中：直接解析，无需 probe
-                    chosen = this.getParser(sniffCandidates[0].id);
-                    if (chosen) scored = sniffCandidates.map(c => ({ parser: chosen, score: c.score }));
-                }
-
-                if (!chosen && sniffCandidates.length > 0) {
+                if (sniffCandidates.length > 0) {
                     const evaluated = [];
                     sniffCandidates.slice(0, 3).forEach(c => {
                         const parser = this.getParser(c.id);
