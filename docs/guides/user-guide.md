@@ -1,4 +1,4 @@
-# Offline Table Analyzer — User Guide (v22.0.0)
+# Offline Table Analyzer — User Guide (v22.1.2)
 
 ## 1. Import data
 
@@ -10,7 +10,7 @@
 | **Drag file** | Drag a supported text file onto the editor area. A visible drop zone highlight confirms detection. |
 | **Select file** | Click **Select file** (or press `Ctrl/Cmd+O`) and choose a file. Accepted extensions: `.csv`, `.tsv`, `.json`, `.txt`, `.log`, `.md`, `.markdown`, `.html`, `.htm`. |
 
-Files larger than **25 MB** are rejected with a safety message.
+Sources are limited to **128 MiB** of file bytes and UTF-16 text estimate. Large originals use a bounded read-only preview; complete text remains available for parsing, recovery and original-text export.
 
 ### 1.2 File extension auto-detection
 
@@ -455,6 +455,10 @@ This prevents pasted data from being interpreted as formulas in Excel, Google Sh
 ## 13. Export and back up
 
 ### 13.1 Export types
+
+For a direct conversion, leave **Format → Auto detect**, paste the original text and click **Full Excel**. No separate parse click is needed, including for 100,000-row inputs or when automatic parsing is disabled. The default full export includes all rows and columns across all pages; explicit table/column/JOIN export settings still apply. A manually selected format or header mode remains authoritative.
+
+All Excel actions reuse a matching completed parse (and its corrections), wait for a matching in-progress parse, or parse the latest source first. Large text is parsed and exported in the background with visible stages and a **Cancel** control. Parse/export failures stop the download without losing the original text. Replacing the source, changing parse settings or switching tabs prevents a download from the previous source; click export again for the new data.
 
 | Export | Button location | Contents |
 | --- | --- | --- |

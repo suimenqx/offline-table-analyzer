@@ -1,6 +1,6 @@
 # Requirements and Scope
 
-The current workspace schema is `21`; application release **22.1.1**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
+The current workspace schema is `21`; application release **22.1.2**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
 
 ## 1. Product definition
 
@@ -78,7 +78,7 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Schema version `21`, application version `22.1.1`.
+- Schema version `21`, application version `22.1.2`.
 - Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
 - Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
 - Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.
@@ -129,6 +129,9 @@ The defining constraints are:
 
 ### R6 — complete existing controls
 
+- All Excel actions prepare the latest original source even when automatic parsing is disabled or skipped for large input. Reuse a matching completed parse (including corrections) or await the matching pending parse. Automatic format detection is the default; manual parser/header choices remain authoritative.
+- Direct paste → Full Excel exports all rows/columns by default, subject to explicit table/column/JOIN export settings and existing resource budgets. Preview/page limits never truncate full export.
+- The export lock covers parsing and serialization. Show each stage, preserve cancellation, and validate document/source/options again immediately before download. Failure, cancellation, changed source/options or tab switch cannot download an outdated result; keep original text recoverable.
 - "Export displayed columns": when `exportCols === 'shown'`, `projectTableForExport` projects focus columns during full export.
 - Export options (`exportOnlyChecked`, `exportCols`) are stored per-tab in the doc UI state and restored on tab changes.
 - HTML clipboard state is scoped to the current tab via `docId` tracking in `lastPaste`; it is cleared on tab switch or plain-text edit.

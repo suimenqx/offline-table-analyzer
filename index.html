@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offline Table Analyzer v22.1.1</title>
+    <title>Offline Table Analyzer v22.1.2</title>
     <link rel="icon" type="image/svg+xml" media="(prefers-color-scheme: light)" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230f172a'/><text x='50' y='68' font-family='system-ui,sans-serif' font-size='48' font-weight='800' fill='%23ffffff' text-anchor='middle'>OTA</text></svg>">
     <link rel="icon" type="image/svg+xml" media="(prefers-color-scheme: dark)" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23f8fafc'/><text x='50' y='68' font-family='system-ui,sans-serif' font-size='48' font-weight='800' fill='%230f1f38' text-anchor='middle'>OTA</text></svg>">
     <style>
@@ -825,7 +825,7 @@
                         </label>
                     </div>
                 </div>
-                <button class="sm export-secondary" id="exportFullBtn" type="button" title="导出当前页签的全量数据">全量 Excel</button>
+                <button class="sm export-secondary" id="exportFullBtn" type="button" title="自动解析当前原文并导出全量数据（遵循格式与导出设置）">全量 Excel</button>
                 <button class="primary sm" id="exportPrevBtn" type="button" title="导出当前筛选后的预览结果">导出预览</button>
                 <button class="icon-btn sm" id="helpBtn" type="button" title="帮助与快捷键" aria-label="帮助与快捷键">?</button>
             </div>
@@ -1692,7 +1692,7 @@ return {WorkspaceStorage};
 /* @module state/store.js: workspace state and persistence */
 OTA.define('store', ['background-service'], ({BackgroundService}) => {
 /* Core */
-const APP_VERSION = '22.1.1';
+const APP_VERSION = '22.1.2';
 const WORKSPACE_SCHEMA_VERSION = 21;
 const STORE_KEY = 'ota_v21_workspace';
 const LEGACY_STORE_KEYS = ['ota_v20_workspace','v16_4_store'];
@@ -9715,25 +9715,31 @@ OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "d
 */
 
 const ExportController = {
-    async runExport(label,task,prefix,type,extension) {
+    async runExport(label,task,prefix,type,extension,validate=()=>{}) {
         if(this._exporting)return Toast.show('导出正在进行，请等待或取消');
         this._exporting=true;
-        const notify=busy=>document.dispatchEvent(new CustomEvent('ota:backgroundJob',{detail:{busy,label}}));
+        const notify=(busy,nextLabel=label)=>document.dispatchEvent(new CustomEvent('ota:backgroundJob',{detail:{busy,label:nextLabel}}));
         notify(true);
         try {
-            const buffer=await task();
+            const buffer=await task(nextLabel=>notify(true,nextLabel));
+            if(buffer==null)return;
+            validate();
             Exporter.download(`${Exporter.sanitizeFilePrefix(prefix)}_${Exporter.getTimestamp()}.${extension}`,buffer instanceof Blob?buffer:new Blob([buffer],{type}),type);
         } catch(error) {if(error.name!=='AbortError')Toast.show(`导出失败：${error.message}`,true);}
         finally {this._exporting=false;notify(false);}
     },
     exportExcel(mode) {
-        if(TableRegistry.isBackground()) {
-            let input;
-            try {input=TableRegistry.getBackgroundInput();}catch(error){return Toast.show(error.message,true);}
-            return this.runExport('正在后台生成 Excel…',()=>BackgroundService.export(input,mode),this._getPrefix(mode),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','xlsx');
-        }
-        const tables=mode==='raw'?TableRegistry.getRaw():mode==='full'?this._getFullExportTables():this._getPreviewExportTables();
-        return Exporter.toExcel(tables,this._getPrefix(mode));
+        let source;
+        const validate=()=>source.validate();
+        return this.runExport('正在准备导出数据…',async updateLabel=>{
+            source=this._prepareSource?await this._prepareSource():{validate:()=>{}};
+            if(!source)return null;
+            validate();
+            updateLabel(TableRegistry.isBackground()?'正在后台生成 Excel…':'正在生成 Excel…');
+            if(TableRegistry.isBackground())return BackgroundService.export(TableRegistry.getBackgroundInput(),mode);
+            const tables=mode==='raw'?TableRegistry.getRaw():mode==='full'?this._getFullExportTables():this._getPreviewExportTables();
+            return Exporter.createExcelBytes(tables);
+        },this._getPrefix(mode),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','xlsx',validate);
     },
     exportJson(payload,prefix) {
         const bytes=(payload.docs || []).reduce((sum,doc)=>sum+(doc.raw || '').length*2,0);
@@ -9744,7 +9750,9 @@ const ExportController = {
     /**
      * Bind export buttons. Called once from App.init().
      */
-    init() {
+    init({prepareSource}={}) {
+        // App supplies source preparation; export never reaches into App state.
+        this._prepareSource=prepareSource;
         // Copy settings popover
         const copyPreferences = $('copyPreferences');
         const copySettingsBtn = $('copySettingsBtn');
@@ -10040,6 +10048,7 @@ const App = {
     _renderQueued: false,
     _renderPending: false,
     _parseGeneration:0,
+    _pendingParse:null,
     _renderGeneration:0,
     _jobGeneration:0,
     showJob(label) {
@@ -10202,7 +10211,7 @@ const App = {
         FilterController.init();
         ModalController.init();
         TabController.init();
-        ExportController.init();
+        ExportController.init({prepareSource:()=>this.prepareExport()});
 
         this.bindSidebar(); this.bindAccordions();
         this.bind(); this.renderTabs(); this.loadDoc();
@@ -10431,7 +10440,7 @@ const App = {
         if (details) details.classList.add('hidden');
         if (!text) return;
         if (state === 'pending') text.textContent = '输入已修改 · 自动解析中…';
-        else if (state === 'large') text.textContent = '数据较大 · 请点击“立即解析”';
+        else if (state === 'large') text.textContent = '数据较大 · 点击“立即解析”或“全量 Excel”';
         else text.textContent = '自动解析已关闭 · 点击“立即解析”';
     },
 
@@ -10523,6 +10532,45 @@ const App = {
         const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
         const headerMode = (headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
         return { html, format, headerMode, lastSuccessfulFormat: Store.lastSuccessfulFormat || null };
+    },
+
+    getSourceContext(text=SourceController.readText()) {
+        const doc=Store.getDocument();
+        return {docId:doc.id,sourceRevision:doc.sourceRevision,text,options:this.getParseOptions()};
+    },
+
+    matchesSourceContext(a,b) {
+        // The remembered format is a detection hint, not a changed source option.
+        return !!a && !!b && a.docId===b.docId && a.sourceRevision===b.sourceRevision && a.text===b.text
+            && ['format','headerMode','html'].every(key=>a.options[key]===b.options[key]);
+    },
+
+    /** Resolve the current parse and return a validator for the eventual download. */
+    async prepareExport() {
+        SourceController.clearAutoParse();
+        const text=SourceController.readText();
+        if(Store.getDocument().raw!==text)dispatch('source:replace',{text});
+        const requested=this.getSourceContext(text);
+        if(!this._parseToken?.completed || !this.matchesSourceContext(this._parseToken,requested)) {
+            const pending=this._pendingParse;
+            const parsed=await (this.matchesSourceContext(pending?.context,requested)?pending.promise:this.run());
+            if(!this.matchesSourceContext(requested,this.getSourceContext())) {
+                throw new Error('数据源或解析设置已变化，请重新导出');
+            }
+            if(!parsed)return null; // Parsing already reports errors and cancellation.
+        }
+        const token=this._parseToken, generation=this._parseGeneration;
+        const validate=()=>{
+            if(!this.matchesSourceContext(token,requested) || !this.matchesSourceContext(token,this.getSourceContext())) {
+                throw new Error('数据源或解析设置已变化，请重新导出');
+            }
+            if(generation!==this._parseGeneration || token!==this._parseToken) {
+                throw Object.assign(new Error('操作已取消'),{name:'AbortError'});
+            }
+        };
+        validate();
+        if(!TableRegistry.getRaw().length){Toast.show('无数据可导出',true);return null;}
+        return {validate}; // Rechecked by ExportController immediately before download.
     },
 
     showPasteSource() {
@@ -10927,13 +10975,15 @@ validflag Time      Level   Message                 Code
             const sourceText = SourceController.readText();
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 128 MiB 安全限制，请拆分后再分析');
             if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
-            parseContext = {
-                docId: Store.state.activeId,
-                sourceRevision: Store.curr().sourceRevision,
-                started,
-            };
-            const options=this.getParseOptions();
-            if(BackgroundService.isLarge(sourceText) && !options.html && options.format!=='html-table')return this.runBackground(sourceText,options,parseContext,render);
+            parseContext = {...this.getSourceContext(sourceText),started};
+            const options=parseContext.options;
+            if(BackgroundService.isLarge(sourceText) && !options.html && options.format!=='html-table') {
+                const pending={context:parseContext};
+                this._pendingParse=pending;
+                pending.promise=this.runBackground(sourceText,options,parseContext,render);
+                return pending.promise;
+            }
+            this._pendingParse=null;
             BackgroundService.cancel();QueryService.clearCache();this._parseGeneration++;this._parseToken=parseContext;
             const result = Parser.parse(sourceText, options);
             if (result.format === 'error') {
@@ -10961,6 +11011,8 @@ validflag Time      Level   Message                 Code
                 this.requestRender();
             }
             if(TableRegistry.getRaw().length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
+            parseContext.completed=true;
+            return true;
         } catch(e) {
             console.error(e);
             const msg = e.message || String(e);
@@ -10993,6 +11045,7 @@ validflag Time      Level   Message                 Code
                 /URI.*malformed/i.test(msg)             ? '文件名包含不支持字符' :
                 '';
             Toast.show(friendly || `解析失败：${msg}`, true);
+            return false;
         }
     },
 
@@ -11006,18 +11059,22 @@ validflag Time      Level   Message                 Code
         try {
             const result=await BackgroundService.parse({text,options,key});
             const doc=Store.getDocument();
-            if(generation!==this._parseGeneration || doc.id!==context.docId || doc.sourceRevision!==context.sourceRevision)return;
+            if(generation!==this._parseGeneration || !this.matchesSourceContext(context,this.getSourceContext()))return false;
             TableRegistry.setResult({...result,background:true,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision});
             this.applyStoredCellEdits();
             if(result.tables.length && result.format!=='empty')Store.lastSuccessfulFormat=result.format;
             this.updateImportSummary();
             dispatch('parse:completed',{docId:doc.id,sourceRevision:doc.sourceRevision,format:result.format,tables:result.tables,elapsed:Math.round(performance.now()-context.started)});
             if(render)this.requestRender();
+            context.completed=true;
+            return true;
         } catch(error) {
-            if(generation!==this._parseGeneration || error.name==='AbortError')return;
+            if(generation!==this._parseGeneration || error.name==='AbortError' || !this.matchesSourceContext(context,this.getSourceContext()))return false;
             TableRegistry.setResult({format:'error',label:'解析失败',tables:[],diagnostics:[{severity:'error',code:'PARSE_ERROR',message:error.message}]});
             Toast.show(error.message,true);this.updateImportSummary();this.requestRender();
+            return false;
         } finally {
+            if(this._pendingParse?.context===context)this._pendingParse=null;
             this.finishJob(job);
             if(generation===this._parseGeneration && $('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         }

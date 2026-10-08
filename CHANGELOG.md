@@ -14,6 +14,12 @@ All notable changes are documented here. The project follows semantic versioning
 - Preserve HTML clipboard table snapshots when the browser normalizes pasted CRLF line endings to LF, preventing multiline cells from falling through to split TSV rows.
 - Preserve multiline cell values during inline editing with a textarea editor; Shift+Enter inserts a newline while Enter/Tab commits.
 
+## 22.1.2 — 2026-10-09
+
+- Excel export now prepares the latest source automatically: paste large data and click Full Excel without a separate parse step. A matching completed or pending parse is reused, including correction overlays and the selected parser/header options.
+- One export operation covers preparation and XLSX generation, with stage feedback, duplicate-click protection, cancellation, and a final source/options check before download. Parse errors and source/tab changes prevent outdated exports while preserving original text.
+- Added Node integration regressions and Chromium workflows for native 100,000-row × 32-column paste-to-full-XLSX readback and cancellation/replacement.
+
 ## 22.0.0 — 2026-08-05
 
 ### Architecture and state reliability

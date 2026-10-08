@@ -6,6 +6,53 @@ import {test,expect,chromium} from '@playwright/test';
 import {createLargeTableData} from '../tests/helpers/large-data.mjs';
 import {readSheet} from 'read-excel-file/node';
 
+test('native 100,000-row paste exports a complete Excel workbook without clicking parse',async({page,context},testInfo)=>{
+  test.setTimeout(90000);
+  const fixture=createLargeTableData({rows:100000,variant:'unicode-crlf'});
+  await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:4173'});
+  await page.goto('/index.html');
+  const errors=[];page.on('pageerror',error=>errors.push(String(error)));
+  await page.evaluate(async text=>navigator.clipboard.writeText(text),fixture.text);
+  await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
+  await expect(page.locator('#parseStatusText')).toContainText('全量 Excel');
+  expect(await page.evaluate(()=>OTA.require('table-registry').TableRegistry.getRaw().length)).toBe(0);
+  const downloading=page.waitForEvent('download');
+  await page.locator('#exportFullBtn').click();
+  await expect(page.locator('#backgroundJob')).toBeVisible();
+  // The page can handle another control while the background parse/export runs.
+  await page.locator('#copySettingsBtn').click();await expect(page.locator('#copySettingsPopover')).toBeVisible();
+  await page.locator('#copySettingsCloseBtn').click();
+  const download=await downloading;const workbook=testInfo.outputPath('full-from-paste.xlsx');await download.saveAs(workbook);
+  const rows=await readSheet(workbook,'Wide');
+  expect(rows).toHaveLength(fixture.rows+1);expect(rows[0]).toEqual(fixture.headers);
+  expect(rows[1]).toHaveLength(fixture.columns);expect(rows[1][1]).toBe(1);expect(rows[1][3]).toBe('值4');
+  expect(rows[100000]).toHaveLength(fixture.columns);expect(rows[100000][1]).toBe(100000);expect(rows[100000][31]).toBe('值1');
+  const lookup=await readSheet(workbook,'Lookup');expect(lookup).toHaveLength(fixture.lookupRows+1);
+  expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);
+  expect(await page.locator('#rawInput').evaluate(el=>el.value.length)).toBeLessThanOrEqual(10000);
+  expect(errors).toEqual([]);
+});
+
+test('cancelling direct export retains the large source and a replacement can be exported',async({page,context},testInfo)=>{
+  const fixture=createLargeTableData();
+  await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:4173'});
+  await page.goto('/index.html');
+  const downloads=[];page.on('download',download=>downloads.push(download));
+  await page.evaluate(async text=>navigator.clipboard.writeText(text),fixture.text);
+  await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
+  await page.locator('#exportFullBtn').click();await expect(page.locator('#backgroundJob')).toBeVisible();
+  await page.locator('#cancelJobBtn').click();await expect(page.locator('#backgroundJob')).toBeHidden();
+  expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);
+  expect(downloads).toHaveLength(0);
+  const replacement='table-data Replacement\nvalidflag ID\n1 009';
+  await page.evaluate(async text=>navigator.clipboard.writeText(text),replacement);
+  await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
+  const downloading=page.waitForEvent('download');await page.locator('#exportFullBtn').click();
+  const download=await downloading;const workbook=testInfo.outputPath('replacement.xlsx');await download.saveAs(workbook);
+  expect(await readSheet(workbook,'Replacement')).toEqual([['validflag','ID'],[1,'009']]);
+  await page.waitForTimeout(600);expect(downloads).toHaveLength(1);
+});
+
 test('offline release preserves large original, corrections, export and browser restart recovery',async({},testInfo)=>{
   test.setTimeout(90000);
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'ota-large-release-'));

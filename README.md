@@ -2,7 +2,7 @@
 
 Offline Table Analyzer is a privacy-first table workbench that runs entirely in one HTML file. Paste or drop messy tabular data, inspect and filter it, build JOIN views, copy a selected range, and export clean Excel files—without uploading data or installing an application.
 
-Version: **22.1.1**
+Version: **22.1.2**
 
 [100,000-row performance results and recovery checks](docs/planning/large-data-performance-results.md) are measured automatically in desktop Chromium CI; development can remain on a Termux phone.
 
@@ -75,7 +75,8 @@ Additional import capabilities:
 - **Excel export**:
   - **Raw Excel** — the parsed tables as stored, before any filtering.
   - **Full Excel** — select which tables and views to include, with display-column projection.
-  - **Preview Excel** — the currently filtered and paginated results.
+  - **Preview Excel** — all currently filtered results across pages.
+- Paste and click **Full Excel** directly: exports prepare the latest source, reuse a matching completed or pending parse, and honor the chosen format/header options. Cancellation or a changed source prevents an outdated download; the original text stays intact.
 - Safe numeric serialization keeps long identifiers, unsafe leading-zero values, high-precision numeric-looking strings, and non-finite values as Excel text.
 - **Versioned workspace backup** (JSON): export the entire workspace and restore it later, choosing to **replace** the current workspace or **append** each tab as a new analysis.
 - **Configuration export / import**: rules and views only, no raw data. 5 MB file limit. Useful for sharing analysis setups without exposing underlying data.
@@ -88,7 +89,7 @@ Additional import capabilities:
 2. Open `index.html` in a current desktop browser.
 3. Paste data, drop a supported text file, or choose **Load sample**.
 4. By default, parsing runs automatically after the input settles; select a format/header strategy if automatic detection needs correction.
-5. For sources larger than 1 MB, or when auto-parse is disabled, choose **Parse now**.
+5. For large sources or when auto-parse is disabled, choose **Parse now** to inspect the data, or click **Full Excel** directly to parse and export in one operation. The default export includes every row and column; explicit table/column export settings still apply.
 
 No server is required. A local static server is useful only during development.
 

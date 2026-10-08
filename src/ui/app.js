@@ -7,6 +7,7 @@ const App = {
     _renderQueued: false,
     _renderPending: false,
     _parseGeneration:0,
+    _pendingParse:null,
     _renderGeneration:0,
     _jobGeneration:0,
     showJob(label) {
@@ -169,7 +170,7 @@ const App = {
         FilterController.init();
         ModalController.init();
         TabController.init();
-        ExportController.init();
+        ExportController.init({prepareSource:()=>this.prepareExport()});
 
         this.bindSidebar(); this.bindAccordions();
         this.bind(); this.renderTabs(); this.loadDoc();
@@ -398,7 +399,7 @@ const App = {
         if (details) details.classList.add('hidden');
         if (!text) return;
         if (state === 'pending') text.textContent = '输入已修改 · 自动解析中…';
-        else if (state === 'large') text.textContent = '数据较大 · 请点击“立即解析”';
+        else if (state === 'large') text.textContent = '数据较大 · 点击“立即解析”或“全量 Excel”';
         else text.textContent = '自动解析已关闭 · 点击“立即解析”';
     },
 
@@ -490,6 +491,45 @@ const App = {
         const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
         const headerMode = (headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
         return { html, format, headerMode, lastSuccessfulFormat: Store.lastSuccessfulFormat || null };
+    },
+
+    getSourceContext(text=SourceController.readText()) {
+        const doc=Store.getDocument();
+        return {docId:doc.id,sourceRevision:doc.sourceRevision,text,options:this.getParseOptions()};
+    },
+
+    matchesSourceContext(a,b) {
+        // The remembered format is a detection hint, not a changed source option.
+        return !!a && !!b && a.docId===b.docId && a.sourceRevision===b.sourceRevision && a.text===b.text
+            && ['format','headerMode','html'].every(key=>a.options[key]===b.options[key]);
+    },
+
+    /** Resolve the current parse and return a validator for the eventual download. */
+    async prepareExport() {
+        SourceController.clearAutoParse();
+        const text=SourceController.readText();
+        if(Store.getDocument().raw!==text)dispatch('source:replace',{text});
+        const requested=this.getSourceContext(text);
+        if(!this._parseToken?.completed || !this.matchesSourceContext(this._parseToken,requested)) {
+            const pending=this._pendingParse;
+            const parsed=await (this.matchesSourceContext(pending?.context,requested)?pending.promise:this.run());
+            if(!this.matchesSourceContext(requested,this.getSourceContext())) {
+                throw new Error('数据源或解析设置已变化，请重新导出');
+            }
+            if(!parsed)return null; // Parsing already reports errors and cancellation.
+        }
+        const token=this._parseToken, generation=this._parseGeneration;
+        const validate=()=>{
+            if(!this.matchesSourceContext(token,requested) || !this.matchesSourceContext(token,this.getSourceContext())) {
+                throw new Error('数据源或解析设置已变化，请重新导出');
+            }
+            if(generation!==this._parseGeneration || token!==this._parseToken) {
+                throw Object.assign(new Error('操作已取消'),{name:'AbortError'});
+            }
+        };
+        validate();
+        if(!TableRegistry.getRaw().length){Toast.show('无数据可导出',true);return null;}
+        return {validate}; // Rechecked by ExportController immediately before download.
     },
 
     showPasteSource() {
@@ -906,13 +946,15 @@ validflag Time      Level   Message                 Code
             const sourceText = SourceController.readText();
             if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 128 MiB 安全限制，请拆分后再分析');
             if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
-            parseContext = {
-                docId: Store.state.activeId,
-                sourceRevision: Store.curr().sourceRevision,
-                started,
-            };
-            const options=this.getParseOptions();
-            if(BackgroundService.isLarge(sourceText) && !options.html && options.format!=='html-table')return this.runBackground(sourceText,options,parseContext,render);
+            parseContext = {...this.getSourceContext(sourceText),started};
+            const options=parseContext.options;
+            if(BackgroundService.isLarge(sourceText) && !options.html && options.format!=='html-table') {
+                const pending={context:parseContext};
+                this._pendingParse=pending;
+                pending.promise=this.runBackground(sourceText,options,parseContext,render);
+                return pending.promise;
+            }
+            this._pendingParse=null;
             BackgroundService.cancel();QueryService.clearCache();this._parseGeneration++;this._parseToken=parseContext;
             const result = Parser.parse(sourceText, options);
             if (result.format === 'error') {
@@ -940,6 +982,8 @@ validflag Time      Level   Message                 Code
                 this.requestRender();
             }
             if(TableRegistry.getRaw().length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
+            parseContext.completed=true;
+            return true;
         } catch(e) {
             console.error(e);
             const msg = e.message || String(e);
@@ -972,6 +1016,7 @@ validflag Time      Level   Message                 Code
                 /URI.*malformed/i.test(msg)             ? '文件名包含不支持字符' :
                 '';
             Toast.show(friendly || `解析失败：${msg}`, true);
+            return false;
         }
     },
 
@@ -985,18 +1030,22 @@ validflag Time      Level   Message                 Code
         try {
             const result=await BackgroundService.parse({text,options,key});
             const doc=Store.getDocument();
-            if(generation!==this._parseGeneration || doc.id!==context.docId || doc.sourceRevision!==context.sourceRevision)return;
+            if(generation!==this._parseGeneration || !this.matchesSourceContext(context,this.getSourceContext()))return false;
             TableRegistry.setResult({...result,background:true,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision});
             this.applyStoredCellEdits();
             if(result.tables.length && result.format!=='empty')Store.lastSuccessfulFormat=result.format;
             this.updateImportSummary();
             dispatch('parse:completed',{docId:doc.id,sourceRevision:doc.sourceRevision,format:result.format,tables:result.tables,elapsed:Math.round(performance.now()-context.started)});
             if(render)this.requestRender();
+            context.completed=true;
+            return true;
         } catch(error) {
-            if(generation!==this._parseGeneration || error.name==='AbortError')return;
+            if(generation!==this._parseGeneration || error.name==='AbortError' || !this.matchesSourceContext(context,this.getSourceContext()))return false;
             TableRegistry.setResult({format:'error',label:'解析失败',tables:[],diagnostics:[{severity:'error',code:'PARSE_ERROR',message:error.message}]});
             Toast.show(error.message,true);this.updateImportSummary();this.requestRender();
+            return false;
         } finally {
+            if(this._pendingParse?.context===context)this._pendingParse=null;
             this.finishJob(job);
             if(generation===this._parseGeneration && $('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         }

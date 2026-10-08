@@ -78,7 +78,7 @@ The refactor decision, module manifest, dependency rules, migration phases, and 
 
 ```text
 schemaVersion: 21
-appVersion: 22.1.1
+appVersion: 22.1.2
 cellEditKeyEncoding: dollar-v1
 rawExternal?: committed snapshot generation (local settings stub only)
 revision / viewRevision / queryRevision
@@ -198,6 +198,8 @@ paste / drop / file / fullscreen editor
 Drag-and-drop of local files onto the source area is supported. A fullscreen source editor is available for working with large inputs. Config import/export (`table-tool-config` kind, 5 MB limit) transfers rules, filters, views, and UI settings across documents.
 
 The full processed result remains in memory for export, while only the selected page is materialized as table DOM.
+
+Excel buttons use `App.prepareExport()` through an injected `ExportController.init({prepareSource})` callback. App owns source synchronization and parse lifecycle: a completed matching parse is reused, and an export waits for a matching in-flight parse instead of restarting it. Matching includes document ID, source revision, original text, clipboard HTML, parser and header mode; last-successful-format is only a detection hint. `App.run()` reports successful completion as a boolean or a Promise of that boolean. Preparation returns a transient download validator or null after an already-reported parse failure/empty input. ExportController owns one lock and stage feedback across preparation and serialization, then invokes the validator immediately before download. Cancellation invalidates the validator; a changed source/options/tab rejects the old result. No new persisted fields, modules or dependencies are introduced.
 
 ## 5. Persistence and migration
 

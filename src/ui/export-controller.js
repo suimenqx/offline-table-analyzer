@@ -13,25 +13,31 @@ OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "d
 */
 
 const ExportController = {
-    async runExport(label,task,prefix,type,extension) {
+    async runExport(label,task,prefix,type,extension,validate=()=>{}) {
         if(this._exporting)return Toast.show('导出正在进行，请等待或取消');
         this._exporting=true;
-        const notify=busy=>document.dispatchEvent(new CustomEvent('ota:backgroundJob',{detail:{busy,label}}));
+        const notify=(busy,nextLabel=label)=>document.dispatchEvent(new CustomEvent('ota:backgroundJob',{detail:{busy,label:nextLabel}}));
         notify(true);
         try {
-            const buffer=await task();
+            const buffer=await task(nextLabel=>notify(true,nextLabel));
+            if(buffer==null)return;
+            validate();
             Exporter.download(`${Exporter.sanitizeFilePrefix(prefix)}_${Exporter.getTimestamp()}.${extension}`,buffer instanceof Blob?buffer:new Blob([buffer],{type}),type);
         } catch(error) {if(error.name!=='AbortError')Toast.show(`导出失败：${error.message}`,true);}
         finally {this._exporting=false;notify(false);}
     },
     exportExcel(mode) {
-        if(TableRegistry.isBackground()) {
-            let input;
-            try {input=TableRegistry.getBackgroundInput();}catch(error){return Toast.show(error.message,true);}
-            return this.runExport('正在后台生成 Excel…',()=>BackgroundService.export(input,mode),this._getPrefix(mode),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','xlsx');
-        }
-        const tables=mode==='raw'?TableRegistry.getRaw():mode==='full'?this._getFullExportTables():this._getPreviewExportTables();
-        return Exporter.toExcel(tables,this._getPrefix(mode));
+        let source;
+        const validate=()=>source.validate();
+        return this.runExport('正在准备导出数据…',async updateLabel=>{
+            source=this._prepareSource?await this._prepareSource():{validate:()=>{}};
+            if(!source)return null;
+            validate();
+            updateLabel(TableRegistry.isBackground()?'正在后台生成 Excel…':'正在生成 Excel…');
+            if(TableRegistry.isBackground())return BackgroundService.export(TableRegistry.getBackgroundInput(),mode);
+            const tables=mode==='raw'?TableRegistry.getRaw():mode==='full'?this._getFullExportTables():this._getPreviewExportTables();
+            return Exporter.createExcelBytes(tables);
+        },this._getPrefix(mode),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','xlsx',validate);
     },
     exportJson(payload,prefix) {
         const bytes=(payload.docs || []).reduce((sum,doc)=>sum+(doc.raw || '').length*2,0);
@@ -42,7 +48,9 @@ const ExportController = {
     /**
      * Bind export buttons. Called once from App.init().
      */
-    init() {
+    init({prepareSource}={}) {
+        // App supplies source preparation; export never reaches into App state.
+        this._prepareSource=prepareSource;
         // Copy settings popover
         const copyPreferences = $('copyPreferences');
         const copySettingsBtn = $('copySettingsBtn');
