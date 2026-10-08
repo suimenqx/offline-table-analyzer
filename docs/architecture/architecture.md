@@ -79,6 +79,8 @@ The refactor decision, module manifest, dependency rules, migration phases, and 
 ```text
 schemaVersion: 21
 appVersion: 22.1.1
+cellEditKeyEncoding: dollar-v1
+rawExternal?: committed snapshot generation (local settings stub only)
 revision / viewRevision / queryRevision
 docs[]
 activeId

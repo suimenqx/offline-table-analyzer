@@ -4,6 +4,8 @@ Offline Table Analyzer is a privacy-first table workbench that runs entirely in 
 
 Version: **22.1.1**
 
+[100,000-row performance results and recovery checks](docs/planning/large-data-performance-results.md) are measured automatically in desktop Chromium CI; development can remain on a Termux phone.
+
 ## Why this project exists
 
 Operational data rarely arrives as a perfect spreadsheet. It is often copied from a terminal, a browser, a Markdown document, an Excel sheet, or a diagnostic log. Offline Table Analyzer turns those inputs into a consistent table model and provides the practical tools needed to review and move the result elsewhere.

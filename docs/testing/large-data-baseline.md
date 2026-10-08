@@ -2,7 +2,7 @@
 
 开发主机可以只有 Termux 手机。基线由 GitHub Actions 的桌面 Chromium 自动运行，不要求开发者提供电脑或上传敏感原文；手机浏览器不是产品的主要验收对象。
 
-[2026-10-08 实测结果与归档](../planning/ci-large-data-baseline.md)已取得，6 个用例完成；这是改造前的基线，仍观察到秒级主线程阻塞。
+[改造前实测基线](../planning/ci-large-data-baseline.md)与[22.1.1 改造结果](../planning/large-data-performance-results.md)均已归档；六个性能样本、十万行恢复流程和主线程响应回归门槛已通过。
 
 ## 执行入口
 

@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "case": {
+    "variant": "short",
+    "run": 1,
+    "method": "file",
+    "fileDelivery": "local-path",
+    "rows": 100000,
+    "columns": 32,
+    "textCharacters": 12370361,
+    "receivedTextCharacters": 12370361,
+    "utf8Bytes": 12370361,
+    "estimatedTextBytes": 24740722
+  },
+  "environment": {
+    "commit": "e12f0ccc3f06d19fabd3f3ca4c933a6253e792dc",
+    "browserVersion": "153.0.8010.12",
+    "headless": true,
+    "platform": "linux",
+    "architecture": "x64",
+    "nodeVersion": "v22.23.3",
+    "cpuModel": "AMD EPYC 7763 64-Core Processor",
+    "logicalCpus": 4,
+    "availableParallelism": 4,
+    "hostMemoryBytes": 16766410752,
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
+  },
+  "status": "passed",
+  "phases": [
+    {
+      "name": "file-import-and-parse",
+      "failed": false,
+      "actionWallMs": 1900.017822000009,
+      "before": {
+        "Nodes": 1515,
+        "ScriptDuration": 0.031221,
+        "TaskDuration": 0.186448,
+        "JSHeapUsedSize": 3045900,
+        "JSHeapTotalSize": 4313088
+      },
+      "startedAt": 618.7000000000116,
+      "modules": {
+        "Store.save": {
+          "calls": 2,
+          "totalMs": 2.6000000000058208,
+          "maxMs": 2.1000000000058208
+        }
+      },
+      "storageResults": [
+        {
+          "ok": false,
+          "bytes": 1628,
+          "message": "正在保存完整原文…"
+        },
+        {
+          "ok": true,
+          "bytes": 24742292,
+          "message": "完整原文已保存到此设备"
+        },
+        {
+          "ok": true,
+          "bytes": 24742516,
+          "message": "工作区已保存，完整原文快照已复用"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 67.69999999998254,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 10000000,
+      "observerWindowMs": 2303.2999999999884,
+      "after": {
+        "Nodes": 8269,
+        "ScriptDuration": 0.302281,
+        "TaskDuration": 0.918138,
+        "JSHeapUsedSize": 87019712,
+        "JSHeapTotalSize": 140656640
+      },
+      "cacheEntries": 1
+    }
+  ],
+  "unexpectedRequests": [],
+  "pageErrors": [],
+  "observations": [],
+  "importLimitBytes": 134217728
+}
