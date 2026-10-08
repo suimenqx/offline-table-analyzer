@@ -2,6 +2,8 @@
 
 开发主机可以只有 Termux 手机。基线由 GitHub Actions 的桌面 Chromium 自动运行，不要求开发者提供电脑或上传敏感原文；手机浏览器不是产品的主要验收对象。
 
+[2026-10-08 实测结果与归档](../planning/ci-large-data-baseline.md)已取得，6 个用例完成；这是改造前的基线，仍观察到秒级主线程阻塞。
+
 ## 执行入口
 
 [Large-data Chromium baseline 工作流](../../.github/workflows/large-data-baseline.yml) 在相关源代码、基准或构建文件推送到 main 后运行，也支持 GitHub Actions 的手动运行按钮。CLI 可用 `gh workflow run large-data-baseline.yml --ref main`。

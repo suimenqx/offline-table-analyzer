@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "case": {
+    "variant": "short",
+    "run": 1,
+    "method": "file",
+    "rows": 100000,
+    "columns": 32,
+    "textCharacters": 12370361,
+    "receivedTextCharacters": 12370361,
+    "utf8Bytes": 12370361,
+    "estimatedTextBytes": 24740722
+  },
+  "environment": {
+    "commit": "529a2f8bb751e6ce0c17ee434c30ed3ab5cdd649",
+    "browserVersion": "153.0.8010.12",
+    "headless": true,
+    "platform": "linux",
+    "architecture": "x64",
+    "nodeVersion": "v22.23.3",
+    "cpuModel": "AMD EPYC 7763 64-Core Processor",
+    "logicalCpus": 4,
+    "availableParallelism": 4,
+    "hostMemoryBytes": 16766414848,
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
+  },
+  "status": "passed",
+  "phases": [
+    {
+      "name": "file-import-and-parse",
+      "failed": false,
+      "actionWallMs": 5321.39278200001,
+      "before": {
+        "Nodes": 1502,
+        "ScriptDuration": 0.025331,
+        "TaskDuration": 0.167107,
+        "JSHeapUsedSize": 2748492,
+        "JSHeapTotalSize": 3993600
+      },
+      "startedAt": 600.8999999999942,
+      "modules": {
+        "TableUtils.normalizeRows": {
+          "calls": 2,
+          "totalMs": 707.9999999999709,
+          "maxMs": 707.8999999999942
+        },
+        "ImportEngine.parse": {
+          "calls": 1,
+          "totalMs": 923.7000000000116,
+          "maxMs": 923.7000000000116
+        },
+        "FilterEngine.processTable": {
+          "calls": 4,
+          "totalMs": 124.80000000001746,
+          "maxMs": 64.60000000000582
+        },
+        "QueryService.getPreview": {
+          "calls": 2,
+          "totalMs": 136.60000000003492,
+          "maxMs": 69.40000000002328
+        },
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 31.39999999999418,
+          "maxMs": 31.39999999999418
+        }
+      },
+      "storageResults": [
+        {
+          "ok": false,
+          "bytes": 1560,
+          "message": "本地存储空间不足；当前页面数据仍在，请立即备份工作区或关闭原始数据持久化。"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 4,
+      "longTaskTotalMs": 2262,
+      "longestTaskMs": 1076,
+      "maxTimerDelayMs": 2495.2999999999884,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 10000000,
+      "observerWindowMs": 5729.200000000012,
+      "after": {
+        "Nodes": 214741,
+        "ScriptDuration": 1.246969,
+        "TaskDuration": 5.371521,
+        "JSHeapUsedSize": 187886148,
+        "JSHeapTotalSize": 258338816
+      },
+      "cacheEntries": 2
+    }
+  ],
+  "unexpectedRequests": [],
+  "pageErrors": [],
+  "observations": [],
+  "importLimitBytes": 26214400
+}

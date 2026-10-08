@@ -27,6 +27,7 @@ Status: open
 <!-- 仅在票关闭后追加标题链接与一句结论。用户已确认的范围和偏好见 Notes。 -->
 
 - [单文件后台计算与异步原文存储是否可行](issues/02-offline-worker-storage.md)：内嵌 Blob Worker 有候选路径；HTML 语义与文件来源下的自动恢复存在必须实测的边界，不能把调研当成验收。
+- [建立 CI 桌面 Chromium 基线以决定性能预算](issues/01-desktop-baseline.md)：手机开发可由 CI 自动取得桌面事实；已归档 6 个用例，粘贴、重复全表副本与同步保存是实测重点，具体响应/容量门槛仍待后续决策。
 
 ## Not yet specified
 

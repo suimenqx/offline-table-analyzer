@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "case": {
+    "variant": "long",
+    "run": 1,
+    "method": "clipboard",
+    "rows": 100000,
+    "columns": 32,
+    "textCharacters": 38789361,
+    "receivedTextCharacters": 38789361,
+    "utf8Bytes": 38789361,
+    "estimatedTextBytes": 77578722
+  },
+  "environment": {
+    "commit": "529a2f8bb751e6ce0c17ee434c30ed3ab5cdd649",
+    "browserVersion": "153.0.8010.12",
+    "headless": true,
+    "platform": "linux",
+    "architecture": "x64",
+    "nodeVersion": "v22.23.3",
+    "cpuModel": "AMD EPYC 7763 64-Core Processor",
+    "logicalCpus": 4,
+    "availableParallelism": 4,
+    "hostMemoryBytes": 16766414848,
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
+  },
+  "status": "passed",
+  "phases": [
+    {
+      "name": "paste",
+      "failed": false,
+      "actionWallMs": 4424.374161999993,
+      "before": {
+        "Nodes": 1396,
+        "ScriptDuration": 0.02576,
+        "TaskDuration": 0.898355,
+        "JSHeapUsedSize": 79636748,
+        "JSHeapTotalSize": 81940480
+      },
+      "startedAt": 2271.5,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 189.09999999997672,
+          "maxMs": 189.09999999997672
+        }
+      },
+      "storageResults": [
+        {
+          "ok": false,
+          "bytes": 1560,
+          "message": "本地存储空间不足；当前页面数据仍在，请立即备份工作区或关闭原始数据持久化。"
+        }
+      ],
+      "pasteEvents": 1,
+      "longTaskCount": 2,
+      "longTaskTotalMs": 3290,
+      "longestTaskMs": 3101,
+      "maxTimerDelayMs": 3819.7999999999884,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "pasteStartedAt": 2278.899999999994,
+      "clipboardTypes": [
+        "text/plain"
+      ],
+      "pasteEventToInputMs": 3057.600000000006,
+      "pasteEventToHandlersDoneMs": 3057.600000000006,
+      "observerWindowMs": 4827.5,
+      "after": {
+        "Nodes": 201448,
+        "ScriptDuration": 0.416767,
+        "TaskDuration": 5.113263,
+        "JSHeapUsedSize": 118572556,
+        "JSHeapTotalSize": 120573952
+      },
+      "cacheEntries": 0
+    },
+    {
+      "name": "save-raw",
+      "failed": false,
+      "actionWallMs": 240.59744400001364,
+      "before": {
+        "Nodes": 201448,
+        "ScriptDuration": 0.416923,
+        "TaskDuration": 5.116466,
+        "JSHeapUsedSize": 118575416,
+        "JSHeapTotalSize": 120573952
+      },
+      "startedAt": 7505.599999999977,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 166.10000000000582,
+          "maxMs": 166.10000000000582
+        }
+      },
+      "storageResults": [
+        {
+          "ok": false,
+          "bytes": 1560,
+          "message": "本地存储空间不足；当前页面数据仍在，请立即备份工作区或关闭原始数据持久化。"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 1,
+      "longTaskTotalMs": 170,
+      "longestTaskMs": 170,
+      "maxTimerDelayMs": 174.89999999999418,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 642.9000000000233,
+      "after": {
+        "Nodes": 201451,
+        "ScriptDuration": 0.588868,
+        "TaskDuration": 5.348214,
+        "JSHeapUsedSize": 274068704,
+        "JSHeapTotalSize": 276041728
+      },
+      "cacheEntries": 0
+    },
+    {
+      "name": "temporary-mode-control",
+      "failed": false,
+      "actionWallMs": 283.4240019999852,
+      "before": {
+        "Nodes": 201451,
+        "ScriptDuration": 0.589097,
+        "TaskDuration": 5.351805,
+        "JSHeapUsedSize": 274070476,
+        "JSHeapTotalSize": 276041728
+      },
+      "startedAt": 8554.599999999977,
+      "modules": {},
+      "storageResults": [],
+      "pasteEvents": 0,
+      "longTaskCount": 1,
+      "longTaskTotalMs": 63,
+      "longestTaskMs": 63,
+      "maxTimerDelayMs": 108.30000000001746,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 685.9000000000233,
+      "after": {
+        "Nodes": 201454,
+        "ScriptDuration": 0.590661,
+        "TaskDuration": 5.628231,
+        "JSHeapUsedSize": 274228496,
+        "JSHeapTotalSize": 276041728
+      },
+      "cacheEntries": 0
+    },
+    {
+      "name": "parse-rejected",
+      "failed": false,
+      "actionWallMs": 82.81346800000756,
+      "before": {
+        "Nodes": 201454,
+        "ScriptDuration": 0.590798,
+        "TaskDuration": 5.628934,
+        "JSHeapUsedSize": 274230268,
+        "JSHeapTotalSize": 276041728
+      },
+      "startedAt": 9646.5,
+      "modules": {},
+      "storageResults": [],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 24.099999999976717,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 486.0999999999767,
+      "after": {
+        "Nodes": 201520,
+        "ScriptDuration": 0.612424,
+        "TaskDuration": 5.676159,
+        "JSHeapUsedSize": 274422304,
+        "JSHeapTotalSize": 276303872
+      },
+      "cacheEntries": 0
+    }
+  ],
+  "unexpectedRequests": [],
+  "pageErrors": [],
+  "observations": [
+    "persistRawToggle unchecked but Store.persistRaw remains enabled; later phases retain default persistence"
+  ],
+  "importLimitBytes": 26214400,
+  "temporaryMode": {
+    "storeEnabled": true,
+    "controlChecked": false
+  },
+  "outcome": "rejected-by-current-import-limit"
+}
