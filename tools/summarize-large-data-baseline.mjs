@@ -31,6 +31,8 @@ export function summarizeBaseline(reports) {
     const sample = report.case;
     lines.push(`| ${sample.variant}/${sample.method}/${sample.run} | ${report.status}, ${report.outcome || 'import'} | ${mib(sample.utf8Bytes)} | ${mib(sample.estimatedTextBytes)} |`);
   }
+  const observations = [...new Set(reports.flatMap(report => report.observations || []))];
+  if (observations.length) lines.push('', '## Observed application issues', '', ...observations.map(value => `- ${value}`));
   lines.push('', '| Case | Phase | Action ms | Longest task ms | Timer delay ms | Page heap after MiB |',
     '| --- | --- | ---: | ---: | ---: | ---: |');
   for (const report of reports) {

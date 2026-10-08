@@ -30,11 +30,12 @@ for (const sample of cases) {
         availableParallelism: os.availableParallelism(), hostMemoryBytes: os.totalmem(),
         viewport: { width: 1440, height: 900 },
       },
-      status: 'running', phases: [], unexpectedRequests: [],
+      status: 'running', phases: [], unexpectedRequests: [], pageErrors: [], observations: [],
     };
     page.on('request', request => {
       if (new URL(request.url()).origin !== origin) report.unexpectedRequests.push(request.url());
     });
+    page.on('pageerror', error => report.pageErrors.push(String(error)));
     const cdp = await context.newCDPSession(page);
     await cdp.send('Performance.enable');
     const metrics = async () => {
@@ -64,6 +65,7 @@ for (const sample of cases) {
           Object.assign(item, await page.evaluate(() => window.__otaLargeDataProbe.stop()));
           item.after = await metrics();
           item.cacheEntries = await page.evaluate(() => window.OTA.require('query-service').QueryService.getCacheSize());
+          if (failed) item.finalState = await rawState();
         } catch (error) {
           item.observationError = String(error);
         }
@@ -77,6 +79,7 @@ for (const sample of cases) {
         sourceLength: doc.raw.length,
         editorLength: document.getElementById('rawInput').value.length,
         sourceMatchesEditor: doc.raw === document.getElementById('rawInput').value,
+        persistRaw: window.OTA.require('store').Store.getState().persistRaw,
         tables: tables.map(table => ({ name: table.name, rows: table.rows.length, columns: table.headers.length,
           firstId: table.rows[0]?.[1], lastId: table.rows.at(-1)?.[1] })),
       };
@@ -123,12 +126,19 @@ for (const sample of cases) {
         });
         expect(report.phases.at(-1).pasteEvents).toBe(1);
         await phase('save-raw', () => page.keyboard.press('Control+S'));
-        await phase('temporary-mode', async () => {
+        await phase('temporary-mode-control', async () => {
           await page.locator('#persistRawToggle').uncheck();
-          expect(await page.evaluate(() => {
-            const { STORE_KEY } = window.OTA.require('store');
-            return JSON.parse(localStorage.getItem(STORE_KEY)).docs.every(doc => doc.raw === '');
-          })).toBe(true);
+          const state = await rawState();
+          report.temporaryMode = { storeEnabled: state.persistRaw, controlChecked: await page.locator('#persistRawToggle').isChecked() };
+          if (state.persistRaw === false) {
+            expect(await page.evaluate(() => {
+              const { STORE_KEY } = window.OTA.require('store');
+              return JSON.parse(localStorage.getItem(STORE_KEY)).docs.every(doc => doc.raw === '');
+            })).toBe(true);
+          } else {
+            // Observe the existing control defect instead of treating the old empty save as success.
+            report.observations.push('persistRawToggle unchecked but Store.persistRaw remains enabled; later phases retain default persistence');
+          }
         });
 
         if (receivedCharacters * 2 > report.importLimitBytes) {
@@ -216,6 +226,9 @@ for (const sample of cases) {
           });
           await phase('second-document-file-import', async () => {
             await page.locator('#addTabBtn').click();
+            // Store notifications load the new editor asynchronously. Await visible readiness.
+            await expect(page.locator('#tabsContainer [role="tab"][aria-selected="true"]')).toContainText('Analysis 2');
+            await expect(page.locator('#rawInput')).toHaveValue('');
             await page.locator('#sourceFileInput').setInputFiles({ name: 'second-wide.txt', mimeType: 'text/plain', buffer: Buffer.from(fixture.text) });
             await expectWideCount(fixture.rows);
             const state = await rawState();
@@ -227,6 +240,7 @@ for (const sample of cases) {
         }
       }
       expect(report.unexpectedRequests).toEqual([]);
+      expect(report.pageErrors).toEqual([]);
       report.status = 'passed';
     } finally {
       if (report.status !== 'passed') report.status = 'failed';

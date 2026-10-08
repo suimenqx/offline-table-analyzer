@@ -4,6 +4,8 @@ import base from './playwright.config.js';
 export default defineConfig(base, {
   testMatch: '**/*.perf.js',
   timeout: 180_000,
+  // Await completion while measuring its real duration; this is not a performance SLA.
+  expect: { timeout: 30_000 },
   retries: 0,
   workers: 1,
   outputDir: 'test-results/large-data',
