@@ -247,6 +247,12 @@ for (const sample of cases) {
           report.outcome = 'full-workflow-completed';
         }
       }
+      // This gate detects renewed main-thread stalls; background completion
+      // time is measured separately and is allowed to exceed this budget.
+      for(const measurement of report.phases) {
+        expect(measurement.longestTaskMs,`${measurement.name}: main-thread task`).toBeLessThan(500);
+        expect(measurement.maxTimerDelayMs,`${measurement.name}: UI heartbeat delay`).toBeLessThan(500);
+      }
       expect(report.unexpectedRequests).toEqual([]);
       expect(report.pageErrors).toEqual([]);
       report.status = 'passed';
