@@ -7,9 +7,11 @@ import {createLargeTableData} from '../tests/helpers/large-data.mjs';
 import {readSheet} from 'read-excel-file/node';
 
 test('offline release preserves large original, corrections, export and browser restart recovery',async({},testInfo)=>{
+  test.setTimeout(90000);
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'ota-large-release-'));
   const filename=path.join(directory,'index.html');await fs.copyFile('index.html',filename);
-  const profile=path.join(directory,'profile');const fixture=createLargeTableData({rows:6000,variant:'unicode-crlf'});
+  const profile=path.join(directory,'profile');const fixture=createLargeTableData({rows:100000,variant:'unicode-crlf'});
+  const inputFile=path.join(directory,'wide.txt');await fs.writeFile(inputFile,fixture.text);
   let context;
   const open=async()=>{
     context=await chromium.launchPersistentContext(profile,{headless:true});await context.setOffline(true);
@@ -20,8 +22,8 @@ test('offline release preserves large original, corrections, export and browser 
   try {
     let page=await open();
     const errors=[];page.on('pageerror',error=>errors.push(String(error)));
-    await page.locator('#sourceFileInput').setInputFiles({name:'wide.txt',mimeType:'text/plain',buffer:Buffer.from(fixture.text)});
-    await waitRows(page,6000);
+    await page.locator('#sourceFileInput').setInputFiles(inputFile);
+    await waitRows(page,fixture.rows);
     expect(await page.locator('#rawInput').evaluate(el=>({readonly:el.readOnly,length:el.value.length}))).toMatchObject({readonly:true});
     expect(await page.locator('#rawInput').evaluate(el=>el.value.length)).toBeLessThanOrEqual(10000);
     expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);
@@ -32,7 +34,7 @@ test('offline release preserves large original, corrections, export and browser 
     const pending=page.waitForEvent('download');await page.locator('#exportSourceBtn').click();const source=await pending;
     const sourcePath=testInfo.outputPath('original.txt');await source.saveAs(sourcePath);expect(await fs.readFile(sourcePath,'utf8')).toBe(fixture.text);
     await context.close();context=null;
-    page=await open();await waitRows(page,6000);expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);
+    page=await open();await waitRows(page,fixture.rows);expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);
     await expect(wide(page).locator('tbody tr').first().locator('td').nth(3)).toHaveText('修正值');
     await page.locator('#sidebarConfigTabBtn').click();await page.locator('.acc-item[data-acc="rules"] .acc-head').click();await page.locator('#globalFilter').fill('ID<=100');await waitRows(page,100);
     const downloading=page.waitForEvent('download');await page.locator('#exportPrevBtn').click();const download=await downloading;const workbook=testInfo.outputPath('corrected.xlsx');await download.saveAs(workbook);
