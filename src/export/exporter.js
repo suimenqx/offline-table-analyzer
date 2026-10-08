@@ -51,7 +51,7 @@ const Exporter = {
             return { name, headers, rows };
         });
     },
-    buildSheetXml({headers=[], rows=[]}) {
+    buildSheetXml({headers=[], rows=[]}, maxBytes=this.MAX_OUTPUT_BYTES) {
         const columnName = (index) => {
             let name = '';
             for(let value = index + 1; value > 0; value = Math.floor((value - 1) / 26)) {
@@ -78,9 +78,12 @@ const Exporter = {
         const serializeRow = (values, rowNo) =>
             `<row r="${rowNo}">${(values || []).map((value, column) => cell(value, `${columnName(column)}${rowNo}`)).join('')}</row>`;
         const rowsXml = [];
-        let bytes=0;
+        const prefix='<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+        const suffix='</sheetData></worksheet>';
+        let bytes=prefix.length+suffix.length;
+        if(bytes>maxBytes)throw new Error('Excel 输出超过 256 MiB 预算，请减少导出范围');
         const encoder=new TextEncoder();
-        const append=xml=>{bytes+=encoder.encode(xml).length;if(bytes>this.MAX_OUTPUT_BYTES)throw new Error('Excel 输出超过 256 MiB 预算，请减少导出范围');rowsXml.push(xml);};
+        const append=xml=>{bytes+=encoder.encode(xml).length;if(bytes>maxBytes)throw new Error('Excel 输出超过 256 MiB 预算，请减少导出范围');rowsXml.push(xml);};
         let rowNo = 1;
         if(headers.length) {
             append(serializeRow(headers, rowNo));
@@ -90,10 +93,7 @@ const Exporter = {
             append(serializeRow(r, rowNo));
             rowNo++;
         });
-        return `<?xml version="1.0" encoding="UTF-8"?>` +
-            `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-            `<sheetData>${rowsXml.join('')}</sheetData>` +
-            `</worksheet>`;
+        return prefix+rowsXml.join('')+suffix;
     },
     buildWorkbookXml(sheets) {
         const sheetXml = sheets.map((s, i) => `<sheet name="${this.escapeXml(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('');
@@ -220,7 +220,13 @@ const Exporter = {
             {name:'xl/workbook.xml',data:this.buildWorkbookXml(sheets)},
             {name:'xl/_rels/workbook.xml.rels',data:this.buildWorkbookRels(sheets.length)}
         ];
-        sheets.forEach((sheet,index)=>files.push({name:`xl/worksheets/sheet${index+1}.xml`,data:this.buildSheetXml(sheet)}));
+        const encoder=new TextEncoder();
+        let remaining=this.MAX_OUTPUT_BYTES-files.reduce((sum,file)=>sum+encoder.encode(file.data).length,0);
+        sheets.forEach((sheet,index)=>{
+            const data=this.buildSheetXml(sheet,remaining);
+            remaining-=encoder.encode(data).length;
+            files.push({name:`xl/worksheets/sheet${index+1}.xml`,data});
+        });
         return this.makeZip(files);
     },
     toExcel(tables, prefix='export') {

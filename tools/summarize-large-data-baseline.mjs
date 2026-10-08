@@ -51,8 +51,8 @@ export function summarizeBaseline(reports) {
     }
     lines.push('', 'Three repeats do not establish a reliable p95 or a real-user INP score.');
   }
-  lines.push('', 'Default raw persistence may hit the browser quota; see storageResults in baseline.json. The oversized sample measures paste and visible rejection, not successful parsing.',
-    'file:// Worker/storage compatibility is a separate task. Linux headless clipboard and shared CI runner timings do not reproduce every desktop OS or a particular 32 GB machine.', '');
+  lines.push('', 'Storage success/failure is recorded in baseline.json; durable restart recovery is checked separately by browser E2E. The long sample exceeded the old limit; newer releases must complete the workflow or report an explicit budget failure.',
+    'file:// Worker/storage compatibility is checked separately by offline-runtime.e2e.js. Window module timers exclude Worker CPU. Linux headless clipboard and shared CI runner timings do not reproduce every desktop OS or a particular 32 GB machine.', '');
   return lines.join('\n');
 }
 

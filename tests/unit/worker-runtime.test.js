@@ -58,6 +58,10 @@ describe('background dataset session',()=>{
     Joiner.MAX_ROWS=3;
     assert.throws(()=>Joiner.run(tables,{view:'V',left:'L',right:'R',type:'inner',on:'k=k',select:'left.k'}),/预算/);
     assert.equal(tables[0].rows.length,2);
+    const sheet={name:'one',headers:['k'],rows:[['a']]};
+    const byteLength=new TextEncoder().encode(Exporter.buildSheetXml(sheet)).length;
+    Exporter.MAX_OUTPUT_BYTES=byteLength*2;
+    assert.throws(()=>Exporter.createExcelBytes([sheet,{...sheet,name:'two'},{...sheet,name:'three'}]),/预算/);
     Exporter.MAX_OUTPUT_BYTES=200;
     assert.throws(()=>Exporter.createExcelBytes(tables),/预算/);
   });
