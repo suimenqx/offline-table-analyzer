@@ -16,8 +16,8 @@ const cases = [
 for (const sample of cases) {
   test(`100k x 32 ${sample.variant} ${sample.method || 'clipboard'} run ${sample.run}`, async ({ page, context, browser }, testInfo) => {
     const fixture = createLargeTableData({ variant: sample.variant });
-    // Native textarea values canonicalize CRLF to LF; record both input and received lengths.
-    const receivedCharacters = fixture.text.replace(/\r\n/g, '\n').length;
+    // Large input bypasses native insertion and retains its original CRLF in Store.
+    const receivedCharacters = fixture.text.length;
     const report = {
       schemaVersion: 1,
       case: { ...sample, method: sample.method || 'clipboard', rows: fixture.rows, columns: fixture.columns,
@@ -79,6 +79,7 @@ for (const sample of cases) {
         sourceLength: doc.raw.length,
         editorLength: document.getElementById('rawInput').value.length,
         sourceMatchesEditor: doc.raw === document.getElementById('rawInput').value,
+        previewOnly: document.getElementById('rawInput').dataset.sourcePreview === 'true',
         persistRaw: window.OTA.require('store').Store.getState().persistRaw,
         tables: tables.map(table => ({ name: table.name, rows: table.rows.length, columns: table.headers.length,
           firstId: table.rows[0]?.[1], lastId: table.rows.at(-1)?.[1] })),
@@ -122,7 +123,9 @@ for (const sample of cases) {
           await page.locator('#rawInput').press('Control+V');
           const state = await rawState();
           expect(state.sourceLength).toBe(receivedCharacters);
-          expect(state.sourceMatchesEditor).toBe(true);
+          expect(state.previewOnly).toBe(true);
+          expect(state.editorLength).toBeLessThanOrEqual(10000);
+          expect(state.sourceMatchesEditor).toBe(false);
         });
         expect(report.phases.at(-1).pasteEvents).toBe(1);
         await phase('save-raw', () => page.keyboard.press('Control+S'));
@@ -200,7 +203,7 @@ for (const sample of cases) {
           expect(filtered[0]).toEqual(fixture.headers);
           expect(filtered[1][1]).toBe(1);
           expect(filtered[100][1]).toBe(100);
-          expect(filtered[1][3]).toBe(sample.variant === 'unicode-crlf' ? '值4' : 4);
+          expect(filtered[1][3]).toBe(sample.variant === 'unicode-crlf' ? '值4' : sample.variant==='long'?'xxxxxxxxxxx4':4);
           await fs.unlink(previewPath);
 
           await phase('join-200k-records', async () => {

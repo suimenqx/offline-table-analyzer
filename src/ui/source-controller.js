@@ -1,4 +1,4 @@
-OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller", "source-snapshot"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}, {SourceSnapshot}) => {
+OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller", "source-snapshot", "exporter"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}, {SourceSnapshot}, {Exporter}) => {
 /* SourceController — manages source text input, file import, fullscreen editor,
    and input resizer. Delegates all state changes to dispatch().
 
@@ -19,6 +19,46 @@ const SourceController = {
     AUTO_PARSE_DELAY: 500,
     CLIPBOARD_PREVIEW_LIMIT: SourceSnapshot.PREVIEW_LIMIT,
     CLIPBOARD_KNOWN_TYPES: SourceSnapshot.KNOWN_CLIPBOARD_TYPES,
+    EDITOR_LIMIT: 128 * 1024,
+
+    readText(editor=$('rawInput')) {
+        if (!editor) return Store.getDocument()?.raw || '';
+        return editor.dataset && editor.dataset.sourcePreview === 'true'
+            ? Store.getDocument()?.raw || '' : editor.value;
+    },
+
+    displayText(text='', editor=$('rawInput')) {
+        if (!editor) return;
+        const large = text.length > this.EDITOR_LIMIT;
+        if(!editor.dataset)editor.dataset={};
+        editor.dataset.sourcePreview = String(large);
+        editor.readOnly = large;
+        editor.value = large ? text.slice(0, 10000).split('\n').slice(0, 100).join('\n') : text;
+        const notice = $('sourcePreviewNotice');
+        if (notice) {
+            notice.hidden = !large;
+            notice.textContent = large ? `完整原文 ${formatBytes(text.length * 2)} 已保留。这里只显示有限预览；粘贴会替换原文，可导出原文备份。` : '';
+        }
+    },
+
+    handlePaste(event) {
+        if (!event.clipboardData) return;
+        const snapshot = this.captureClipboard(event.clipboardData);
+        if(!snapshot || !snapshot.plain) return;
+        const editor = event.target;
+        if (snapshot.plain.length <= this.EDITOR_LIMIT && !(editor.dataset && editor.dataset.sourcePreview === 'true')) return;
+        event.preventDefault();
+        this.clearAutoParse();
+        clearTimeout(this._persistTimer);
+        dispatch('source:replace', { text:snapshot.plain, preservePaste:true });
+        this.displayText(snapshot.plain);
+        if (editor.id === 'rawInputLarge') this.displayText(snapshot.plain, editor);
+        this.scheduleAutoParse({text:snapshot.plain});
+    },
+    resetPendingInput() {
+        this.clearAutoParse();clearTimeout(this._persistTimer);clearTimeout(this._statsTimer);
+        this._persistTimer=null;this._statsTimer=null;
+    },
     // ── Timers (held here rather than on App) ──
     _persistTimer: null,
     _statsTimer: null,
@@ -92,9 +132,11 @@ const SourceController = {
         const declaredTypes = Array.from(data.types || []).map(type => String(type || '')).filter(Boolean);
         const candidateTypes = new Set([...declaredTypes, ...this.CLIPBOARD_KNOWN_TYPES]);
         const formats = [];
+        const values=new Map();
         candidateTypes.forEach(type => {
             if (type.toLowerCase() === 'files') return;
             const value = this.readClipboardText(data, type);
+            values.set(type,value);
             if (value || declaredTypes.includes(type)) formats.push({ type, value });
         });
         const files = Array.from(data.files || []).map(file => ({
@@ -106,8 +148,8 @@ const SourceController = {
             kind: String(item && item.kind || ''),
             type: String(item && item.type || ''),
         })).filter(item => item.kind || item.type);
-        const plain = this.readClipboardText(data, 'text/plain');
-        const html = this.readClipboardText(data, 'text/html');
+        const plain = values.get('text/plain') || '';
+        const html = values.get('text/html') || '';
         if (!formats.length && !files.length && !items.length) return this.setPasteSnapshot(null);
         const snapshot = SourceSnapshot.captureClipboard({
             docId, plain, html, types: declaredTypes, formats, files, items,
@@ -149,6 +191,8 @@ const SourceController = {
         this._bindDragDrop();
         this._bindInputResizer();
         this._bindFilePicker();
+        const exportSource = $('exportSourceBtn');
+        if (exportSource) exportSource.onclick = () => Exporter.download('original-source.txt', Store.getDocument()?.raw || '', 'text/plain;charset=utf-8');
 
     },
 
@@ -167,7 +211,7 @@ const SourceController = {
         rawInput.addEventListener('paste', (e) => {
             const data = e.clipboardData;
             if (!data) return;
-            SourceController.captureClipboard(data);
+            SourceController.handlePaste(e);
         });
 
         // Source transitions already schedule persistence; this listener only
@@ -231,7 +275,7 @@ const SourceController = {
         if (!file) return;
         this.clearAutoParse();
         if (file.size > MAX_IMPORT_BYTES) {
-            Toast.show('文件超过 25 MB 安全限制', true);
+            Toast.show('文件超过 128 MiB 安全限制', true);
             return;
         }
 
@@ -242,7 +286,7 @@ const SourceController = {
         const reader = new FileReader();
         reader.onerror = () => Toast.show('无法读取该文件', true);
         reader.onload = (event) => {
-            const text = String(event.target.result || '').replace(/^\uFEFF/, '');
+            const text = String(event.target.result || '');
             const targetDoc = Store.state.docs.find(doc => doc.id === targetDocId);
             if (!targetDoc) {
                 Toast.show('导入目标页签已关闭，已取消导入', true);
@@ -257,7 +301,7 @@ const SourceController = {
             if (Store.state.activeId === targetDocId) {
                 // Update main editor only when the initiating tab is still active.
                 const rawInput = $('rawInput');
-                if (rawInput) rawInput.value = text;
+                if (rawInput) SourceController.displayText(text, rawInput);
                 const formatSelect = $('formatSelect');
                 if (formatSelect && detected !== 'auto' && formatSelect.value === 'auto') formatSelect.value = detected;
                 dispatch('source:replace', { docId:targetDocId, text, format:detected, preservePaste:detected === 'html-table' });
@@ -319,7 +363,7 @@ const SourceController = {
             rawLarge.addEventListener('paste', (e) => {
                 const data = e.clipboardData;
                 if (!data) return;
-                SourceController.captureClipboard(data);
+                SourceController.handlePaste(e);
             });
             rawLarge.onkeydown = (e) => {
                 if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -329,7 +373,7 @@ const SourceController = {
                 if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
                     e.preventDefault();
                     SourceController._syncToMain();
-                    Toast.show('工作区已保存');
+                    Promise.resolve(dispatch('workspace:save')).then(ok=>Toast.show(ok?'工作区已保存':'保存未完成，请查看存储状态',!ok));
                 }
             };
         }
@@ -368,7 +412,7 @@ const SourceController = {
         const largeInput = $('rawInputLarge');
         if (!largeInput) return;
 
-        largeInput.value = mainInput ? mainInput.value : '';
+        this.displayText(this.readText(mainInput), largeInput);
 
         // Sync controls from main editor
         SourceController._syncControls();
@@ -389,9 +433,9 @@ const SourceController = {
     close() {
         const mainInput = $('rawInput');
         const largeInput = $('rawInputLarge');
-        const textChanged = Boolean(mainInput && largeInput && mainInput.value !== largeInput.value);
+        const textChanged = Boolean(mainInput && largeInput && this.readText(mainInput) !== this.readText(largeInput));
         const hadPendingAutoParse = Boolean(this._autoParseTimer);
-        const nextText = largeInput ? largeInput.value : '';
+        const nextText = this.readText(largeInput);
         this.clearAutoParse();
         const modal = $('sourceEditorModal');
         if (modal) {
@@ -413,8 +457,8 @@ const SourceController = {
         const largeInput = $('rawInputLarge');
         if (!mainInput || !largeInput) return;
 
-        const text = largeInput.value;
-        mainInput.value = text;
+        const text = this.readText(largeInput);
+        this.displayText(text, mainInput);
         dispatch('source:changed', { text: text, preservePaste:Boolean(SourceController.getCurrentPaste(text)) });
     },
 
@@ -435,10 +479,10 @@ const SourceController = {
         const statEl = $('sourceEditorStats');
         if (!largeInput || !statEl) return;
 
-        const text = largeInput.value;
+        const text = this.readText(largeInput);
         const chars = text.length;
-        const lines = text ? text.split(/\n/).length : 0;
-        statEl.textContent = `${chars.toLocaleString()} 字符 · ${lines} 行 · ${formatBytes(chars * 2)}`;
+        const lines = text.length <= this.EDITOR_LIMIT ? (text ? text.split(/\n/).length : 0) : null;
+        statEl.textContent = `${chars.toLocaleString()} 字符 · ${lines === null ? '有限预览' : `${lines} 行`} · ${formatBytes(chars * 2)}`;
     },
 
     /** Debounced stats refresh on input. */
@@ -450,9 +494,12 @@ const SourceController = {
     /** Debounced persist from fullscreen editor. */
     _syncPersist() {
         clearTimeout(SourceController._persistTimer);
+        const docId=Store.getDocument().id;
         SourceController._persistTimer = setTimeout(() => {
+            SourceController._persistTimer=null;
+            if(Store.getDocument().id!==docId)return;
             const largeInput = $('rawInputLarge');
-            if (largeInput) dispatch('source:replace', { text:largeInput.value });
+            if (largeInput) dispatch('source:replace', { text:SourceController.readText(largeInput) });
         }, 650);
     },
 

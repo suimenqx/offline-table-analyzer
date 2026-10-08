@@ -1,4 +1,4 @@
-OTA.define('table-registry', ["store", "joiner"], ({Store}, {Joiner}) => {
+OTA.define('table-registry', ["store", "joiner", "background-service"], ({Store}, {Joiner}, {BackgroundService}) => {
 /* TableRegistry — single source of truth for parsed table data and metadata.
 
    This module holds the complete parse result (tables, format, diagnostics,
@@ -26,6 +26,10 @@ const TableRegistry = {
      * @param {Object} result — ImportEngine.parse() return value
      */
     setResult(result) {
+        this._background=!!result?.background;
+        this._datasetKey=result?.datasetKey;
+        this._parseOptions=result?.parseOptions;
+        this._sourceRevision=result?.sourceRevision;
         if (!result) {
             this._raw = [];
             this._format = 'empty';
@@ -45,6 +49,13 @@ const TableRegistry = {
 
     /** @returns {Object[]} all raw parsed tables */
     getRaw() { return this._raw; },
+    isBackground() {return !!this._background;},
+    getBackgroundInput() {
+        const doc=Store.getDocument();
+        if(doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
+        return {rawTables:this._raw,ui:doc.ui,globalViews:Store.getState().globalViews,text:doc.raw,options:this._parseOptions,datasetKey:this._datasetKey,docId:doc.id,sourceRevision:doc.sourceRevision};
+    },
+    getJoinStats(cfg) {return BackgroundService.stats(this.getBackgroundInput(),cfg);},
 
     /** @returns {Object|null} a raw table by name, or null */
     getTable(name) {
@@ -89,8 +100,7 @@ const TableRegistry = {
         const views = Store.state.globalViews || [];
         const view = views.find(v => v.view === tableName);
         if (view) {
-            const res = Joiner.run(this._raw, view, views);
-            return res ? res.headers.slice() : [];
+            return Joiner.getHeaders(this._raw,view,views);
         }
         return [];
     },

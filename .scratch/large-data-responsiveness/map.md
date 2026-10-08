@@ -19,7 +19,7 @@ Status: open
 - 原文大小、字段长度、整机 CPU、浏览器版本与标签页实际内存预算由基线调查获取，不把 32 GB 当成标签页可用内存。
 - 使用 wayfinder、grilling、domain-modeling；事实调研使用 research，交互原型使用 prototype，诊断基线参照 diagnosing-bugs。HITL 决策必须有真实用户参与，不能替用户作答。
 - 交付保持一个可直接打开的 `index.html`、离线、零运行时依赖和零外部请求。`src/`、OTA manifest、Store 命令边界、字符串单元格、原文、修正覆盖层及键盘操作继续受保护。
-- Worker、异步大原文存储、容量扩展目前仍属于提案；后续在相关票决定后记录 ADR，并精准更新现有架构校验，不能删除保护规则来放行。
+- 用户已明确授权实施；Worker、异步大原文存储与容量预算记录在[大数据 ADR](../../docs/architecture/large-data.md)，保留架构校验并扩展职责/依赖保护。不替用户伪造尚开放 HITL 票的回答。
 - 所有工作直接在 `main`；不创建技能中建议的 `research/*` 分支，不创建 PR。只提交本工作文件，保留其他更改。
 - 使用[本地跟踪器操作](tracker.md)。子票各自保存问题、依赖、认领与答案；地图仅索引已关闭决策，开放票通过查询获取。
 - 已有事实背景：[浏览器大表格处理调研](../../docs/planning/browser-large-data-research.md)、[架构](../../docs/architecture/architecture.md)、[测试策略](../../docs/testing/strategy.md)、[词汇表](../../GLOSSARY.md)。历史 Node 测量不等同于目标 Chrome 的性能结果。
@@ -31,6 +31,8 @@ Status: open
 - [单文件后台计算与异步原文存储是否可行](issues/02-offline-worker-storage.md)：内嵌 Blob Worker 有候选路径；HTML 语义与文件来源下的自动恢复存在必须实测的边界，不能把调研当成验收。
 - [建立 CI 桌面 Chromium 基线以决定性能预算](issues/01-desktop-baseline.md)：手机开发可由 CI 自动取得桌面事实；已归档 6 个用例，粘贴、重复全表副本与同步保存是实测重点，具体响应/容量门槛仍待后续决策。
 
+- [验证 CI Chromium 的离线后台与恢复机制](issues/09-chrome-offline-probes.md)：file:// Blob Worker 与 IndexedDB 提交/重开可用，OPFS 实际失败，隐私 context 关闭不保留；已归档实际机制结果。
+
 ## Not yet specified
 
 - 若基线发现单份字符串表本身已经超出预算，后续需要重新探索更紧凑的表示或分块外存；具体形式取决于实际内存构成，尚不能直接选定 Arrow 或某种编码。
@@ -38,7 +40,7 @@ Status: open
 
 ## Out of scope
 
-- 本次会话不修改应用或提前宣称达到性能目标：wayfinder 本轮负责 charting，研究票可以提供事实结论。
+- 先前 charting 会话不修改应用；当前执行已获用户授权，响应目标以实际桌面 CI 测量验证。
 - 云服务、远程数据库、上传用户数据、遥测与原生应用打包，超出既有离线交付边界。
 - 新增 SQL、排序、聚合、图表、XLSX 导入或更换整个表格组件；DuckDB-Wasm 的总体选型另立范围，不是本轮默认依赖。
 - 对任意大小输入、任意多对多 JOIN 或任意输出文件保证成功。超预算必须可理解地失败且保留可恢复数据，不静默截断。

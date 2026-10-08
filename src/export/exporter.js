@@ -1,6 +1,7 @@
 OTA.define('exporter', ["runtime"], ({Toast}) => {
 /* Exporter */
 const Exporter = {
+    MAX_OUTPUT_BYTES:256*1024*1024,
     escapeXml(str="") {
         return String(str)
             .replace(/&/g, '&amp;')
@@ -77,13 +78,16 @@ const Exporter = {
         const serializeRow = (values, rowNo) =>
             `<row r="${rowNo}">${(values || []).map((value, column) => cell(value, `${columnName(column)}${rowNo}`)).join('')}</row>`;
         const rowsXml = [];
+        let bytes=0;
+        const encoder=new TextEncoder();
+        const append=xml=>{bytes+=encoder.encode(xml).length;if(bytes>this.MAX_OUTPUT_BYTES)throw new Error('Excel 输出超过 256 MiB 预算，请减少导出范围');rowsXml.push(xml);};
         let rowNo = 1;
         if(headers.length) {
-            rowsXml.push(serializeRow(headers, rowNo));
+            append(serializeRow(headers, rowNo));
             rowNo++;
         }
         rows.forEach((r) => {
-            rowsXml.push(serializeRow(r, rowNo));
+            append(serializeRow(r, rowNo));
             rowNo++;
         });
         return `<?xml version="1.0" encoding="UTF-8"?>` +
@@ -200,29 +204,35 @@ const Exporter = {
         ev.setUint16(20, 0, true); // comment length
 
         const totalLen = fileParts.reduce((s, p) => s + p.length, 0) + centralSize + end.length;
+        if(totalLen>this.MAX_OUTPUT_BYTES)throw new Error('Excel 输出超过 256 MiB 预算，请减少导出范围');
         const out = new Uint8Array(totalLen);
         let pos = 0;
         [...fileParts, ...centralParts, end].forEach(part => { out.set(part, pos); pos += part.length; });
         return out;
     },
+    createExcelBytes(tables) {
+        if(!tables || !tables.length)throw new Error('无数据可导出');
+        if(tables.reduce((sum,table)=>sum+(table.rows || []).length*(table.headers || []).length,0)>8000000)throw new Error('导出超过 800 万单元格预算，请减少导出范围');
+        const sheets=this.normalizeTables(tables);
+        const files=[
+            {name:'[Content_Types].xml',data:this.buildContentTypes(sheets.length)},
+            {name:'_rels/.rels',data:this.buildRootRels()},
+            {name:'xl/workbook.xml',data:this.buildWorkbookXml(sheets)},
+            {name:'xl/_rels/workbook.xml.rels',data:this.buildWorkbookRels(sheets.length)}
+        ];
+        sheets.forEach((sheet,index)=>files.push({name:`xl/worksheets/sheet${index+1}.xml`,data:this.buildSheetXml(sheet)}));
+        return this.makeZip(files);
+    },
     toExcel(tables, prefix='export') {
         if(!tables || !tables.length) return Toast.show('\u65e0\u6570\u636e\u53ef\u5bfc\u51fa', true);
         try {
             prefix = this.sanitizeFilePrefix(prefix);
-            const sheets = this.normalizeTables(tables);
-            const files = [
-                { name: '[Content_Types].xml', data: this.buildContentTypes(sheets.length) },
-                { name: '_rels/.rels', data: this.buildRootRels() },
-                { name: 'xl/workbook.xml', data: this.buildWorkbookXml(sheets) },
-                { name: 'xl/_rels/workbook.xml.rels', data: this.buildWorkbookRels(sheets.length) }
-            ];
-            sheets.forEach((s, i) => files.push({ name: `xl/worksheets/sheet${i+1}.xml`, data: this.buildSheetXml(s) }));
-            const zip = this.makeZip(files);
+            const zip = this.createExcelBytes(tables);
             const blob = new Blob([zip], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
             this.download(`${prefix}_${this.getTimestamp()}.xlsx`, blob, blob.type);
         } catch(e) {
             console.error(e);
-            Toast.show('Excel \u5bfc\u51fa\u5931\u8d25', true);
+            Toast.show(`Excel 导出失败：${e.message || e}`, true);
         }
     },
     toJson(data, prefix='backup') { this.download(`${this.sanitizeFilePrefix(prefix)}_${this.getTimestamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); }

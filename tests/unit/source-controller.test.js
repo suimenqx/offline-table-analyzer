@@ -85,6 +85,18 @@ describe('SourceController.detectFormat', () => {
 });
 
 describe('SourceController auto-parse policy', () => {
+  it('shows a bounded read-only preview while retaining complete original input', () => {
+    const editor={value:'',readOnly:false,dataset:{},setAttribute(){},removeAttribute(){}};
+    const text='validflag ID\r\n1 001\r\n'.repeat(20000);
+    Store.curr().raw=text;
+    SourceController.displayText(text,editor);
+    assert.ok(editor.value.length<=10000);
+    assert.equal(editor.readOnly,true);
+    assert.equal(SourceController.readText(editor),text);
+    SourceController.displayText('id\n002',editor);
+    assert.equal(editor.readOnly,false);
+    assert.equal(SourceController.readText(editor),'id\n002');
+  });
   it('auto-parses small input by default', () => {
     Store.curr().ui.autoParse = true;
     assert.equal(SourceController.getAutoParseState('id,name\n1,Alice'), 'pending');

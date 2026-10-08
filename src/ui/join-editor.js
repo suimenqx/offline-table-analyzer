@@ -38,18 +38,18 @@ const JoinEditor = {
     },
     getColMeta(tableName, col) {
         if(!tableName || !col) return { type: 'empty', sample: '-' };
-        const key = `${tableName}::${col}`;
+        const key = `${Store.revision}::${tableName}::${col}`;
         if(this.metaCache[key]) return this.metaCache[key];
         const table = this.getTableData(tableName);
         if(!table) return { type: 'empty', sample: '-' };
         const idx = table.headers.indexOf(col);
         if(idx === -1) return { type: 'empty', sample: '-' };
         let sample = '';
-        for(const row of table.rows) {
+        for(const row of table.rows.slice(0,1000)) {
             const v = row[idx];
             if(v !== undefined && v !== null && String(v).trim() !== '') { sample = v; break; }
         }
-        const type = this.inferType(sample);
+        const type = sample==='' && (table.isView || table.rows.length>1000)?'unknown':this.inferType(sample);
         const sText = sample === '' ? '-' : String(sample);
         const short = sText.length > 20 ? `${sText.slice(0, 20)}…` : sText;
         const res = { type, sample: short };
@@ -60,6 +60,7 @@ const JoinEditor = {
         const raw = TableRegistry.getRaw().find(t => t.name === name);
         if(raw) return raw;
         const view = Store.state.globalViews.find(v => v.view === name);
+        if(view && TableRegistry.isBackground())return {headers:TableRegistry.getCols(name),rows:[],isView:true};
         if(view) return Joiner.run(TableRegistry.getRaw(), view, Store.state.globalViews);
         return null;
     },
@@ -670,12 +671,20 @@ const JoinEditor = {
         const el = $('jePreview');
         if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
         // Cache stats by config fingerprint to avoid redundant recalc
-        const cacheKey = `${cfg.left}|${cfg.right}|${cfg.type}|${this.state.rels.map(r => `${r.l}=${r.r}`).join(',')}`;
+        const doc=Store.getDocument();
+        const cacheKey=JSON.stringify([doc.id,doc.sourceRevision,doc.ui.cellEdits,Store.getState().globalViews,cfg]);
         if (!this._statsCache) this._statsCache = { key: null, value: null };
         if (this._statsCache.key !== cacheKey) {
             this._statsCache.key = cacheKey;
-            this._statsCache.value = Joiner.stats(TableRegistry.getRaw(), cfg, Store.state.globalViews);
+            if(TableRegistry.isBackground()) {
+                this._statsCache.value=null;this._statsCache.pending=true;
+                TableRegistry.getJoinStats(cfg).then(stats=>{
+                    if(this._statsCache?.key!==cacheKey)return;
+                    this._statsCache.value=stats;this._statsCache.pending=false;this.updatePreview();
+                }).catch(error=>{if(this._statsCache?.key===cacheKey){this._statsCache.pending=false;el.textContent=`预览失败：${error.message}`;}});
+            } else this._statsCache.value = Joiner.stats(TableRegistry.getRaw(), cfg, Store.state.globalViews);
         }
+        if(this._statsCache.pending){el.textContent='预览: 正在后台计算…';return;}
         const stats = this._statsCache.value;
         if(!stats) { el.textContent = '预览: —'; return; }
         el.textContent = `预览: 输出 ${stats.outRows.toLocaleString()} 行 · 匹配 ${stats.matched.toLocaleString()} · 左未匹配 ${stats.leftOnly.toLocaleString()} · 右未匹配 ${stats.rightOnly.toLocaleString()}`;

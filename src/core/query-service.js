@@ -3,8 +3,9 @@ OTA.define('query-service', ["filter-engine", "joiner"], ({FilterEngine}, {Joine
    It deliberately receives snapshots and has no DOM, Store, or persistence access.
 */
 
-const MAX_CACHE_ENTRIES = 8;
+const MAX_CACHE_ENTRIES = 2;
 const cache = new Map();
+const asyncCache = new Map();
 const identities = new WeakMap();
 let nextIdentity = 1;
 
@@ -32,13 +33,13 @@ function querySignature(ui, meta) {
         globalFilter:ui.globalFilter || '',
         enableHighlight:ui.enableHighlight !== false,
         onlyHighlighted:ui.onlyHighlighted || false,
+        cellEdits:ui.cellEdits || {},
+        globalViews:meta.globalViews || [],
     };
     return JSON.stringify({
         docId:meta.docId || '',
         sourceRevision:Number(meta.sourceRevision) || 0,
-        stateRevision:Number(meta.stateRevision) || 0,
         viewRevision:Number(meta.viewRevision) || 0,
-        queryRevision:Number(meta.queryRevision) || 0,
         rawToken:Number(meta.rawToken) || 0,
         query:stableValue(query),
     });
@@ -54,9 +55,23 @@ function cloneForResult(table) {
 }
 
 const QueryService = {
-    clearCache() { cache.clear(); },
+    MAX_CELLS:8000000,
+    collectTables(rawTables, globalViews, ui, selectTables=true) {
+        let tables=rawTables.slice();
+        if(selectTables && Array.isArray(ui.displayTables))tables=tables.filter(table=>ui.displayTables.includes(table.name));
+        let cells=tables.reduce((sum,table)=>sum+table.rows.length*table.headers.length,0);
+        if(cells>this.MAX_CELLS)throw new Error('查询结果超过 800 万单元格合计预算，请减少显示表');
+        for(const name of ui.enabledViews || []) {
+            const config=globalViews.find(view=>view && view.view===name);
+            if(!config)continue;
+            const table=Joiner.run(rawTables,config,globalViews,[],{maxCells:this.MAX_CELLS-cells});
+            if(table){cells+=table.rows.length*table.headers.length;tables.push(table);}
+        }
+        return tables;
+    },
+    clearCache() { cache.clear(); asyncCache.clear(); },
 
-    getCacheSize() { return cache.size; },
+    getCacheSize() { return cache.size+asyncCache.size; },
 
     getPreview({rawTables=[], globalViews=[], ui={}, docId='', sourceRevision=0, stateRevision=0, viewRevision=0, queryRevision=0}={}) {
         const key = querySignature(ui, {
@@ -66,24 +81,14 @@ const QueryService = {
             viewRevision,
             queryRevision,
             rawToken:objectIdentity(rawTables),
+            globalViews,
         });
         const cached = cache.get(key);
         if(cached) return cached;
 
-        let tables = rawTables.slice();
-        if(Array.isArray(ui.displayTables)) {
-            const selected = new Set(ui.displayTables);
-            tables = tables.filter(table => selected.has(table.name));
-        }
+        const tables=this.collectTables(rawTables,globalViews,ui);
 
-        const joins = Array.isArray(ui.enabledViews) && ui.enabledViews.length
-            ? ui.enabledViews.map(name => {
-                const config = globalViews.find(view => view && view.view === name);
-                return config ? Joiner.run(rawTables, config, globalViews) : null;
-            }).filter(Boolean)
-            : [];
-
-        const processedTables = tables.concat(joins).map((table, tableIndex) => {
+        const processedTables = tables.map((table, tableIndex) => {
             const snapshot = cloneForResult(table);
             const rules = (ui.rules && ui.rules[table.name]) || {};
             const result = FilterEngine.processTable(
@@ -109,6 +114,17 @@ const QueryService = {
         cache.set(key, result);
         while(cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
         return result;
+    },
+
+    getPreviewAsync(input, executor) {
+        const key=querySignature(input.ui || {}, {...input,rawToken:objectIdentity(input.rawTables)});
+        if(asyncCache.has(key)) return asyncCache.get(key);
+        executor.cancelQueries?.();
+        const snapshot={...input,ui:JSON.parse(JSON.stringify(input.ui || {})),globalViews:JSON.parse(JSON.stringify(input.globalViews || []))};
+        const promise=executor.query(snapshot).catch(error=>{asyncCache.delete(key);throw error;});
+        asyncCache.set(key,promise);
+        while(asyncCache.size>MAX_CACHE_ENTRIES) asyncCache.delete(asyncCache.keys().next().value);
+        return promise;
     },
 
     paginate(processed, tableName, page=1, pageSize=100) {

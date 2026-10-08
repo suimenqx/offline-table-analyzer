@@ -17,6 +17,8 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
 | `SourceSnapshot` | Ephemeral clipboard/file source metadata, bounded diagnostic previews, and tab/text matching |
 | `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
+| `BackgroundService` | Sole owner of local Blob Worker lifecycle, version handshake, cancellation and acknowledged transport |
+| `WorkerRuntime` | Background normalized dataset session, query/JOIN/statistics/XLSX and storage jobs |
 | `QueryService` | Pure derived-result pipeline for JOIN resolution, filtering, focus projection, pagination metadata, and bounded result caching. |
 | `dispatch` (`src/core/dispatch.js`) | Thin command bus: `dispatch(action, payload)` delegates to `Store.transition`. |
 
@@ -24,6 +26,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 
 | Module | Responsibility |
 | --- | --- |
+| `WorkspaceStorage` | IndexedDB immutable raw snapshots and transaction-committed recovery/cleanup |
 | `Store` | Versioned workspace, migration, normalization, privacy preferences, safe local persistence |
 
 ### Export (`src/export/`)
@@ -74,8 +77,8 @@ The refactor decision, module manifest, dependency rules, migration phases, and 
 ### Workspace state
 
 ```text
-schemaVersion: 20
-appVersion: 22.0.0
+schemaVersion: 21
+appVersion: 22.1.0
 revision / viewRevision / queryRevision
 docs[]
 activeId
@@ -144,7 +147,7 @@ diagnostics[]
 
 All downstream operations consume this shape regardless of the original source format.
 
-`JsonTableParser` accepts arrays of objects, two-dimensional arrays, a single object record, or an object whose values are table arrays. Object keys become headers in first-seen order; nested values become compact JSON cell text. JSON clipboard output is an array of objects built from the selected headers and record rows. `json-inline` puts one compact object on each line, while `json-expanded` puts each field on its own line. Cell values remain strings to preserve the normalized table contract and string identifiers such as `"001"`. JSON and Lua copy restore transposed selections to record orientation and always include selected headers as field names. The existing `copyFormat` field stores the new options; saved `json` values retain the expanded layout. Schema 20 and the migration chain remain unchanged.
+`JsonTableParser` accepts arrays of objects, two-dimensional arrays, a single object record, or an object whose values are table arrays. Object keys become headers in first-seen order; nested values become compact JSON cell text. JSON clipboard output is an array of objects built from the selected headers and record rows. `json-inline` puts one compact object on each line, while `json-expanded` puts each field on its own line. Cell values remain strings to preserve the normalized table contract and string identifiers such as `"001"`. JSON and Lua copy restore transposed selections to record orientation and always include selected headers as field names. The existing `copyFormat` field stores the new options; saved `json` values retain the expanded layout. The copy fields remain compatible through the schema 20 → 21 migration.
 
 For pasted JSON-like input, `JsonTableParser` tries standard JSON first, then a local text lexer for bare field names, single-quoted strings, comments, trailing commas, field bodies, and record lists without outer brackets. It can recover complete records from a selection cut through adjacent records and retain confirmed fields in a final record cut inside a string, number, or nested value. An unfinished field value is omitted; the corresponding normalized cell is empty when another row established that column. Truncation or skipped boundaries produce `JSON_FRAGMENT_RECOVERED`, and a retained partial row also produces `JSON_PARTIAL_RECORD`; other relaxed syntax produces `JSON_RELAXED_SYNTAX`. Input without any complete field or record still fails visibly. The parser never evaluates input, does not rewrite the stored source, and keeps normalized cells as strings. Workspace and configuration JSON imports continue to use strict JSON parsing.
 
@@ -196,7 +199,7 @@ The full processed result remains in memory for export, while only the selected 
 
 ## 5. Persistence and migration
 
-`ota_v20_workspace` is the authoritative browser key. On startup, the Store first tries this key, then the legacy `v16_4_store`. Every payload passes the explicit schema migration chain to schema 20; a legacy key is removed only after the v20 payload is written successfully. `clearLocalData()` also removes the legacy `v16_4_inputHeight` key.
+`ota_v21_workspace` is the authoritative small workspace key; startup falls back to `ota_v20_workspace` and `v16_4_store`, migrating to schema 21. Large original text uses immutable IndexedDB snapshots through WorkspaceStorage on an independent Worker queue. A reference is published only after the transaction commits. Unchanged raw text reuses the same snapshot while the local settings remain authoritative; recovery combines matching document IDs/revisions with the latest settings. Missing snapshots block automatic overwrite. A legacy key is removed only after the new storage succeeds. `clearLocalData()` removes current/legacy keys, `v16_4_inputHeight`, and background raw snapshots.
 
 Writes are guarded. Quota or security failures update visible status and do not discard the in-memory workspace. If a saved JSON payload cannot be read, automatic writes are blocked so the unreadable value is not silently replaced; users may restore a backup or explicitly clear local data.
 
@@ -215,7 +218,9 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 
 ## 7. Performance model
 
-Parsing, filtering, JOINs, and XLSX generation currently run on the main thread. The current product scope intentionally keeps the existing 25 MB limit, pagination, and single-file model; Worker, IndexedDB, streaming export, and virtual scrolling capabilities are not part of this implementation plan.
+The accepted [large-data ADR](large-data.md) extends the single-file model with embedded Blob Workers and asynchronous raw storage. Text above 128 Ki characters is intercepted before textarea insertion and displayed as at most 100 lines/10,000 characters. Table-data/text parsing, filtering, JOIN statistics/execution and XLSX run in the Worker; DOMParser HTML remains on Window. Parsed rows and query records travel in acknowledged batches of 500 rows. Window and Worker each retain a normalized dataset; the module contract and correction overlay are preserved.
+
+QueryService caches at most two results. Pagination and unrelated UI revisions reuse a complete query; source/configuration/correction changes invalidate it. DOM creation is limited to the current page. Combined query/export tables are budgeted before additional JOIN output allocation; caps and explicit failure behavior are specified in [requirements](../planning/requirements.md). Cancel terminates computation/export while the independent durable-storage queue continues. No main-thread fallback attempts the giant workload when Worker startup fails.
 
 ## 8. Testing architecture
 
@@ -224,6 +229,7 @@ Node unit and integration tests use the built-in test runner under `tests/`:
 - `tests/unit/parser.test.js` and `parser-facade.test.js`: all 12 parser adapters, malformed input, diagnostics, normalization, and legacy compatibility.
 - `tests/unit/filter-engine.test.js`, `joiner.test.js`, and `query-service.test.js`: filtering, JOIN semantics, the shared preview result contract, and bounded-cache invalidation.
 - `tests/unit/clipboard.test.js` and `export-controller.test.js`: copy formats, HTML clipboard payloads, formula protection, Lua serialization, and export projections.
+- `tests/unit/worker-runtime.test.js` and `workspace-async.test.js`: bounded transport, aggregate budgets, correction/undo, stale datasets, durable publication, latest-settings recovery, storage failure and save races.
 - `tests/unit/store.test.js`, `dispatch.test.js`, `source-snapshot.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, clipboard/file snapshot capture, browser adaptation, command/event behavior, and tab lifecycle.
 - `tests/unit/modal-controller.test.js`, `filter-controller.test.js`, and `cell-edit-controller.test.js`: dialog, filter, and correction-controller contracts.
 - `tests/integration/build.test.js`, `ui-smoke.test.js`, and `accessibility.test.js`: deterministic release construction, bootstrap behavior, render coalescing, paste-source diagnostics, keyboard/UI contracts, live regions, and responsive markers.

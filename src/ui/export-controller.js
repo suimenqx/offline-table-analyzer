@@ -1,4 +1,4 @@
-OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine", "query-service"], ({$, Toast}, {Store, APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}, {QueryService}) => {
+OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine", "query-service", "background-service"], ({$, Toast}, {Store, APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_WORKSPACE_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}, {QueryService}, {BackgroundService}) => {
 /* ExportController — file exports, workspace/config backup, copy format.
 
    Responsibilities:
@@ -13,6 +13,32 @@ OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "d
 */
 
 const ExportController = {
+    async runExport(label,task,prefix,type,extension) {
+        if(this._exporting)return Toast.show('导出正在进行，请等待或取消');
+        this._exporting=true;
+        const notify=busy=>document.dispatchEvent(new CustomEvent('ota:backgroundJob',{detail:{busy,label}}));
+        notify(true);
+        try {
+            const buffer=await task();
+            Exporter.download(`${Exporter.sanitizeFilePrefix(prefix)}_${Exporter.getTimestamp()}.${extension}`,buffer instanceof Blob?buffer:new Blob([buffer],{type}),type);
+        } catch(error) {if(error.name!=='AbortError')Toast.show(`导出失败：${error.message}`,true);}
+        finally {this._exporting=false;notify(false);}
+    },
+    exportExcel(mode) {
+        if(TableRegistry.isBackground()) {
+            let input;
+            try {input=TableRegistry.getBackgroundInput();}catch(error){return Toast.show(error.message,true);}
+            return this.runExport('正在后台生成 Excel…',()=>BackgroundService.export(input,mode),this._getPrefix(mode),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','xlsx');
+        }
+        const tables=mode==='raw'?TableRegistry.getRaw():mode==='full'?this._getFullExportTables():this._getPreviewExportTables();
+        return Exporter.toExcel(tables,this._getPrefix(mode));
+    },
+    exportJson(payload,prefix) {
+        const bytes=(payload.docs || []).reduce((sum,doc)=>sum+(doc.raw || '').length*2,0);
+        if(bytes>256*1024*1024)return Toast.show('工作区超过 256 MiB 备份预算，请分别导出原文',true);
+        if(bytes>BackgroundService.THRESHOLD*2)return this.runExport('正在后台生成工作区备份…',()=>BackgroundService.request('json',payload,{},'export'),prefix,'application/json','json');
+        return Exporter.toJson(payload,prefix);
+    },
     /**
      * Bind export buttons. Called once from App.init().
      */
@@ -73,17 +99,17 @@ const ExportController = {
 
         // XLSX exports
         const rawBtn = $('exportRawBtn');
-        if (rawBtn) rawBtn.onclick = () => Exporter.toExcel(TableRegistry.getRaw(), ExportController._getPrefix('raw'));
+        if (rawBtn) rawBtn.onclick = () => ExportController.exportExcel('raw');
 
         const fullBtn = $('exportFullBtn');
-        if (fullBtn) fullBtn.onclick = () => Exporter.toExcel(ExportController._getFullExportTables(), ExportController._getPrefix('full'));
+        if (fullBtn) fullBtn.onclick = () => ExportController.exportExcel('full');
 
         const prevBtn = $('exportPrevBtn');
-        if (prevBtn) prevBtn.onclick = () => Exporter.toExcel(ExportController._getPreviewExportTables(), ExportController._getPrefix('preview'));
+        if (prevBtn) prevBtn.onclick = () => ExportController.exportExcel('preview');
 
         // Workspace backup
         const exportTabBtn = $('exportTabBtn');
-        if (exportTabBtn) exportTabBtn.onclick = () => Exporter.toJson({
+        if (exportTabBtn) exportTabBtn.onclick = () => ExportController.exportJson({
             kind: 'ota-workspace',
             schemaVersion: WORKSPACE_SCHEMA_VERSION,
             appVersion: APP_VERSION,
@@ -105,7 +131,7 @@ const ExportController = {
         if (fileInputTab) fileInputTab.onchange = (e) => {
             const f = e.target.files[0];
             if (!f) return;
-            if (f.size > MAX_IMPORT_BYTES) { Toast.show('工作区文件超过 25 MB 限制', true); e.target.value = ''; return; }
+            if (f.size > MAX_WORKSPACE_BYTES) { Toast.show('工作区文件超过 256 MiB 限制', true); e.target.value = ''; return; }
             const r = new FileReader();
             r.onload = (evt) => {
                 try {

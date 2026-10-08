@@ -84,6 +84,7 @@ const SourceSnapshot = {
     getCurrentPaste({ docId, text='' } = {}) {
         const snapshot = this._lastSnapshot;
         if (!snapshot || snapshot.docId !== docId) return null;
+        if (snapshot.plain === text) return snapshot;
         if (TableUtils.normalizeText(snapshot.plain).trim() !== TableUtils.normalizeText(text).trim()) return null;
         return snapshot;
     },

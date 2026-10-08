@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
-const { MODULES, APP_VERSION, renderRelease } = require('./build-release.cjs');
+const { MODULES, WORKER_MODULES, APP_VERSION, renderRelease, renderWorker } = require('./build-release.cjs');
+const vm = require('vm');
 
 const root = path.join(__dirname, '..');
 const srcRoot = path.join(root, 'src');
@@ -117,14 +118,32 @@ if(!/QueryService\.getPreview\s*\(/.test(appSource)) fail('App preview must use 
 
 const sourceText = MODULES.map(([file]) => read(path.join(srcRoot, file))).join('\n');
 if(/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b/.test(sourceText)) fail('runtime source must not use network APIs');
-if(/\b(?:new\s+Worker|new\s+SharedWorker|indexedDB)\b/.test(sourceText)) fail('runtime source must not add large-data capabilities');
+for(const [file] of MODULES) {
+    const source=read(path.join(srcRoot,file));
+    if(/\bnew\s+Worker\b/.test(source) && file!=='core/background-service.js')fail(`${file}: Worker construction belongs to background-service`);
+    if(/\bindexedDB\b/.test(source) && file!=='state/workspace-storage.js')fail(`${file}: IndexedDB belongs to workspace-storage`);
+    if(/\bnew\s+SharedWorker\b/.test(source))fail(`${file}: SharedWorker is outside the offline architecture`);
+}
+if(WORKER_MODULES.some(file=>file.startsWith('ui/') || ['state/store.js','core/background-service.js','bootstrap.js'].includes(file)))fail('Worker package must exclude UI, workspace authority and recursive Worker transport');
+const workerNames=new Set();
+for(const file of WORKER_MODULES) {
+    if(!MODULES.some(([source])=>source===file))fail(`Worker package has an unknown module: ${file}`);
+    const source=read(path.join(srcRoot,file));
+    for(const match of source.matchAll(/OTA\.define\(\s*(['"])([^'"]+)\1\s*,\s*\[([^\]]*)\]/g)) {
+        const deps=parseDependencyArray(match[3],file) || [];
+        for(const dep of deps)if(!workerNames.has(dep))fail(`Worker module ${match[2]} is missing earlier dependency ${dep}`);
+        if(workerNames.has(match[2]))fail(`Worker module registered twice: ${match[2]}`);
+        workerNames.add(match[2]);
+    }
+}
+try {new vm.Script(renderWorker(),{filename:'ota-inline-worker.js'});}catch(error){fail(`Worker package syntax: ${error.message}`);}
 if(packageJson.version !== APP_VERSION) fail(`package version ${packageJson.version} differs from build version ${APP_VERSION}`);
-if(!/const WORKSPACE_SCHEMA_VERSION = 20;/.test(read(path.join(srcRoot, 'state', 'store.js')))) fail('workspace schema version must remain 20');
+if(!/const WORKSPACE_SCHEMA_VERSION = 21;/.test(read(path.join(srcRoot, 'state', 'store.js')))) fail('workspace schema version must match the schema 21 recovery contract');
 
 const html = read(indexPath).replace(/^\uFEFF/, '');
 const expected = `${renderRelease().trimEnd()}\n`;
 if(html !== expected) fail('index.html is not the deterministic output of the source build');
-if(/\{\{(?:STYLES|MODULES|APP_VERSION|APP_MAJOR_VERSION)\}\}/.test(html) || html.includes('__OTA_APP_VERSION__')) fail('generated release contains unresolved build placeholders');
+if(/\{\{(?:STYLES|MODULES|APP_VERSION|APP_MAJOR_VERSION)\}\}/.test(html) || html.includes('__OTA_APP_VERSION__') || html.includes('__OTA_WORKER_SOURCE__')) fail('generated release contains unresolved build placeholders');
 if(!html.includes(`Offline Table Analyzer v${APP_VERSION}`)) fail('generated title does not match package version');
 if(!html.includes(`const APP_VERSION = '${APP_VERSION}';`)) fail('generated runtime version does not match package version');
 validateModuleManifest();

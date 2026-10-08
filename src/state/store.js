@@ -1,10 +1,11 @@
-OTA.define('store', [], () => {
+OTA.define('store', ['background-service'], ({BackgroundService}) => {
 /* Core */
 const APP_VERSION = '__OTA_APP_VERSION__';
-const WORKSPACE_SCHEMA_VERSION = 20;
-const STORE_KEY = 'ota_v20_workspace';
-const LEGACY_STORE_KEYS = ['v16_4_store'];
-const MAX_IMPORT_BYTES = 25 * 1024 * 1024;
+const WORKSPACE_SCHEMA_VERSION = 21;
+const STORE_KEY = 'ota_v21_workspace';
+const LEGACY_STORE_KEYS = ['ota_v20_workspace','v16_4_store'];
+const MAX_IMPORT_BYTES = 128 * 1024 * 1024;
+const MAX_WORKSPACE_BYTES = 256 * 1024 * 1024;
 const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'json', 'json-inline', 'json-expanded', 'lua-inline', 'lua-expanded']);
 
 const MIGRATIONS = Object.freeze({
@@ -34,6 +35,7 @@ const MIGRATIONS = Object.freeze({
     17(payload) { return Object.assign({}, payload, { schemaVersion:18 }); },
     18(payload) { return Object.assign({}, payload, { schemaVersion:19 }); },
     19(payload) { return Object.assign({}, payload, { schemaVersion:20 }); },
+    20(payload) { return Object.assign({}, payload, {schemaVersion:21}); },
 });
 
 function migrateWorkspacePayload(payload) {
@@ -65,6 +67,12 @@ const Store = {
     _listeners: null,  // Set of onChange callbacks; lazily initialised
     _notifyQueue: null, // pending events queued for batched async delivery
     _notifyTimer: null, // single batched async timer
+    _saveGeneration:0,
+    saving:false,
+    restoring:false,
+    cleaning:false,
+    _storageTouched:false,
+    _rawSnapshot:null,
     getState() { return this.state; },
     getDocument(id=this.state.activeId) {
         return (this.state.docs || []).find(doc => doc.id === id) || null;
@@ -73,6 +81,7 @@ const Store = {
         return (this.state.globalViews || []).find(view => view.view === name) || null;
     },
     init() {
+        this._rawSnapshot=null;
         let loaded = null;
         try {
             const current = localStorage.getItem(STORE_KEY);
@@ -120,10 +129,39 @@ const Store = {
         if(!this.state.docs.some(d => d.id === this.state.activeId)) this.state.activeId = this.state.docs[0] && this.state.docs[0].id;
         this.applyTheme();
         if(this.loadFailed) this.notifyStorage(false, this.lastSaveError);
-        else this.save();
+        else if(loaded && loaded.rawExternal) {
+            this._storageTouched=true;
+            const revision=this.revision;
+            this.restoring=true;this.loadFailed=true;
+            delete this.state.rawExternal;
+            this.notifyStorage(false,'正在恢复完整原文…');
+            this.restorePromise=BackgroundService.storage('loadWorkspace',{key:loaded.rawExternal}).then(payload=>{
+                if(this.revision!==revision)throw new Error('恢复期间已有新输入；当前输入已保留，请备份后重新打开恢复旧工作区');
+                payload=migrateWorkspacePayload(payload);
+                if(!this.isSafePayload(payload) || !Array.isArray(payload.docs))throw new Error('大原文快照结构无效，请恢复备份');
+                if(payload.docs.length!==loaded.docs.length)throw new Error('原文快照与工作区不匹配');
+                const restored={...loaded,docs:loaded.docs.map(doc=>{
+                    const saved=payload.docs.find(item=>item.id===doc.id && item.sourceRevision===doc.sourceRevision);
+                    if(!saved || typeof saved.raw!=='string')throw new Error('原文快照与页签不匹配');
+                    return {...doc,raw:saved.raw};
+                })};
+                delete restored.rawExternal;
+                this.state=restored;
+                this._rawSnapshot={key:loaded.rawExternal,docs:restored.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw}))};
+                this.state.docs.forEach((doc,index)=>this.normalizeDoc(doc,index));
+                this.restoring=false;this.loadFailed=false;this.lastSaveError=null;
+                this._notify('workspace:restored',{});this._notify('state:changed',{changed:['workspace']});
+                this.notifyStorage(true,'完整原文已恢复');return true;
+            }).catch(error=>{
+                this.restoring=false;this.lastSaveError=`原文恢复失败：${error.message}`;
+                this.notifyStorage(false,this.lastSaveError);return false;
+            });
+        } else this.save();
     },
-    serializeState() {
-        const payload = JSON.parse(JSON.stringify(this.state));
+    serializeState({omitRaw=false}={}) {
+        const source={...this.state,docs:this.state.docs.map(doc=>({...doc,raw:omitRaw || this.state.persistRaw===false?'':doc.raw}))};
+        delete source.rawExternal;
+        const payload = JSON.parse(JSON.stringify(source));
         payload.schemaVersion = WORKSPACE_SCHEMA_VERSION;
         payload.appVersion = APP_VERSION;
         if(payload.persistRaw === false) payload.docs.forEach(doc => { doc.raw = ''; });
@@ -134,11 +172,52 @@ const Store = {
         document.dispatchEvent(new CustomEvent('ota:storage', { detail:{ ok, message, bytes:this.storageBytes, savedAt:this.state.lastSavedAt } }));
     },
     save() {
+        const generation=++this._saveGeneration;
         if(this.loadFailed) {
             this.notifyStorage(false, this.lastSaveError || '本地工作区读取失败；请先备份或清除损坏的数据');
             return false;
         }
+        const rawBytes=this.state.docs.reduce((sum,doc)=>sum+(doc.raw || '').length*2,0);
+        if(this.state.persistRaw!==false && rawBytes>BackgroundService.THRESHOLD*2) {
+            if(rawBytes>MAX_WORKSPACE_BYTES) {this.lastSaveError='工作区原文超过 256 MiB 保存预算；请导出备份或拆分页签';this.notifyStorage(false,this.lastSaveError);return false;}
+            const metadata=this.serializeState({omitRaw:true});
+            const previous=this._rawSnapshot;
+            if(previous && !this.saving && previous.docs.length===this.state.docs.length && previous.docs.every(saved=>this.state.docs.some(doc=>doc.id===saved.id && doc.sourceRevision===saved.sourceRevision && doc.raw===saved.raw))) {
+                try {
+                    const stub={...metadata,lastSavedAt:new Date().toISOString(),rawExternal:previous.key};
+                    const json=JSON.stringify(stub);localStorage.setItem(STORE_KEY,json);
+                    this.state.lastSavedAt=stub.lastSavedAt;this.storageBytes=json.length*2+rawBytes;this.lastSaveError=null;
+                    this.notifyStorage(true,'工作区已保存，完整原文快照已复用');return true;
+                } catch(error){this.lastSaveError=`工作区设置保存失败：${error.message}`;this.notifyStorage(false,this.lastSaveError);return false;}
+            }
+            const snapshot={...metadata,docs:metadata.docs.map((doc,index)=>({...doc,raw:this.state.docs[index].raw || ''}))};
+            snapshot.lastSavedAt=new Date().toISOString();
+            const key=`${STORE_KEY}:${Date.now()}:${generation}:${Math.random().toString(36).slice(2)}`;
+            this._storageTouched=true;this.cleaning=false;
+            this.saving=true;this.notifyStorage(false,'正在保存完整原文…');
+            const pending=BackgroundService.storage('saveWorkspace',{key,workspace:snapshot}).then(()=>{
+                if(generation!==this._saveGeneration)return false;
+                const stub={...metadata,lastSavedAt:snapshot.lastSavedAt,rawExternal:key};
+                const json=JSON.stringify(stub);
+                localStorage.setItem(STORE_KEY,json);
+                this._rawSnapshot={key,docs:snapshot.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw}))};
+                this.state.lastSavedAt=snapshot.lastSavedAt;
+                this.storageBytes=json.length*2+rawBytes;this.lastSaveError=null;this.saving=false;
+                if(this.migratedFrom)localStorage.removeItem(this.migratedFrom);
+                this.migratedFrom=null;
+                this.notifyStorage(true,'完整原文已保存到此设备');
+                this._notify('workspace:saved',{bytes:this.storageBytes,savedAt:this.state.lastSavedAt});
+                BackgroundService.storage('pruneWorkspace',{prefix:`${STORE_KEY}:`,keep:key}).catch(()=>{});
+                return true;
+            }).catch(error=>{
+                if(generation!==this._saveGeneration)return false;
+                this.saving=false;this.lastSaveError=`大原文保存失败：${error.message || error}；当前数据仍保留，请导出备份`;
+                this.notifyStorage(false,this.lastSaveError);this._notify('workspace:saveFailed',{error:this.lastSaveError});return false;
+            });
+            this.savePromise=pending;return pending;
+        }
         try {
+            this.saving=false;this._rawSnapshot=null;
             this.state.schemaVersion = WORKSPACE_SCHEMA_VERSION;
             this.state.lastSavedAt = new Date().toISOString();
             const json = JSON.stringify(this.serializeState());
@@ -148,6 +227,14 @@ const Store = {
             if(this.migratedFrom && typeof localStorage.removeItem === 'function') {
                 localStorage.removeItem(this.migratedFrom);
                 this.migratedFrom = null;
+            }
+            if(this._storageTouched) {
+                this.cleaning=true;this.notifyStorage(false,'配置已保存，正在清理旧原文…');
+                this.cleanupPromise=BackgroundService.storage('pruneWorkspace',{prefix:`${STORE_KEY}:`,keep:null}).then(()=>{
+                    if(generation!==this._saveGeneration)return false;
+                    this.cleaning=false;this._storageTouched=false;this.notifyStorage(true,'原文已从设备存储移除，当前会话原文仍保留');return true;
+                }).catch(error=>{if(generation===this._saveGeneration){this.cleaning=false;this.lastSaveError=`旧原文清理失败：${error.message}`;this.notifyStorage(false,this.lastSaveError);}return false;});
+                return this.cleanupPromise;
             }
             this.notifyStorage(true, this.state.persistRaw === false ? '规则已保存，原始数据仅保留在本次会话' : '工作区已保存到此设备');
             return true;
@@ -162,10 +249,12 @@ const Store = {
     scheduleSave(delay=320) {
         if(typeof setTimeout !== 'function') return this.save();
         clearTimeout(this.saveTimer);
-        this.saveTimer = setTimeout(() => this.save(), delay);
+        this.saveTimer = setTimeout(() => {this.saveTimer=null;this.save();}, delay);
         return true;
     },
     clearLocalData() {
+        clearTimeout(this.saveTimer);this.saveTimer=null;
+        this._saveGeneration++;this.saving=false;this._rawSnapshot=null;
         try {
             if(typeof localStorage.removeItem === 'function') {
                 localStorage.removeItem(STORE_KEY);
@@ -174,6 +263,11 @@ const Store = {
             }
             this.loadFailed = false;
             this.lastSaveError = null;
+            if(BackgroundService.canUse() || this._storageTouched) {
+                this.cleaning=true;
+                this.cleanupPromise=BackgroundService.storage('pruneWorkspace',{prefix:`${STORE_KEY}:`,keep:null}).then(()=>{this.cleaning=false;this._storageTouched=false;return true;}).catch(error=>{this.cleaning=false;this.lastSaveError=`大原文清理失败：${error.message}`;this.notifyStorage(false,this.lastSaveError);return false;});
+                return this.cleanupPromise;
+            }
             return true;
         } catch(e) {
             this.lastSaveError = `清除本地数据失败：${e.message || e}`;
@@ -197,7 +291,7 @@ const Store = {
         const imported = payload.docs.map((doc, idx) => {
             if(!doc || typeof doc !== 'object') throw new Error(`第 ${idx + 1} 个页签无效`);
             const raw = typeof doc.raw === 'string' ? doc.raw : '';
-            if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`页签“${doc.title || idx + 1}”的数据超过 25 MB 限制`);
+            if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`页签“${doc.title || idx + 1}”的数据超过 128 MiB 限制`);
             return {
                 id:typeof doc.id === 'string' ? doc.id : '',
                 title:typeof doc.title === 'string' ? doc.title : `Analysis ${idx + 1}`,
@@ -214,6 +308,7 @@ const Store = {
             usedIds.add(doc.id);
             base.push(doc);
         });
+        if(base.length>100 || base.reduce((sum,doc)=>sum+(doc.raw || '').length*2,0)>MAX_WORKSPACE_BYTES)throw new Error('工作区超过 100 个页签或 256 MiB 原文预算');
         this.state.docs = base;
         const usedTitles = new Set();
         this.state.docs.forEach((doc, idx) => {
@@ -852,6 +947,7 @@ const Store = {
             // ── Workspace ──
             case 'workspace:save': {
                 const ok = this.save();
+                if(ok && typeof ok.then==='function')return ok;
                 if (ok) {
                     this._notify('workspace:saved', { bytes: this.storageBytes, savedAt: this.state.lastSavedAt });
                 } else {
@@ -859,6 +955,7 @@ const Store = {
                 }
                 return ok;
             }
+            case 'workspace:clearLocal': return this.clearLocalData();
             case 'workspace:import': {
                 const count = this.importWorkspace(payload && payload.workspace, payload && payload.merge === true);
                 this._notify('workspace:imported', { count });
@@ -875,5 +972,5 @@ const Store = {
     }
 };
 
-    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, COPY_FORMATS, MIGRATIONS, migrateWorkspacePayload, Store };
+    return { APP_VERSION, WORKSPACE_SCHEMA_VERSION, STORE_KEY, LEGACY_STORE_KEYS, MAX_IMPORT_BYTES, MAX_WORKSPACE_BYTES, COPY_FORMATS, MIGRATIONS, migrateWorkspacePayload, Store };
 });

@@ -138,7 +138,7 @@ describe('Store — copy format', () => {
     // 设置并持久化
     Store.setCopyFormat('lua-expanded');
     assert.equal(Store.state.copyFormat, 'lua-expanded');
-    const raw = storage.getItem('ota_v20_workspace');
+    const raw = storage.getItem('ota_v21_workspace');
     assert.ok(raw);
     const persisted = JSON.parse(raw);
     assert.equal(persisted.copyFormat, 'lua-expanded');
@@ -171,7 +171,7 @@ describe('Store — copy format', () => {
     for (const format of ['json-inline', 'json-expanded']) {
       Store.setCopyFormat(format);
       assert.equal(Store.state.copyFormat, format);
-      assert.equal(JSON.parse(storage.getItem('ota_v20_workspace')).copyFormat, format);
+      assert.equal(JSON.parse(storage.getItem('ota_v21_workspace')).copyFormat, format);
       Store.state.copyFormat = 'default';
       Store.init();
       assert.equal(Store.state.copyFormat, format);
@@ -192,7 +192,7 @@ describe('Store — copy format', () => {
   it('persists the copy header preference', () => {
     Store.setCopyWithHeaders(false);
     assert.equal(Store.state.copyWithHeaders, false);
-    const persisted = JSON.parse(storage.getItem('ota_v20_workspace'));
+    const persisted = JSON.parse(storage.getItem('ota_v21_workspace'));
     assert.equal(persisted.copyWithHeaders, false);
 
     Store.state.copyWithHeaders = true;
@@ -207,7 +207,7 @@ describe('Store — persistence', () => {
     Store.state.docs[0].raw = 'sensitive';
     Store.state.persistRaw = false;
     assert.equal(Store.save(), true);
-    const serialized = JSON.parse(storage.getItem('ota_v20_workspace'));
+    const serialized = JSON.parse(storage.getItem('ota_v21_workspace'));
     assert.equal(serialized.docs[0].raw, '');
     assert.equal(Store.state.docs[0].raw, 'sensitive');
   });
@@ -282,10 +282,10 @@ describe('Store — source lifecycle and migration contract', () => {
 
   it('migrates schema-less legacy payloads through the explicit schema pipeline', () => {
     const migrated = migrateWorkspacePayload({ docs:[{ id:'legacy', title:'Legacy', raw:'x', ui:{} }] });
-    assert.equal(migrated.schemaVersion, 20);
+    assert.equal(migrated.schemaVersion, 21);
     assert.equal(migrated.docs.length, 1);
-    assert.deepEqual(migrateWorkspacePayload({ schemaVersion:20, docs:[] }).schemaVersion, 20);
-    assert.throws(() => migrateWorkspacePayload({ schemaVersion:21, docs:[] }));
+    assert.deepEqual(migrateWorkspacePayload({ schemaVersion:20, docs:[] }).schemaVersion, 21);
+    assert.throws(() => migrateWorkspacePayload({ schemaVersion:22, docs:[] }));
   });
 
   it('rejects a parse result whose source revision is no longer current', async () => {

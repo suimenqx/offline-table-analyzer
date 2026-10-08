@@ -13,7 +13,9 @@ v22 completed the reliability pass: a command/event protocol (`Store.transition`
 
 ## Deferred architecture
 
-Large-data capabilities such as IndexedDB, Web Workers, virtual scrolling, and streaming exports are explicitly outside the current product scope. The next work remains bounded to browser regression coverage, parser correctness, and maintainable offline UI behavior.
+Release 22.1 adds the authorized [bounded large-data path](../architecture/large-data.md): finite original preview, embedded cancellable Workers, asynchronous raw recovery, result/snapshot reuse and explicit resource budgets. Desktop Chromium CI measures 100,000 × 32 synthetic table-data workflows; phone development does not require a desktop machine.
+
+Virtual scrolling, Arrow/SQL, external-memory query execution and streaming XLSX remain proposals outside this delivery. HTML DOMParser background processing and the broader desktop Safari/Firefox acceptance matrix are also outstanding.
 
 ## Later candidates
 

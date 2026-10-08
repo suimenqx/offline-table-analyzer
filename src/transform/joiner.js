@@ -1,6 +1,14 @@
 OTA.define('joiner', ["table-utils"], ({TableUtils}) => {
 /* Joiner */
 const Joiner = {
+    MAX_ROWS:1000000,
+    MAX_CELLS:8000000,
+    getHeaders(rawTables,cfg,views=[],stack=[]) {
+        if(!cfg || stack.includes(cfg.view))return [];
+        const resolve=name=>{const raw=rawTables.find(table=>table.name===name);if(raw)return raw.headers;const view=views.find(item=>item.view===name);return view?this.getHeaders(rawTables,view,views,[...stack,cfg.view]):[];};
+        if(!this.parsePairs(cfg,{headers:resolve(cfg.left)},{headers:resolve(cfg.right)}).length)return [];
+        return TableUtils.ensureUniqueHeaders(this.buildSelectTokens(cfg.select).map(token=>token.alias || token.col || token.raw));
+    },
     resolve(name, rawTables, views, stack=[]) {
         if(stack.includes(name)) return null; 
         const raw = rawTables.find(t=>t.name===name);
@@ -101,7 +109,7 @@ const Joiner = {
         })[cfg.type] ?? matched;
         return { matched, leftOnly, rightOnly, outRows, leftRows: L.rows.length, rightRows: R.rows.length };
     },
-    run(rawTables, cfg, views=[], stack=[]) {
+    run(rawTables, cfg, views=[], stack=[], limits={}) {
         const L = this.resolve(cfg.left, rawTables, views, stack);
         const R = this.resolve(cfg.right, rawTables, views, stack);
         if(!L || !R) return null;
@@ -118,6 +126,7 @@ const Joiner = {
         });
 
         const rows = [];
+        const append=value=>{if(rows.length>=this.MAX_ROWS || (rows.length+1)*cols.length>Math.min(this.MAX_CELLS,limits.maxCells ?? this.MAX_CELLS))throw new Error('JOIN 结果超过行数或单元格预算，请减少显示表或收紧关联条件');rows.push(value);};
         const matchedRight = new Set();
         const lMap = new Map(L.headers.map((h,i)=>[h,i]));
         L.rows.forEach(lr => {
@@ -125,11 +134,11 @@ const Joiner = {
             const matches = rIdx.get(k);
             if(matches && matches.length) {
                 matches.forEach(rr => matchedRight.add(rr));
-                if(cfg.type === 'semi') rows.push({l:lr, r:matches[0]});
-                else if(cfg.type !== 'anti') matches.forEach(rr => rows.push({l:lr, r:rr}));
-            } else if(['left','full','anti'].includes(cfg.type)) rows.push({l:lr, r:null});
+                if(cfg.type === 'semi') append({l:lr, r:matches[0]});
+                else if(cfg.type !== 'anti') matches.forEach(rr => append({l:lr, r:rr}));
+            } else if(['left','full','anti'].includes(cfg.type)) append({l:lr, r:null});
         });
-        if(['right','full'].includes(cfg.type)) R.rows.forEach(rr => { if(!matchedRight.has(rr)) rows.push({l:null, r:rr}); });
+        if(['right','full'].includes(cfg.type)) R.rows.forEach(rr => { if(!matchedRight.has(rr)) append({l:null, r:rr}); });
 
         const headers = TableUtils.ensureUniqueHeaders(cols.map(t => t.alias || t.col || t.raw));
         const resRows = rows.map(({l, r}) => cols.map(t => {

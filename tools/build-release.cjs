@@ -17,8 +17,10 @@ const MODULES = [
   ['core/table-utils.js',         'table normalization'],
   ['core/source-snapshot.js',     'ephemeral clipboard and file source metadata'],
   ['core/filter-engine.js',       'pure filtering / highlighting logic'],
+  ['core/background-service.js',  'offline bounded Worker transport'],
 
   // ── State ──
+  ['state/workspace-storage.js',  'atomic asynchronous workspace snapshots'],
   ['state/store.js',              'workspace state and persistence'],
   ['core/dispatch.js',            'command bus between UI and Store'],
 
@@ -53,6 +55,7 @@ const MODULES = [
   // ── Data transform ──
   ['transform/joiner.js',         'JOIN execution and dependency safety'],
   ['core/query-service.js',       'shared preview query/result pipeline'],
+  ['core/worker-runtime.js',      'background dataset and export session'],
 
   // ── Shared data access (breaks circular dep between app ↔ join-editor) ──
   ['core/table-registry.js',      'shared table/column metadata access'],
@@ -82,8 +85,10 @@ function readUtf8(file) {
 function renderRelease() {
   const template = readUtf8(templatePath);
   const styles = readUtf8(path.join(sourceDir, 'styles', 'styles.css')).trim();
+  const workerSource = renderWorker();
   const modules = MODULES.map(([relPath, label]) => {
-    const source = readUtf8(path.join(sourceDir, relPath)).replaceAll('__OTA_APP_VERSION__', APP_VERSION).trim();
+    const source = readUtf8(path.join(sourceDir, relPath)).replaceAll('__OTA_APP_VERSION__', APP_VERSION)
+      .replace("'__OTA_WORKER_SOURCE__'", JSON.stringify(workerSource).replaceAll('<', '\\u003c')).trim();
     const filename = path.basename(relPath);
     return `/* @module ${relPath}: ${label} */\n${source}`;
   }).join('\n\n');
@@ -99,6 +104,12 @@ function renderRelease() {
     .replace(/\n{3,}/g, '\n\n');
 }
 
+const WORKER_MODULES = MODULES.map(([file])=>file).filter(file=>
+  ['core/module-loader.js','core/runtime.js','core/table-utils.js','core/filter-engine.js','state/workspace-storage.js','export/exporter.js','transform/joiner.js','core/query-service.js','core/worker-runtime.js'].includes(file) || (file.startsWith('parsing/') && !file.endsWith('legacy-facade.js')));
+function renderWorker() {
+  return WORKER_MODULES.map(file=>readUtf8(path.join(sourceDir,file))).join('\n')+"\nOTA.require('worker-runtime').WorkerRuntime.start(self);";
+}
+
 function buildRelease({ write = true } = {}) {
   const html = renderRelease();
   if (write) fs.writeFileSync(outputPath, `${html.trimEnd()}\n`, 'utf8');
@@ -110,4 +121,4 @@ if (require.main === module) {
   console.log(`Release built from ${MODULES.length} source modules: ${path.relative(root, outputPath)}`);
 }
 
-module.exports = { MODULES, APP_VERSION, renderRelease, buildRelease };
+module.exports = { MODULES, WORKER_MODULES, APP_VERSION, renderRelease, renderWorker, buildRelease };

@@ -8,7 +8,7 @@ The release `index.html` contains no external scripts, stylesheets, fonts, image
 
 ## Data stored on the device
 
-The application may store the following in browser `localStorage`:
+The application stores small workspace settings in browser `localStorage`. Large original text uses local IndexedDB snapshots; both remain in the browser profile. Stored data may include:
 
 - analysis tabs and their names;
 - raw source text, when **Save raw data on this device** is enabled;
@@ -17,7 +17,7 @@ The application may store the following in browser `localStorage`:
 - theme, copy format, and privacy preferences;
 - persisted cell-correction overlays.
 
-Disable raw-data persistence to omit source text from saved state. The current source remains in memory until the page is closed or refreshed.
+Disable raw-data persistence to omit source text from saved state and asynchronously remove stored raw snapshots. Wait for the cleanup status; failures are reported. The current source remains in memory until the page is closed or refreshed.
 
 ## Removing data
 
@@ -25,7 +25,7 @@ Use **Clear local data** in the bottom status bar, then refresh the page. Cleari
 
 ## Browser storage limitations
 
-`localStorage` capacity and behavior vary by browser and by `file://` privacy policy. The application reports write failures but cannot guarantee durable storage. Export a workspace backup for important work.
+`localStorage` and IndexedDB capacity and behavior vary by browser and by `file://` privacy policy. The application reports write failures but cannot guarantee durable storage. Export a workspace backup for important work.
 
 ## Clipboard and downloads
 

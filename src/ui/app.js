@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}) => {
+OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service","background-service"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}, {BackgroundService}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -6,6 +6,16 @@ const App = {
     tabDrag: { sourceId:null },
     _renderQueued: false,
     _renderPending: false,
+    _parseGeneration:0,
+    _renderGeneration:0,
+    _jobGeneration:0,
+    showJob(label) {
+        const id=++this._jobGeneration;
+        const status=$('backgroundJob');if(status)status.hidden=false;
+        if($('backgroundJobText'))$('backgroundJobText').textContent=label;
+        return id;
+    },
+    finishJob(id) {if(id===this._jobGeneration && $('backgroundJob'))$('backgroundJob').hidden=true;},
     requestRender() {
         this._renderPending = true;
         if(this._renderQueued) return;
@@ -30,7 +40,7 @@ const App = {
         if(!Store.state.docs.some(d => d.id === id)) return false;
         if(!force && Store.state.activeId === id) return false;
         const input = $('rawInput');
-        if(input) dispatch('source:replace', { text:input.value });
+        if(input) dispatch('source:replace', { text:SourceController.readText(input) });
         return dispatch('tab:activate', { id, force });
     },
     init() {
@@ -58,6 +68,8 @@ const App = {
                     break;
                 case 'source:textChanged':
                     if (!payload || payload.docId === Store.state.activeId) {
+                        if(payload && payload.sourceRevision!==Store.getDocument().sourceRevision)break;
+                        if(this._parseToken && this._parseToken.sourceRevision!==payload.sourceRevision) {BackgroundService.cancel();this._parseGeneration++;TableRegistry.setResult(null);this.requestRender();}
                         CellEditController.reset();
                         // Paste lifetime follows the source text, not the transition that
                         // happened to deliver it. Option toggles do not emit this event;
@@ -93,11 +105,15 @@ const App = {
                     this.requestRender();
                     break;
                 case 'preview:changed':
+                case 'cell:edited':
                 case 'preview:renderRequested':
                     this.requestRender();
                     break;
                 case 'workspace:saved':
                     this.updateStorageStatus(payload || {});
+                    break;
+                case 'workspace:restored':
+                    this.renderTabs();this.loadDoc();
                     break;
                 case 'workspace:saveFailed':
                     this.updateStorageStatus({ ok: false, message: payload && payload.error });
@@ -139,7 +155,11 @@ const App = {
                 this.requestRender();
             });
             document.addEventListener('ota:joinParseRequested', () => {
-                this.run();
+                this.requestRender();
+            });
+            document.addEventListener('ota:backgroundJob',e=>{
+                if(e.detail.busy)this._exportJob=this.showJob(e.detail.label);
+                else this.finishJob(this._exportJob);
             });
         }
 
@@ -315,10 +335,12 @@ const App = {
     },
 
     updateStorageStatus(detail={}) {
+        const shell=document.querySelector('.app-shell');if(shell)shell.inert=Store.restoring;
         const el = $('storageStatus');
         if(!el) return;
         const ok = detail.ok !== false && !Store.lastSaveError;
         const bytes = Number(detail.bytes ?? Store.storageBytes) || 0;
+        if(Store.restoring || Store.saving || Store.cleaning){el.textContent=Store.restoring?'正在恢复完整原文…':Store.cleaning?'正在清理旧原文…':'正在保存完整原文…';return;}
         const message = detail.message || (ok
             ? (Store.state.persistRaw === false ? '临时数据模式 · 规则已保存' : `已保存 · ${this.formatBytes(bytes)}`)
             : Store.lastSaveError || '保存失败');
@@ -345,7 +367,7 @@ const App = {
         if(text) {
             if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${diagnostics.length} 项提示` : ''}`;
-            else if ($('rawInput') && $('rawInput').value.trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
+            else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
         }
         if(details) details.classList.toggle('hidden', !(result.candidates && result.candidates.length) && diagnostics.length === 0);
@@ -356,7 +378,7 @@ const App = {
     updatePasteSourceButton() {
         const button = $('pasteSourceBtn');
         if(!button) return;
-        const text = $('rawInput') ? $('rawInput').value : '';
+        const text = $('rawInput') ? SourceController.readText() : '';
         const snapshot = SourceController.getCurrentPaste(text);
         if(snapshot) button.classList.remove('hidden');
         else button.classList.add('hidden');
@@ -460,7 +482,7 @@ const App = {
 
     getParseOptions() {
         const d = Store.curr();
-        const text = $('rawInput').value;
+        const text = SourceController.readText();
         const last = SourceController.getCurrentPaste(text) || {};
         const html = last.html || '';
         const formatEl = $('formatSelect');
@@ -471,7 +493,7 @@ const App = {
     },
 
     showPasteSource() {
-        const text = $('rawInput') ? $('rawInput').value : '';
+        const text = $('rawInput') ? SourceController.readText() : '';
         const snapshot = SourceController.getCurrentPaste(text);
         if(!snapshot) {
             Toast.show('当前没有与输入内容对应的粘贴源', true);
@@ -566,6 +588,13 @@ const App = {
             sidebar.classList.toggle('collapsed');
             if(toggle) toggle.setAttribute('aria-expanded', sidebar.classList.contains('collapsed') ? 'false' : 'true');
         };
+        if($('persistRawToggle'))$('persistRawToggle').onchange=e=>dispatch('ui:persistRaw',{enabled:e.target.checked});
+        if($('cancelJobBtn'))$('cancelJobBtn').onclick=()=>{
+            this._parseGeneration++;this._renderGeneration++;BackgroundService.cancel();QueryService.clearCache();
+            if($('backgroundJob'))$('backgroundJob').hidden=true;
+            if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
+            Toast.show('操作已取消，完整原文仍保留');
+        };
         if(toggle) {
             toggle.onclick = (e) => {
                 if(e.detail > 1) return;
@@ -619,7 +648,7 @@ const App = {
         };
         const doClear = () => {
             SourceController.clearAutoParse();
-            $('rawInput').value='';
+            SourceController.displayText('');
             SourceController.clearLastPaste();
             dispatch('source:replace', { text:'' });
             this.run();
@@ -639,14 +668,14 @@ const App = {
             const enabled = e.target.checked;
             dispatch('ui:autoParse', { enabled });
             SourceController.clearAutoParse();
-            if (enabled) SourceController.scheduleAutoParse({ text: $('rawInput').value });
+            if (enabled) SourceController.scheduleAutoParse({ text: SourceController.readText() });
             else this.updateSourceParseState('manual');
         };
         
         const loadSample = () => {
             SourceController.clearAutoParse();
             this.invalidateCellEdits();
-            $('rawInput').value = `table-data Inventory
+            SourceController.displayText(`table-data Inventory
 validflag ID      Product       Category    Stock   Price
  1        1001    Widget_A      Hardware    50      10.50
  1        1002    Widget_B      Hardware    0       25.00
@@ -665,7 +694,7 @@ validflag Time      Level   Message                 Code
  1        10:00:01  INFO    System started          0x00
  1        10:05:23  WARN    High memory usage       0x04
  1        10:15:00  ERROR   Connection timeout      0x99
- 1        10:15:01  INFO    Retry connection...     0x00`;
+ 1        10:15:01  INFO    Retry connection...     0x00`);
             this.run();
         };
         const sampleBtn = $('sampleBtn'); if(sampleBtn) sampleBtn.onclick = loadSample;
@@ -725,9 +754,9 @@ validflag Time      Level   Message                 Code
             const sidebar = $('sidebar');
             if(sidebar) sidebar.classList.toggle('collapsed');
         };
-        if($('clearLocalDataBtn')) $('clearLocalDataBtn').onclick = () => {
+        if($('clearLocalDataBtn')) $('clearLocalDataBtn').onclick = async () => {
             if(!confirm('确定清除本浏览器中保存的全部工作区数据？建议先备份工作区。')) return;
-            if(Store.clearLocalData()) {
+            if(await dispatch('workspace:clearLocal')) {
                 Toast.show('本地数据已清除，刷新页面后生效');
                 $('storageStatus').textContent = '本地数据已清除';
             } else Toast.show(Store.lastSaveError || '清除失败', true);
@@ -783,6 +812,11 @@ validflag Time      Level   Message                 Code
 
         // Keyboard shortcuts — delegated to KeyboardController
         KeyboardController.init(this);
+        window.addEventListener('beforeunload',event=>{
+            if(Store.getState().persistRaw!==false && (Store.saveTimer || Store.saving || Store.cleaning)) {
+                event.preventDefault();event.returnValue='';
+            }
+        });
 
         // Register ViewManager edit callback (ViewManager → JoinEditor)
         ViewManager.setEditCallback((idx) => JoinEditor.open(idx));
@@ -792,9 +826,10 @@ validflag Time      Level   Message                 Code
 
     loadDoc() {
         const d = Store.curr();
+        SourceController.resetPendingInput();
         SourceController.clearLastPaste();
         CellEditController.reset();
-        $('rawInput').value = d.raw || '';
+        SourceController.displayText(d.raw || '');
         $('globalFilter').value = d.ui.globalFilter || '';
         const formatSelect = $('formatSelect'); if(formatSelect) formatSelect.value = d.ui.importFormat || 'auto';
         const headerModeSelect = $('headerModeSelect'); if(headerModeSelect) headerModeSelect.value = d.ui.importHeaderMode || 'auto';
@@ -805,10 +840,14 @@ validflag Time      Level   Message                 Code
         if($('pageSizeSelect')) $('pageSizeSelect').value = String(d.ui.pageSize || 100);
         if($('persistRawToggle')) $('persistRawToggle').checked = Store.state.persistRaw !== false;
         if($('checkFormulaSafe')) $('checkFormulaSafe').checked = Store.state.spreadsheetSafe !== false;
-        if($('sidebar')) this.setSidebarTab(d.ui.sidebarTab || 'data');
+        if($('sidebar')) this.applySidebarTab(d.ui.sidebarTab || 'data',false);
         this.syncCopyFormatControl();
         this.syncCopyHeaderControl();
         this.updatePasteSourceButton();
+        if(Store.restoring) {
+            if($('previewArea'))$('previewArea').textContent='正在恢复完整原文…';
+            this.updateStorageStatus();return;
+        }
         this.run(false);
         this.renderPreview();
         this.updateStorageStatus();
@@ -864,15 +903,18 @@ validflag Time      Level   Message                 Code
         try {
             SourceController.clearAutoParse();
             const started = performance.now();
-            const sourceText = $('rawInput').value;
-            if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 25 MB 安全限制，请拆分后再分析');
+            const sourceText = SourceController.readText();
+            if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 128 MiB 安全限制，请拆分后再分析');
             if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
             parseContext = {
                 docId: Store.state.activeId,
                 sourceRevision: Store.curr().sourceRevision,
                 started,
             };
-            const result = Parser.parse(sourceText, this.getParseOptions());
+            const options=this.getParseOptions();
+            if(BackgroundService.isLarge(sourceText) && !options.html && options.format!=='html-table')return this.runBackground(sourceText,options,parseContext,render);
+            BackgroundService.cancel();QueryService.clearCache();this._parseGeneration++;this._parseToken=parseContext;
+            const result = Parser.parse(sourceText, options);
             if (result.format === 'error') {
                 const message = result.diagnostics && result.diagnostics.find(item => item.severity === 'error')?.message;
                 throw new Error(message || result.label || '解析失败');
@@ -924,12 +966,39 @@ validflag Time      Level   Message                 Code
             this.renderPreview();
             // Map common errors to user-friendly Chinese messages
             const friendly =
-                /超过.*25.*MB|MAX_IMPORT/i.test(msg)   ? '数据过大，请将输入控制在 25 MB 以内' :
+                /超过.*128.*MiB|MAX_IMPORT/i.test(msg)   ? '数据过大，请将输入控制在 128 MiB 以内' :
                 /quota|storage.*full/i.test(msg)        ? '浏览器存储空间不足；当前数据仍在内存中，请立即备份工作区' :
                 /Unexpected.*token|JSON.*parse/i.test(msg) ? '数据格式无法识别，请尝试手动选择格式' :
                 /URI.*malformed/i.test(msg)             ? '文件名包含不支持字符' :
                 '';
             Toast.show(friendly || `解析失败：${msg}`, true);
+        }
+    },
+
+    async runBackground(text,options,context,render) {
+        BackgroundService.cancel();QueryService.clearCache();
+        const generation=++this._parseGeneration;this._parseToken=context;
+        const job=this.showJob('正在后台解析完整原文…');
+        TableRegistry.setResult(null);
+        if($('previewArea'))$('previewArea').setAttribute('aria-busy','true');
+        const key=`${context.docId}:${context.sourceRevision}:${JSON.stringify(options)}`;
+        try {
+            const result=await BackgroundService.parse({text,options,key});
+            const doc=Store.getDocument();
+            if(generation!==this._parseGeneration || doc.id!==context.docId || doc.sourceRevision!==context.sourceRevision)return;
+            TableRegistry.setResult({...result,background:true,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision});
+            this.applyStoredCellEdits();
+            if(result.tables.length && result.format!=='empty')Store.lastSuccessfulFormat=result.format;
+            this.updateImportSummary();
+            dispatch('parse:completed',{docId:doc.id,sourceRevision:doc.sourceRevision,format:result.format,tables:result.tables,elapsed:Math.round(performance.now()-context.started)});
+            if(render)this.requestRender();
+        } catch(error) {
+            if(generation!==this._parseGeneration || error.name==='AbortError')return;
+            TableRegistry.setResult({format:'error',label:'解析失败',tables:[],diagnostics:[{severity:'error',code:'PARSE_ERROR',message:error.message}]});
+            Toast.show(error.message,true);this.updateImportSummary();this.requestRender();
+        } finally {
+            this.finishJob(job);
+            if(generation===this._parseGeneration && $('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         }
     },
 
@@ -988,7 +1057,25 @@ validflag Time      Level   Message                 Code
         );
     },
 
-    renderPreview() {
+    renderPreview(processedOverride=null) {
+        const generation=++this._renderGeneration;
+        if(TableRegistry.isBackground() && !processedOverride) {
+            const doc=Store.getDocument();const revision=Store.revision;
+            const job=this.showJob('正在后台更新筛选与 JOIN…');
+            if($('previewArea'))$('previewArea').setAttribute('aria-busy','true');
+            let input;
+            try {input=TableRegistry.getBackgroundInput();} catch(error) {this.finishJob(job);Toast.show(error.message,true);return;}
+            QueryService.getPreviewAsync(input,BackgroundService).then(result=>{
+                if(generation!==this._renderGeneration || Store.getDocument().id!==doc.id || Store.getDocument().sourceRevision!==input.sourceRevision)return;
+                if(revision!==Store.revision){this.requestRender();return;}
+                this.renderPreview(result.tables);
+            }).catch(error=>{if(generation===this._renderGeneration && error.name!=='AbortError')Toast.show(error.message,true);}).finally(()=>{
+                this.finishJob(job);
+                if(generation===this._renderGeneration && $('previewArea'))$('previewArea').setAttribute('aria-busy','false');
+            });
+            return;
+        }
+        if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         if(CellEditController.activeEditor) CellEditController.finish(true);
         const div = $('previewArea'); div.innerHTML = '';
         this.rendered = []; Select.clear();
@@ -1004,7 +1091,8 @@ validflag Time      Level   Message                 Code
         }
         
         const ui = Store.curr().ui;
-        const processedTables = this.getPreviewProcessedTables();
+        const processedTables = processedOverride || this.getPreviewProcessedTables();
+        if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         const combined = processedTables.map(({ table }) => table);
         if(!combined.length) {
             div.innerHTML = `<div class="empty">
@@ -1146,7 +1234,7 @@ validflag Time      Level   Message                 Code
         else if (tName.startsWith('JOIN:')) {
             const vName = tName.replace('JOIN:', '');
             const vCfg = Store.state.globalViews.find(v => v.view === vName);
-            if (vCfg) { const res = Joiner.run(TableRegistry.getRaw(), vCfg, Store.state.globalViews); if (res) all = res.headers; }
+            if (vCfg) all=Joiner.getHeaders(TableRegistry.getRaw(),vCfg,Store.state.globalViews);
         }
         if (!all || !all.length) { const rt = this.rendered.find(x => x.name === tName); if (rt) all = rt.headers; }
         if (!all || !all.length) { if (typeof alert === 'function') alert('无法获取列信息'); return; }

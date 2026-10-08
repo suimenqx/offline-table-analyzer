@@ -1,0 +1,58 @@
+{
+  "browser": "153.0.8010.12",
+  "commit": "7e3cc4dbd8de3fc1c896e4dcbe22e39e262cff54",
+  "origin": "file://",
+  "networkRequests": [],
+  "worker": {
+    "ready": {
+      "ready": 1
+    },
+    "result": {
+      "format": "cli-table-data",
+      "rows": [
+        [
+          "1",
+          "001"
+        ],
+        [
+          "1",
+          "002"
+        ]
+      ],
+      "domParser": "undefined"
+    },
+    "detached": 0,
+    "transfer": {
+      "length": 1024
+    },
+    "rebuilt": {
+      "ready": 1
+    }
+  },
+  "secureContext": true,
+  "saved": {
+    "length": 22000003,
+    "end": "END"
+  },
+  "opfs": {
+    "ok": false,
+    "error": "SecurityError",
+    "message": "It was determined that certain files are unsafe for access within a Web application, or that too many calls are being made on file resources."
+  },
+  "reopened": {
+    "length": 22000003,
+    "end": "END"
+  },
+  "replaced": {
+    "length": 22000003,
+    "end": "END"
+  },
+  "renamed": {
+    "length": 22000003,
+    "end": "END"
+  },
+  "moved": {
+    "length": 22000003,
+    "end": "END"
+  }
+}

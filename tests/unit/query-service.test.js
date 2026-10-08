@@ -8,6 +8,17 @@ const { QueryService } = OTA.require('query-service');
 beforeEach(() => QueryService.clearCache());
 
 describe('QueryService — shared result contract', () => {
+  it('reuses the full query across pagination and invalidates corrections', () => {
+    const rawTables=[{name:'T',headers:['id'],rows:[['001']]}];
+    const first=QueryService.getPreview({rawTables,ui:{tablePages:{T:1}},stateRevision:1,queryRevision:1});
+    const paged=QueryService.getPreview({rawTables,ui:{tablePages:{T:2},pageSize:50},stateRevision:2,queryRevision:2});
+    assert.equal(first,paged);
+    rawTables[0].rows[0][0]='002';
+    const corrected=QueryService.getPreview({rawTables,ui:{cellEdits:{$T:{0:{0:'002'}}}},stateRevision:3});
+    assert.notEqual(first,corrected);
+    assert.equal(first.tables[0].res.rows[0].d[0],'001');
+    assert.equal(corrected.tables[0].res.rows[0].d[0],'002');
+  });
   it('uses one processed result for preview paging and export-shaped rows', () => {
     const rawTables = [{ name:'Orders', headers:['id','status'], rows:[['1','ok'],['2','hold'],['3','ok']] }];
     const ui = { displayTables:null, enabledViews:[], rules:{}, columnFilters:{}, globalFilter:'status=ok' };

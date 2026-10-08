@@ -94,7 +94,13 @@
                             <label for="persistRawToggle">在此设备保存原始数据</label>
                             <span class="help-icon" data-tip="关闭后，原始数据只保留在当前页面内；刷新页面后不会恢复。分析规则和界面偏好仍会保存。">?</span>
                         </div>
+                        <p id="sourcePreviewNotice" class="muted" role="status" aria-live="polite" hidden></p>
+                        <div id="backgroundJob" role="status" aria-live="polite" hidden>
+                            <span id="backgroundJobText"></span>
+                            <button id="cancelJobBtn" class="sm" type="button">取消操作</button>
+                        </div>
                         <div class="source-utilities" aria-label="数据源工具">
+                            <button class="sm" id="exportSourceBtn" type="button">导出原文</button>
                             <button class="sm" id="sampleLink" type="button">加载示例</button>
                             <button class="sm" id="exportRawBtn" type="button" title="导出解析后的原始表">原始 Excel</button>
                             <button class="sm" id="exportTabBtn" type="button" title="备份整个工作区">备份工作区</button>

@@ -3,8 +3,8 @@
 Labels: wayfinder:task
 Type: task
 Mode: AFK
-Status: open
-Assignee:
+Status: resolved
+Assignee: /root
 Parent: [大数据完整分析流程保持响应](../map.md)
 Blocked by: 02
 
@@ -23,3 +23,10 @@ CI 桌面 Chromium 在真实单 HTML、`file://`、首次断网打开时，能�
 本票由已完成的文件来源/存储规范调查明确产生：现有资料无法替代目标 Chrome 的来源与重开验证。通过或失败都应成为后续决策的输入。
 
 用户补充：手机编程且不能直接获取 Chrome 基线，因此改为 AFK 的 CI 检查。实现与认领留给后续会话，本轮先完成性能基线任务。
+
+
+## Answer — 2026-10-08
+
+[CI 37787642664](https://github.com/suimenqx/offline-table-analyzer/actions/runs/37787642664) 的 Chromium 153.0.8010.12 实测首次断网 file:// Blob Worker 可 ready、运行 OTA table-data 解析、终止重建和转移 ArrayBuffer。IndexedDB 在事务提交后保存 22,000,003 字符，普通持久 profile 完全关闭重开、替换 HTML、改名和移动均读回相同末尾/长度；该浏览器结果不作为其他 file 来源的保证。OPFS 实际调用失败 SecurityError，不能因 secureContext 为 true 就选用。隐私 context 本次可写入读回，全部关闭后的新 context 无数据。[机制原始记录](../../../docs/testing/baselines/2026-10-08-offline/offline-mechanisms.json)已归档，探针没有访问产品工作区。
+
+用户后续明确授权实施，生产决策记录在[大数据 ADR](../../../docs/architecture/large-data.md)，不将本机制票当成其他 HITL 问题的用户答复。

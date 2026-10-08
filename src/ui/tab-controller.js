@@ -1,4 +1,4 @@
-OTA.define('tab-controller', ["runtime", "store", "dispatch"], ({$, escapeHtml, Toast}, {Store}, {dispatch}) => {
+OTA.define('tab-controller', ["runtime", "store", "dispatch", "source-controller"], ({$, escapeHtml, Toast}, {Store}, {dispatch}, {SourceController}) => {
 /* TabController — tab bar rendering, drag-and-drop, rename, keyboard navigation.
 
    Responsibilities:
@@ -230,7 +230,7 @@ const TabController = {
 
     _persistCurrentSource() {
         const input = $('rawInput');
-        if (input) dispatch('source:replace', { text:input.value });
+        if (input) dispatch('source:replace', { text:SourceController.readText(input) });
     },
 
     // ── Internal helpers ──

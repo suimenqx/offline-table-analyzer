@@ -1,6 +1,7 @@
 OTA.define('table-utils', [], () => {
 /* Table utilities — normalization, headers, cell types */
 const TableUtils = {
+    MAX_CELLS:8000000,
     normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
     lines(text='') { return this.normalizeText(text).split('\n'); },
     isEmptyRow(row=[]) { return !row || row.every(v => String(v ?? '').trim() === ''); },
@@ -30,9 +31,12 @@ const TableUtils = {
     },
     normalizeRows(rows=[], width=0, diagnostics=[], tableName='Table') {
         const out = [];
+        let cells=0;
         rows.forEach((row, idx) => {
             const r = this.trimRow(row || []);
             if(this.isEmptyRow(r)) return;
+            cells+=Math.max(r.length,width);
+            if(cells>this.MAX_CELLS)throw new Error('解析结果超过 800 万单元格预算，请拆分数据；原文仍保留');
             if(width && r.length !== width) {
                 diagnostics.push({ severity:'warning', code:'ROW_WIDTH_MISMATCH', table:tableName, row:idx + 1, message:`${tableName} 第 ${idx + 1} 行列数为 ${r.length}，目标列数为 ${width}` });
             }

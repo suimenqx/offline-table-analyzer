@@ -2,7 +2,7 @@
 
 Offline Table Analyzer is a privacy-first table workbench that runs entirely in one HTML file. Paste or drop messy tabular data, inspect and filter it, build JOIN views, copy a selected range, and export clean Excel files—without uploading data or installing an application.
 
-Version: **22.0.0**
+Version: **22.1.0**
 
 ## Why this project exists
 
@@ -39,7 +39,8 @@ Additional import capabilities:
 - **Aligned-table input**: recognizes `-` or `-`/`+` separator lines, supports separator lines above/below a table or between header and data, preserves multiple tables, and keeps cell text such as `--` unchanged.
 - **Source input**: paste, drag-and-drop, or file picker. Format is auto-detected from file extension (`.csv` / `.tsv` / `.html` / `.htm` / `.md` / `.markdown`).
 - **Editors**: resizable source textarea (120–600 px) and a fullscreen source editor for large inputs.
-- 25 MB safety limit on source text and workspace files.
+- Large text uses a bounded read-only source preview, cancellable background parsing/filtering/JOIN/export, and asynchronous raw-data recovery.
+- Source budget: 128 MiB UTF-16 estimate; workspace raw budget: 256 MiB. See the resource budgets below.
 
 ### Analysis workbench
 
@@ -99,15 +100,18 @@ The application uses modern browser APIs including `localStorage`, `FileReader`,
 
 All parsing, filtering, JOIN processing, copying, and Excel generation happen in the browser. The application contains no external resources or network API calls.
 
-By default, the current workspace is stored in browser `localStorage` under the key `ota_v20_workspace` so it can survive a refresh. Disable **Save raw data on this device** to keep source text only in the current page session. The **Clear local data** button removes all stored workspace data. A storage usage meter in the status bar helps monitor quota consumption. When saving fails (e.g., quota exceeded), the status bar reports the failure and the in-memory data remains available for backup.
+By default, small settings are stored under `ota_v21_workspace` in browser `localStorage`; large original text is committed to IndexedDB before its snapshot reference is saved. Unchanged original text reuses its committed snapshot when settings or pages change. Schema 20 and legacy workspaces migrate automatically after a successful save. Disable **Save raw data on this device** to keep source text only in the current page session. The **Clear local data** button removes all stored workspace data. A storage usage meter in the status bar helps monitor quota consumption. When saving fails (e.g., quota exceeded), the status bar reports the failure and the in-memory data remains available for backup.
 
 Read [PRIVACY_POLICY.md](PRIVACY_POLICY.md) before using the tool with sensitive data.
 
 ## Recommended limits
 
-- Maximum accepted source/workspace file: 25 MB
+- Source: file bytes and UTF-16 estimate each limited to 128 MiB; workspace file/raw aggregate: 256 MiB
+- Parsed/query/export results: 8 million cells; each JOIN: 1 million rows; XLSX: 256 MiB output
+- These are protection budgets, not guaranteed capacity on every computer; excess results produce a visible error and preserve original text.
 - Default rendered page: 100 rows per table (switchable to 50, 250, or 500)
-- For very large datasets, keep raw-data persistence disabled and export a workspace backup before closing the page
+- Wait for the saved status before closing. Storage failures preserve current data for original-text/workspace backup. Private browser sessions do not retain data after closing; changing the HTML path/browser profile can change storage access.
+- Large table-data and text computation runs in a local Worker. HTML/DOMParser parsing retains its Window path. The [large-data architecture decision](docs/architecture/large-data.md) records the boundaries.
 - XLSX files can be exported but are not imported
 - JOIN conditions are equality-based; data types are compared as represented in the parsed table
 

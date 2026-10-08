@@ -1,6 +1,6 @@
-# v20 Requirements and Scope
+# Requirements and Scope
 
-The workspace schema remains version `20`; the current application release is **22.0.0**.
+The current workspace schema is `21`; application release **22.1.0**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
 
 ## 1. Product definition
 
@@ -74,17 +74,19 @@ The defining constraints are:
 - Raw, full, and filtered-preview Excel export.
 - Multiline preservation appropriate to each output format.
 
-## 3. v20 release requirements
+## 3. Current release requirements
 
 ### R1 — trustworthy persistence
 
-- Schema version `20`, application version `22.0.0`.
-- Single key `ota_v20_workspace`; migrate legacy `v16_4_store` once and remove it only after a successful v20 write.
+- Schema version `21`, application version `22.1.0`.
+- Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
+- Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.
+- Show saving/restoring/cleanup status. Background storage errors preserve memory and the previous committed workspace. Wait for a saved status before closing; pending save offers the browser close confirmation.
 - Catch `QuotaExceededError` in `save()` and report the specific failure in the status bar; in-memory data remains usable.
 - Show saved/failed state, estimated storage use (`json.length * 2` for UTF-16 approximation), and a usage meter in the status bar.
 - Support temporary raw-data mode via the `persistRaw` flag: when false, raw source strings are serialized as empty to save space.
 - The `loadFailed` flag prevents destructive overwrite of an unreadable workspace with an empty default.
-- Clear local data removes `ota_v20_workspace`, all legacy keys, and `v16_4_inputHeight`.
+- Clear local data removes current/legacy keys, `v16_4_inputHeight`, and IndexedDB raw snapshots. Temporary mode clears stored raw asynchronously while retaining the current in-memory text; cleanup failure is visible.
 
 ### R2 — zero silent truncation
 
@@ -96,7 +98,7 @@ The defining constraints are:
 
 ### R3 — safe imports and rendering
 
-- Source/workspace imports: 25 MB limit (`MAX_IMPORT_BYTES = 25 * 1024 * 1024`).
+- Source file bytes and `raw.length * 2` UTF-16 estimate: 128 MiB (`MAX_IMPORT_BYTES`). Workspace file and total raw estimate: 256 MiB (`MAX_WORKSPACE_BYTES`), up to 100 documents. Limits apply before replacing the current workspace.
 - Configuration imports: 5 MB limit (hardcoded in the file input handler).
 - Workspace import validates `kind` (`ota-workspace` or `table-tool-tabs`), schema forward-compatibility, and doc count (≤100).
 - Recursive safety check via `isSafePayload`: depth ≤12 levels, ≤2000 keys per object, ≤10000 array items, blocks `__proto__`, `prototype`, `constructor`.
@@ -118,7 +120,11 @@ The defining constraints are:
 - Full filtered result is exported regardless of the current page.
 - Source size is checked before parse: `sourceText.length * 2 > MAX_IMPORT_BYTES`.
 - For slow parses (>800 ms elapsed), a Toast notification shows the parse time.
-- A single source above 25 MB is rejected at the input stage.
+- Original text above 128 Ki characters uses at most 100 lines/10,000 characters of read-only preview; complete text remains the parse/save/export source. New paste replaces large text.
+- Large table-data/text parsing, querying, JOIN and XLSX run in cancellable embedded Workers; large HTML retains its DOMParser Window path. Error/cancel/stale source results cannot discard original text or overwrite a newer source.
+- At most 8 million cells in parsed datasets, combined selected/query/export tables; 1 million rows per JOIN; 256 MiB XLSX output. Budget failures are explicit, without silent truncation. These are implementation protection budgets, not universal capacity guarantees.
+- Pages reuse the same query and raw snapshot; only source/query/view/correction changes invalidate derived results. Result cache has at most two entries. Parsed/query rows use acknowledged batches of at most 500.
+- All original raw text is retained, including CRLF for intercepted large paste/file input. XLSX exports full filtered results across pages.
 
 ### R6 — complete existing controls
 
@@ -232,7 +238,7 @@ The defining constraints are:
 - Added status/chip visibility, format-candidate explanations, dialog focus trapping, and deterministic version injection.
 - Build manifest contains 42 source modules; all tests, architecture validation, and release validation pass without regression.
 
-## 5. Explicit non-goals for v20–v22
+## 5. Explicit non-goals
 
 - XLSX import.
 - Remote URLs, database connectors, accounts, sharing, or synchronization.
@@ -240,6 +246,6 @@ The defining constraints are:
 - SQL, pivot tables, charts, or dashboards.
 - Guaranteed durable storage beyond browser storage behavior.
 - Native-app packaging.
-- Web Workers, IndexedDB, virtual scrolling, and streaming export; the product remains a bounded single-file offline workbench.
+- Virtual scrolling, Arrow/SQL engines, external-memory queries, and streaming XLSX; the product remains a bounded single-file offline workbench. Local Workers and IndexedDB are included by the 22.1 ADR.
 
-These remain deferred in the roadmap while the v20 schema and v22 reliability baseline are maintained.
+These remain deferred in the roadmap while schema 20 migration and existing reliability contracts are maintained.

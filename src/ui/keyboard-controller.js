@@ -48,9 +48,9 @@ const KeyboardController = {
         if (mod && e.key.toLowerCase() === 's')     {
             e.preventDefault();
             const inp = $('rawInput');
-            if (inp) dispatch('source:replace', { text:inp.value });
+            if (inp) dispatch('source:replace', { text:SourceController.readText(inp) });
             dispatch('workspace:save');
-            Toast.show('工作区已保存');
+            Toast.show(Store.lastSaveError || (Store.saving?'正在保存完整原文…':'工作区已保存'),!!Store.lastSaveError);
             return;
         }
         if (mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); CellEditController.undo(); return; }
