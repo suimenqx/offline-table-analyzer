@@ -1,23 +1,27 @@
-# 建立真实桌面基线以决定性能预算
+# 建立 CI 桌面 Chromium 基线以决定性能预算
 
 Labels: wayfinder:task
 Type: task
-Mode: HITL
-Status: open
-Assignee:
+Mode: AFK
+Status: claimed
+Assignee: /root
 Parent: [大数据完整分析流程保持响应](../map.md)
 Blocked by:
 
 ## Question
 
-在目标桌面 Chrome 上取得哪些代表性测量，才能决定容量、响应与内存验收预算？这是决策前的测量任务，不是性能改造的交付切片。
+通过仓库的 GitHub Actions 桌面 Chromium 取得哪些可重复测量，才能决定容量、响应与内存验收预算？用户使用手机编程，无法提供桌面 Chrome 基线；这是代理自动完成的决策前测量任务，不是性能改造的交付切片。
 
-代理准备可重复的本地样本、测量入口与桌面操作清单；用户提供或运行实际 Chrome 环境的测量。需记录 CPU、浏览器版本、原文 UTF-8 字节与现有 `length * 2` 估算、字段长度分布、多文档数量；不知道原文大小时由测量计算，不要求上传敏感数据。
+代理准备确定性合成样本和 Playwright 测量入口，在 CI 的桌面 Chromium 执行并保存 JSON 报告、浏览器版本、runner CPU/内存、原文 UTF-8 字节与现有 `length * 2` 估算。不需要用户桌面电脑或上传原文。
 
 分开测原生粘贴/文件读取、Store 更新与保存、识别/解析/规范化、首次与重复筛选、翻页、JOIN、复制和导出。记录首次可见反馈、最长主线程任务、事件循环响应、总完成时间和可观测的内存峰值；说明测量工具的局限。至少包括 10 万行 × 32 字段的短/长/中文/CRLF 样本和多对多 JOIN 输出增长。
 
-Node 结果只能作计算趋势；模拟 paste 不能替代真实剪贴板默认插入。Termux Firefox 不能冒充用户桌面 Chrome 或 CI Chromium。若当前会话无法访问目标电脑，保留票并提供用户可运行的本地步骤，不虚构成绩。
+Node 结果只能作计算趋势；模拟 paste 不能替代真实剪贴板默认插入。CI 使用浏览器剪贴板和 Control+V，明确 headless Linux 的环境边界；Termux Firefox 与 Node 分开报告，CI 成绩不等同于某台 32 GB 电脑的保证。无法取得 CI 结果时票保持 claimed，不虚构成绩，不重新要求用户提供电脑。
 
 ## Comments
 
 已知用户环境：Chrome、32 GB 整机内存。已有[模块测量与限制](../../../docs/planning/browser-large-data-research.md)可作为准备依据。
+
+用户补充：使用手机编程，无法直接获取 Chrome 基线。此任务改由代理驱动的 CI 自动化执行；32 GB 仅是此前给出的环境参考，不是假定的 CI runner 容量。
+
+代理已准备[基线运行与口径](../../../docs/testing/large-data-baseline.md)、独立 Playwright 配置和 GitHub Actions 工作流；本地 Node 365 项及发布/架构校验通过。票在实际 CI 结果取得前保持 claimed；测试发现通过不冒充 Chromium 执行通过。

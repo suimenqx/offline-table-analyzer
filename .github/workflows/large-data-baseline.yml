@@ -1,0 +1,46 @@
+name: Large-data Chromium baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tools/build-release.cjs'
+      - 'tools/summarize-large-data-baseline.mjs'
+      - 'e2e/large-data.perf.js'
+      - 'e2e/helpers/large-data-probe.mjs'
+      - 'tests/helpers/large-data.mjs'
+      - 'playwright.performance.config.js'
+      - 'package*.json'
+      - '.github/workflows/large-data-baseline.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: node node_modules/playwright/cli.js install --with-deps chromium --only-shell
+      - run: npm run build:release
+      - run: node node_modules/@playwright/test/cli.js test --config playwright.performance.config.js
+      - name: Summarize measurements
+        if: always()
+        run: node tools/summarize-large-data-baseline.mjs test-results/large-data >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: large-data-baseline
+          path: |
+            test-results/large-data/
+            test-results/large-data-run.json
+          if-no-files-found: warn
+          retention-days: 14
