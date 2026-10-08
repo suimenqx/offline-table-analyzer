@@ -813,7 +813,7 @@ validflag Time      Level   Message                 Code
         // Keyboard shortcuts — delegated to KeyboardController
         KeyboardController.init(this);
         window.addEventListener('beforeunload',event=>{
-            if(Store.getState().persistRaw!==false && (Store.saveTimer || Store.saving || Store.cleaning)) {
+            if(Store.cleaning || (Store.getState().persistRaw!==false && (Store.saveTimer || Store.saving))) {
                 event.preventDefault();event.returnValue='';
             }
         });

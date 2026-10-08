@@ -162,7 +162,12 @@ const Store = {
                 this.restoring=false;this.lastSaveError=`原文恢复失败：${error.message}`;
                 this.notifyStorage(false,this.lastSaveError);return false;
             });
-        } else this.save();
+        } else {
+            // A page closed during cleanup can leave an unreferenced raw
+            // snapshot. Retry cleanup when reloading the committed small stub.
+            if(loaded && !loaded.rawExternal && BackgroundService.canUse())this._storageTouched=true;
+            this.save();
+        }
     },
     serializeState({omitRaw=false}={}) {
         const source={...this.state,docs:this.state.docs.map(doc=>({...doc,raw:omitRaw || this.state.persistRaw===false?'':doc.raw}))};

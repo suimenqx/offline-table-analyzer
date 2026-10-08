@@ -50,6 +50,16 @@ describe('Store asynchronous snapshot lifecycle',()=>{
     const stub=JSON.parse(storage.getItem(STORE_KEY));assert.equal(stub.persistRaw,false);assert.equal(stub.rawExternal,undefined);assert.equal(stub.docs[0].raw,'');assert.equal(Store.curr().raw,raw);
   });
 
+  it('retries interrupted raw cleanup when reopening a small temporary stub',async()=>{
+    const {Store,STORE_KEY,storage}=fixture();
+    const {OTA}=loadModules(['store'],{localStorage:storage});
+    const restored=OTA.require('store').Store;const background=OTA.require('background-service').BackgroundService;
+    storage.setItem(STORE_KEY,JSON.stringify({...Store.serializeState({omitRaw:true}),persistRaw:false}));
+    const calls=[];background.canUse=()=>true;background.storage=async(kind,payload)=>calls.push({kind,payload});
+    restored.init();assert.equal(restored.cleaning,true);assert.equal(await restored.cleanupPromise,true);
+    assert.equal(calls[0].kind,'pruneWorkspace');assert.equal(calls[0].payload.keep,null);assert.equal(restored.cleaning,false);assert.equal(restored.curr().raw,'');
+  });
+
   it('restores a committed snapshot and blocks overwriting a missing snapshot',async()=>{
     const {Store,STORE_KEY,storage,calls}=fixture();const pending=Store.save();const snapshot=calls[0].payload.workspace;
     calls[0].resolve();await pending;Store.init();assert.equal(Store.restoring,true);assert.equal(Store.loadFailed,true);
