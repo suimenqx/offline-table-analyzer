@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
+import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { test, expect } from '@playwright/test';
 import { readSheet } from 'read-excel-file/node';
@@ -16,11 +17,15 @@ const cases = [
 for (const sample of cases) {
   test(`100k x 32 ${sample.variant} ${sample.method || 'clipboard'} run ${sample.run}`, async ({ page, context, browser }, testInfo) => {
     const fixture = createLargeTableData({ variant: sample.variant });
+    // Real local-file delivery avoids Playwright's large base64 payload decoding
+    // on Window, which is automation work rather than FileReader behavior.
+    const inputDir=await fs.mkdtemp(path.join(os.tmpdir(),'ota-perf-input-'));
+    const inputFile=path.join(inputDir,'wide.txt');await fs.writeFile(inputFile,fixture.text);
     // Large input bypasses native insertion and retains its original CRLF in Store.
     const receivedCharacters = fixture.text.length;
     const report = {
       schemaVersion: 1,
-      case: { ...sample, method: sample.method || 'clipboard', rows: fixture.rows, columns: fixture.columns,
+      case: { ...sample, method: sample.method || 'clipboard', fileDelivery:'local-path', rows: fixture.rows, columns: fixture.columns,
         textCharacters: fixture.text.length, receivedTextCharacters: receivedCharacters,
         utf8Bytes: Buffer.byteLength(fixture.text), estimatedTextBytes: fixture.text.length * 2 },
       environment: {
@@ -109,7 +114,7 @@ for (const sample of cases) {
 
       if (sample.method === 'file') {
         await phase('file-import-and-parse', async () => {
-          await page.locator('#sourceFileInput').setInputFiles({ name: 'wide.txt', mimeType: 'text/plain', buffer: Buffer.from(fixture.text) });
+          await page.locator('#sourceFileInput').setInputFiles(inputFile);
           await expectWideCount(fixture.rows);
           const state = await rawState();
           expect(state.sourceLength).toBe(receivedCharacters);
@@ -232,7 +237,7 @@ for (const sample of cases) {
             // Store notifications load the new editor asynchronously. Await visible readiness.
             await expect(page.locator('#tabsContainer [role="tab"][aria-selected="true"]')).toContainText('Analysis 2');
             await expect(page.locator('#rawInput')).toHaveValue('');
-            await page.locator('#sourceFileInput').setInputFiles({ name: 'second-wide.txt', mimeType: 'text/plain', buffer: Buffer.from(fixture.text) });
+            await page.locator('#sourceFileInput').setInputFiles(inputFile);
             await expectWideCount(fixture.rows);
             const state = await rawState();
             expect(state.sourceLength).toBe(receivedCharacters);
@@ -252,6 +257,7 @@ for (const sample of cases) {
       await fs.writeFile(reportPath, JSON.stringify(report, null, 2));
       await testInfo.attach('large-data-baseline', { path: reportPath, contentType: 'application/json' });
       await cdp.detach().catch(() => {});
+      await fs.rm(inputDir,{recursive:true,force:true});
     }
   });
 }

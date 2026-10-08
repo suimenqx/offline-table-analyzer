@@ -1,6 +1,6 @@
 # Requirements and Scope
 
-The current workspace schema is `21`; application release **22.1.0**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
+The current workspace schema is `21`; application release **22.1.1**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
 
 ## 1. Product definition
 
@@ -78,7 +78,8 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Schema version `21`, application version `22.1.0`.
+- Schema version `21`, application version `22.1.1`.
+- Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
 - Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
 - Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.
 - Show saving/restoring/cleanup status. Background storage errors preserve memory and the previous committed workspace. Wait for a saved status before closing; pending save offers the browser close confirmation.

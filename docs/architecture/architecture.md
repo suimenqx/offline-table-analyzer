@@ -78,7 +78,7 @@ The refactor decision, module manifest, dependency rules, migration phases, and 
 
 ```text
 schemaVersion: 21
-appVersion: 22.1.0
+appVersion: 22.1.1
 revision / viewRevision / queryRevision
 docs[]
 activeId

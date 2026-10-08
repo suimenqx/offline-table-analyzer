@@ -58,6 +58,16 @@ describe('Store asynchronous snapshot lifecycle',()=>{
     const old=storage.getItem(STORE_KEY);assert.equal(Store.save(),false);assert.equal(storage.getItem(STORE_KEY),old);
   });
 
+  it('migrates released unprefixed correction keys exactly once',()=>{
+    const {Store}=fixture();
+    const {OTA}=loadModules(['store']);const {migrateWorkspacePayload}=OTA.require('store');
+    const old={schemaVersion:20,appVersion:'22.0.0',docs:[{id:'old',raw:'001',sourceRevision:1,ui:{cellEdits:{Wide:{0:{1:'002'}},$Special:{0:{0:'kept'}}}}}]};
+    const migrated=migrateWorkspacePayload(old);
+    assert.deepEqual(migrated.docs[0].ui.cellEdits,{$Wide:{0:{1:'002'}},$$Special:{0:{0:'kept'}}});
+    assert.deepEqual(migrateWorkspacePayload(migrated).docs[0].ui.cellEdits,migrated.docs[0].ui.cellEdits);
+    assert.equal(old.docs[0].ui.cellEdits.Wide[0][1],'002');assert.equal(Store.curr().raw.length>0,true);
+  });
+
   it('migrates schema 20 raw and correction overlays without changing cells',()=>{
     const {Store,STORE_KEY,storage}=fixture();
     storage.removeItem(STORE_KEY);storage.setItem('ota_v20_workspace',JSON.stringify({schemaVersion:20,docs:[{id:'old',title:'Old',raw:'id\r\n001',sourceRevision:1,ui:{cellEdits:{$T:{0:{0:'002'}}}}}],activeId:'old',persistRaw:true}));

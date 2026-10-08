@@ -13,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
 
 const require = createRequire(import.meta.url);
-const { renderRelease, MODULES } = require('../../tools/build-release.cjs');
+const { renderRelease, renderWorker, MODULES } = require('../../tools/build-release.cjs');
 
 const templatePath = path.join(ROOT, 'src', 'templates', 'index.html');
 const htmlPath = path.join(ROOT, 'index.html');
@@ -51,7 +51,16 @@ describe('Build system', () => {
     assert.equal(html, expected, 'index.html is stale; run npm run build:release');
   });
 
-  it('generated script is syntactically valid', () => {
+  it('preserves replacement metacharacters in source and the embedded Worker',()=>{
+    const html=renderRelease();
+    const source=fs.readFileSync(path.join(ROOT,'src/state/store.js'),'utf8');
+    const keyLine=source.split('\n').find(line=>line.includes('const tableKey ='));
+    assert.ok(html.includes(keyLine),'source dollar prefix must not be interpreted as replacement syntax');
+    const literal=html.match(/const WORKER_SOURCE = ("(?:[^"\\]|\\.)*");/)[1];
+    assert.equal(JSON.parse(literal),renderWorker(),'embedded Worker must retain exact source bytes');
+  });
+
+  it('generated script is syntactically valid' , () => {
     const html = renderRelease();
     const scripts = html.match(/<script(?:\s[^>]*)?>[\s\S]*?<\/script>/gi) || [];
     assert.equal(scripts.length, 1);

@@ -50,6 +50,12 @@ function migrateWorkspacePayload(payload) {
         version = Number(next.schemaVersion);
     }
     next.schemaVersion = WORKSPACE_SCHEMA_VERSION;
+    // Released 21.x–22.1.0 builders interpreted $$ in source as replacement
+    // syntax; their overlays use the literal table name instead of $ + name.
+    if(next.cellEditKeyEncoding!=='dollar-v1' && /^(?:21\.|22\.0\.|22\.1\.0$)/.test(next.appVersion || '')) {
+        next.docs=(next.docs || []).map(doc=>({...doc,ui:{...doc.ui,cellEdits:Object.fromEntries(Object.entries(doc.ui?.cellEdits || {}).map(([name,edits])=>[`$${name}`,edits]))}}));
+    }
+    next.cellEditKeyEncoding='dollar-v1';
     return next;
 }
 
@@ -164,6 +170,7 @@ const Store = {
         const payload = JSON.parse(JSON.stringify(source));
         payload.schemaVersion = WORKSPACE_SCHEMA_VERSION;
         payload.appVersion = APP_VERSION;
+        payload.cellEditKeyEncoding='dollar-v1';
         if(payload.persistRaw === false) payload.docs.forEach(doc => { doc.raw = ''; });
         return payload;
     },

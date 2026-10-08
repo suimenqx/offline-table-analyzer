@@ -88,7 +88,7 @@ function renderRelease() {
   const workerSource = renderWorker();
   const modules = MODULES.map(([relPath, label]) => {
     const source = readUtf8(path.join(sourceDir, relPath)).replaceAll('__OTA_APP_VERSION__', APP_VERSION)
-      .replace("'__OTA_WORKER_SOURCE__'", JSON.stringify(workerSource).replaceAll('<', '\\u003c')).trim();
+      .replace("'__OTA_WORKER_SOURCE__'", () => JSON.stringify(workerSource).replaceAll('<', '\\u003c')).trim();
     const filename = path.basename(relPath);
     return `/* @module ${relPath}: ${label} */\n${source}`;
   }).join('\n\n');
@@ -99,8 +99,8 @@ function renderRelease() {
   return template
     .replaceAll('{{APP_VERSION}}', APP_VERSION)
     .replaceAll('{{APP_MAJOR_VERSION}}', APP_VERSION.split('.').slice(0, 2).join('.'))
-    .replace('{{STYLES}}', styles)
-    .replace('{{MODULES}}', modules)
+    .replace('{{STYLES}}', () => styles)
+    .replace('{{MODULES}}', () => modules)
     .replace(/\n{3,}/g, '\n\n');
 }
 

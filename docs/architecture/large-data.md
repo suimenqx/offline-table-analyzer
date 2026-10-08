@@ -30,3 +30,8 @@ Node 回归覆盖预览不改变原文、分页缓存/修正、Worker 会话与�
 ## 开发主机限制
 
 2026-10-08 Termux 本地 Node 26.4.0 验证通过；Playwright 在 Android 报 Unsupported platform，不能据此称 Chromium 通过。尝试桌面 Firefox/WebDriver 时 libxul.so 缺少系统 libc++ 的 `_ZNSt6__ndk113__hash_memoryEPKvm` 符号而退出，故本轮 Firefox 未执行成功。桌面 Chromium 正确性/性能以 CI 为准。
+
+
+## 发布构建与旧修正键
+
+真实浏览器验收发现原有构建器将源码字符串直接用作 String.replace 的替换值，$$ 被解读为替换语法，导致 Window/Worker 发布代码与源码修正键不一致。22.1.1 改为回调返回原始字符串，并以完整 Worker 字节比对防止再次改写。已发布 21.x–22.1.0 工作区的修正键迁移为 `$` 加表名，记录 `cellEditKeyEncoding: dollar-v1` 保证幂等；原文与修正值保留。
