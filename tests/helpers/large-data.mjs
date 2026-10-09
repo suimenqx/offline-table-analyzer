@@ -31,3 +31,15 @@ export function createLargeTableData({ rows = 100_000, columns = 32, variant = '
     expectedJoinRows: rows * 2,
   };
 }
+
+export function createLargeCsv({rows=100000,columns=32,multiline=false}={}) {
+  const headers=['ID','Name',...Array.from({length:columns-2},(_,i)=>`F${i+2}`)];
+  const lines=[headers.join(',')];
+  const note=multiline?'first line\nsecond;part|tag,"quoted"':'alpha;beta|gamma';
+  const encode=value=>/[",\r\n]/.test(value)?'"'+value.replaceAll('"','""')+'"':value;
+  for(let row=1;row<=rows;row++) {
+    const cells=[String(row).padStart(6,'0'),`Item${row}`,...Array.from({length:columns-2},(_,i)=>i===columns-3?note:String(i+2))];
+    lines.push(cells.map(encode).join(','));
+  }
+  return {text:lines.join('\r\n'),rows,columns,headers,note};
+}

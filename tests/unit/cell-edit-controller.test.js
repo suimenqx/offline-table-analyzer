@@ -212,6 +212,21 @@ describe('CellEditController — undo / redo', () => {
 });
 
 // ---------------------------------------------------------------------------
+describe('CellEditController — Worker page edits',()=>{
+  it('edits projected cells and undoes/redoes after their page has been released',()=>{
+    TableRegistry.setResult({background:true,tables:[{name:'T1',headers:['A','B'],rows:[],rowCount:1000,remote:true}]});
+    const record={d:['previous'],_sourceRow:100,_sourceCols:[1]};
+    TableRegistry.setPreview([{table:TableRegistry.getTable('T1'),res:{rows:[record]}}]);
+    assert.equal(CellEditController.apply('T1',100,1,'changed'),true);
+    assert.equal(TableRegistry.getCell('T1',100,1),'changed');
+    assert.deepEqual(record.d,['previous']); // Cached query pages retain their snapshot values.
+    TableRegistry.setPreview([]);
+    CellEditController.undo();assert.equal(Store.curr().ui.cellEdits.$T1[100][1],'previous');
+    CellEditController.redo();assert.equal(Store.curr().ui.cellEdits.$T1[100][1],'changed');
+    assert.deepEqual(TableRegistry.getTable('T1').rows,[]);
+  });
+});
+
 describe('CellEditController — reset', () => {
   it('clears history, redo, and active editor', () => {
     CellEditController.apply('T1', 0, 0, 'edited');

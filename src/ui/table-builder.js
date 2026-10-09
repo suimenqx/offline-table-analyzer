@@ -1,4 +1,4 @@
-OTA.define('table-builder', ["runtime","filter-engine"], ({$, createEl, escapeHtml}, {FilterEngine}) => {
+OTA.define('table-builder', ["runtime","filter-engine","table-utils"], ({$, createEl, escapeHtml}, {FilterEngine}, {TableUtils}) => {
 /* TableBuilder — DOM construction helpers for column-header and row-header
    preview tables. Extracted from app.js to keep the App orchestrator lean. */
 
@@ -185,12 +185,7 @@ const TableBuilder = {
      * to avoid rendering too many DOM nodes.
      */
     shouldUseSingleTableView(tables) {
-        const tableCount = tables.length;
-        const totalRows = tables.reduce((sum, table) => sum + (table.rows || []).length, 0);
-        const totalCells = tables.reduce(
-            (sum, table) => sum + (table.rows || []).length * (table.headers || []).length, 0
-        );
-        return tableCount >= 8 || totalRows >= 1000 || totalCells >= 30000;
+        return TableUtils.useSingleTableView(tables);
     }
 };
 

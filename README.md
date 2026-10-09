@@ -2,7 +2,7 @@
 
 Offline Table Analyzer is a privacy-first table workbench that runs entirely in one HTML file. Paste or drop messy tabular data, inspect and filter it, build JOIN views, copy a selected range, and export clean Excel files—without uploading data or installing an application.
 
-Version: **23.0.0**
+Version: **23.1.0**
 
 [100,000-row performance results and recovery checks](docs/planning/large-data-performance-results.md) are measured automatically in desktop Chromium CI; development can remain on a Termux phone.
 
@@ -114,6 +114,8 @@ Read [PRIVACY_POLICY.md](PRIVACY_POLICY.md) before using the tool with sensitive
 - These are protection budgets, not guaranteed capacity on every computer; excess results produce a visible error and preserve original text.
 - Default rendered page: 100 rows per table (switchable to 50, 250, or 500)
 - Wait for the saved status before closing. Storage failures preserve current data for original-text/workspace backup. Private browser sessions do not retain data after closing; changing the HTML path/browser profile can change storage access.
+- Automatic detection validates bounded, progressively enlarged samples; only the selected format parses the complete input. Unresolved large-input ambiguity offers manual format selection.
+- Large-text tables stay in the local Worker; Window receives only table descriptors and current-page records. CSV/TSV records and CLI lines are consumed incrementally.
 - Large table-data and text computation runs in a local Worker. HTML/DOMParser parsing retains its Window path. The [large-data architecture decision](docs/architecture/large-data.md) records the boundaries.
 - XLSX files can be exported but are not imported
 - JOIN conditions are equality-based; data types are compared as represented in the parsed table

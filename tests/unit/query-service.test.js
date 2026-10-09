@@ -52,4 +52,13 @@ describe('QueryService — shared result contract', () => {
     assert.deepEqual(joined.res.headers, ['name','score']);
     assert.deepEqual(joined.res.rows[0].d, ['A','9']);
   });
+
+  it('fetches a new page while the Worker can reuse the complete query',async()=>{
+    const input={rawTables:[],ui:{pageSize:50,tablePages:{T:1}}};
+    const pages=[];const executor={async query(snapshot){pages.push(snapshot.ui.tablePages.T);return {tables:[]};}};
+    await QueryService.getPreviewAsync(input,executor);
+    await QueryService.getPreviewAsync(input,executor);
+    await QueryService.getPreviewAsync({...input,ui:{...input.ui,tablePages:{T:2}}},executor);
+    assert.deepEqual(pages,[1,2]);assert.ok(QueryService.getCacheSize()<=2);
+  });
 });

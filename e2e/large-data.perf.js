@@ -86,8 +86,8 @@ for (const sample of cases) {
         sourceMatchesEditor: doc.raw === document.getElementById('rawInput').value,
         previewOnly: document.getElementById('rawInput').dataset.sourcePreview === 'true',
         persistRaw: window.OTA.require('store').Store.getState().persistRaw,
-        tables: tables.map(table => ({ name: table.name, rows: table.rows.length, columns: table.headers.length,
-          firstId: table.rows[0]?.[1], lastId: table.rows.at(-1)?.[1] })),
+        tables: tables.map(table => ({ name: table.name, rows: table.rowCount ?? table.rows.length, columns: table.headers.length,residentRows:table.rows.length,
+          firstId: table.columnSamples?.[1]?.value ?? table.rows[0]?.[1] })),
       };
     });
     const wideCard = page.locator('#previewArea .table-container').filter({ has: page.locator('.table-title', { hasText: /^Wide$/ }) });
@@ -118,7 +118,7 @@ for (const sample of cases) {
           await expectWideCount(fixture.rows);
           const state = await rawState();
           expect(state.sourceLength).toBe(receivedCharacters);
-          expect(state.tables.find(table => table.name === 'Wide')).toMatchObject({ rows: fixture.rows, columns: 32, firstId: '1', lastId: '100000' });
+          expect(state.tables.find(table => table.name === 'Wide')).toMatchObject({ rows: fixture.rows, columns: 32, firstId: '1', residentRows:0 });
         });
       } else {
         // Clipboard setup is excluded from paste timing. Control+V uses the native browser path.
@@ -163,17 +163,21 @@ for (const sample of cases) {
             await page.locator('#parseBtn').click();
             await expectWideCount(fixture.rows);
             const state = await rawState();
-            expect(state.tables.find(table => table.name === 'Wide')).toMatchObject({ rows: fixture.rows, columns: 32, firstId: '1', lastId: '100000' });
+            expect(state.tables.find(table => table.name === 'Wide')).toMatchObject({ rows: fixture.rows, columns: 32, firstId: '1', residentRows:0 });
             expect(state.tables.find(table => table.name === 'Lookup')).toMatchObject({ rows: 20, columns: 3 });
             expect(await wideCard.locator('tbody tr').count()).toBe(100);
           });
 
-          // Read a small sheet independently; avoid expanding 3.2 million cells in the Node reader.
+          // Correctness reads happen outside the measured browser export phase.
           let fullPath;
           await phase('full-xlsx-export', async () => { fullPath = await exportFile('#exportFullBtn', 'full.xlsx'); });
           const lookup = await readSheet(fullPath, 'Lookup');
           expect(lookup).toHaveLength(21);
           expect(lookup[1]).toEqual([1, 'B0', 'Label0_a']);
+          const complete=await readSheet(fullPath,'Wide');
+          expect(complete).toHaveLength(fixture.rows+1);expect(complete[0]).toEqual(fixture.headers);
+          expect(complete[1][1]).toBe(1);expect(complete[fixture.rows][1]).toBe(100000);
+          expect(complete[fixture.rows]).toHaveLength(32);
           await fs.unlink(fullPath);
 
           for (let nextPage = 2; nextPage <= 4; nextPage++) {

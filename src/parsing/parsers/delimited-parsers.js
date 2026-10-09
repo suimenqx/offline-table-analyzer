@@ -11,11 +11,10 @@ function createDelimitedParser({ id, label, delimiter, tableName }) {
     return {
         id, label, delimiter,
         parse(source, options={}) {
-            const { rows: matrix, diagnostics: delimDiag } = Delimited.parse(source.text || '', delimiter);
-            const result = buildSingleTableResult(matrix, tableName, id, options, { delimiter });
-            if(delimDiag.length) {
-                result.diagnostics.push(...delimDiag);
-            }
+            const delimDiag=[];
+            const resolved=HeaderResolver.fromRecords(Delimited.records(source.text || '',delimiter,delimDiag),{...options,tableName});
+            const result={tables:[{name:tableName,headers:resolved.headers,rows:resolved.rows,sourceType:id,
+                meta:{delimiter,hasHeader:resolved.hasHeader,generatedHeaders:resolved.generatedHeaders,headerConfidence:resolved.headerConfidence,headerReasons:resolved.headerReasons},diagnostics:resolved.diagnostics}],diagnostics:[...resolved.diagnostics,...delimDiag]};
             return result;
         }
     };

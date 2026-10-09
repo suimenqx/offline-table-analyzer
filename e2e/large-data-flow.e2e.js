@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {test,expect,chromium} from '@playwright/test';
-import {createLargeTableData} from '../tests/helpers/large-data.mjs';
+import {createLargeTableData,createLargeCsv} from '../tests/helpers/large-data.mjs';
 import {readSheet} from 'read-excel-file/node';
 
 for(const rich of [false,true]) {
@@ -41,6 +41,49 @@ test(`native 100,000-row ${rich?'rich-text':'plain-text'} paste exports a comple
   expect(errors).toEqual([]);
 });
 }
+
+test('100,000-row CSV detection, Worker paging, off-page undo, copy, filtering and Excel readback',async({page,context},testInfo)=>{
+  test.setTimeout(120000);
+  const fixture=createLargeCsv();const errors=[];page.on('pageerror',error=>errors.push(String(error)));
+  await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:4173'});
+  await page.goto('/index.html');
+  await page.evaluate(async text=>navigator.clipboard.writeText(text),fixture.text);
+  await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');await page.locator('#parseBtn').click();
+  const card=page.locator('.table-container').filter({has:page.locator('.table-title',{hasText:/^CSV Table 1$/})});
+  await expect(card.locator('.meta-tag').filter({hasText:/^Show:/})).toHaveText('Show: 100000',{timeout:30000});
+  expect(await page.evaluate(()=>{
+    const registry=OTA.require('table-registry').TableRegistry;
+    return {format:registry.getFormat(),rows:registry.getRaw()[0].rows.length,total:registry.getRaw()[0].rowCount};
+  })).toEqual({format:'csv',rows:0,total:100000});
+  await card.getByRole('button',{name:'下一页',exact:true}).click();
+  await expect(card.locator('tbody tr').first().locator('td').first()).toHaveText('000101');
+  const cell=card.locator('tbody tr').first().locator('td').nth(31);
+  await cell.dblclick();await cell.locator('textarea').fill('changed\nsecond line');await cell.locator('textarea').press('Enter');
+  await expect(card.locator('tbody tr').first().locator('td').nth(31)).toHaveText('changed\nsecond line');
+  await card.getByRole('button',{name:'下一页',exact:true}).click();
+  await expect(card.locator('tbody tr').first().locator('td').first()).toHaveText('000201');
+  await page.keyboard.press('Control+Z');
+  await expect.poll(()=>page.evaluate(()=>OTA.require('store').Store.getDocument().ui.cellEdits['$CSV Table 1']?.['100']?.['31'])).toBe(fixture.note);
+  await card.getByRole('button',{name:'上一页',exact:true}).click();
+  await expect(card.locator('tbody tr').first().locator('td').nth(31)).toHaveText(fixture.note);
+  await page.keyboard.press('Control+Y');
+  await expect(card.locator('tbody tr').first().locator('td').nth(31)).toHaveText('changed\nsecond line');
+  await card.locator('tbody tr').first().locator('td').first().click();await page.keyboard.press('Control+A');await page.keyboard.press('Control+C');
+  const copied=await page.evaluate(()=>navigator.clipboard.readText());expect(copied).toContain('000101');expect(copied).toContain('changed');
+  const downloadPromise=page.waitForEvent('download');await page.locator('#exportFullBtn').click();
+  const workbook=testInfo.outputPath('complete-csv.xlsx');await (await downloadPromise).saveAs(workbook);
+  const rows=await readSheet(workbook,'CSV Table 1');
+  expect(rows).toHaveLength(100001);expect(rows[0]).toEqual(fixture.headers);expect(rows[1][0]).toBe('000001');
+  expect(rows[101][31]).toBe('changed\nsecond line');expect(rows[100000][0]).toBe(100000);expect(rows[100000][31]).toBe(fixture.note);
+  await page.locator('#sidebarConfigTabBtn').click();await page.locator('.acc-item[data-acc="rules"] .acc-head').click();
+  await page.locator('#globalFilter').fill('ID<=125');
+  await expect(card.locator('.meta-tag').filter({hasText:/^Show:/})).toHaveText('Show: 125');
+  const filteredPromise=page.waitForEvent('download');await page.locator('#exportPrevBtn').click();
+  const filteredFile=testInfo.outputPath('filtered-csv.xlsx');await (await filteredPromise).saveAs(filteredFile);
+  const filtered=await readSheet(filteredFile,'CSV Table 1');expect(filtered).toHaveLength(126);expect(filtered[101][31]).toBe('changed\nsecond line');
+  expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);
+  expect(errors).toEqual([]);
+});
 
 test('offline workspace retains BOM and lone surrogates across a browser restart',async()=>{
   const directory=await fs.mkdtemp(path.join(os.tmpdir(),'ota-source-units-'));

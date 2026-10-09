@@ -1,6 +1,6 @@
 # Requirements and Scope
 
-The current workspace schema is `21`; application release **23.0.0**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
+The current workspace schema is `21`; application release **23.1.0**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
 
 ## 1. Product definition
 
@@ -78,7 +78,7 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Schema version `21`, application version `23.0.0`.
+- Schema version `21`, application version `23.1.0`.
 - Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
 - Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
 - Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.
@@ -97,6 +97,8 @@ The defining constraints are:
 - Overflow cells (longer than headers) are preserved and flagged via a `ROW_WIDTH_MISMATCH` diagnostic.
 - The CLI parser expands headers when rows contain extra columns (the `validflag` line determines the header set).
 - Parser diagnostics and format candidates (with confidence scores) are returned through the public `ImportEngine.parse()` result.
+- `ImportEngine.detect()` validates bounded record-aware samples before `parse()` calls the selected full-source adapter. Sampling expands through 16,384/65,536/262,144 UTF-16 code units and 64/256/512 records, with at most six fingerprint candidates per round (bounded adapter fallback if none is usable). Sample-cut rows never distort separator consistency. Unresolved ambiguity above the maximum sample size produces an `ambiguous` result with no guessed table; explicit/manual or compatible remembered choices resolve it.
+- Complete diagnostics stay in Worker; Window displays at most 200 details and their full count. Source records and Excel rows are never capped by this diagnostic display limit.
 - Diagnostics are visible via a "Details" button and include format candidates with one-click correction to switch parsers.
 
 ### R3 — safe imports and rendering
@@ -127,7 +129,7 @@ The defining constraints are:
 - Large table-data/text parsing, querying, JOIN and XLSX run in cancellable embedded Workers; large HTML retains its DOMParser Window path. Error/cancel/stale source results cannot discard original text or overwrite a newer source.
 - Non-table clipboard HTML does not force text onto Window. ImportEngine owns the DOMParser routing decision; a manual text parser remains authoritative even with an HTML table in the clipboard.
 - At most 8 million cells in parsed datasets, combined selected/query/export tables; 1 million rows per JOIN; 256 MiB XLSX output. Budget failures are explicit, without silent truncation. These are implementation protection budgets, not universal capacity guarantees.
-- Pages reuse the same query and raw snapshot; only source/query/view/correction changes invalidate derived results. Result cache has at most two entries. Parsed/query rows use acknowledged batches of at most 500.
+- Pages reuse the same query and raw snapshot; only source/query/view/correction changes invalidate derived results. Worker full-query and Window page caches each have at most two entries. Complete parsed/filtered/JOIN tables stay in Worker; Window descriptors contain empty rows plus rowCount. Only current pages, at most the selected 50/100/250/500 rows per visible table, cross the boundary. Hidden large-mode tables send metadata only.
 - All original raw text is retained, including CRLF for intercepted large paste/file input. XLSX exports full filtered results across pages.
 
 ### R6 — complete existing controls

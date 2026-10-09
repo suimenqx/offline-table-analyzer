@@ -32,145 +32,85 @@ const ImportEngine = {
         if(alignedMismatchCount) quality -= Math.min(0.16, 0.08 + (alignedMismatchCount - 1) * 0.01);
         return Math.max(0.15, Math.min(1, quality));
     },
-    parse(input, options={}) {
-        const source = typeof input === 'string' ? { text: input, html: options.html || '' } : { text: input.text || '', html: input.html || '' };
-        source.text = TableUtils.normalizeText(source.text);
-        const selectedType = options.format && options.format !== 'auto' ? options.format : null;
-        let chosen = selectedType ? this.getParser(selectedType) : null;
-        let scored = [];
-        let parsed;
-        let selectedEvaluation = null;
-        // 缓存 sniff 结果（避免重复扫描）
-        let _sniffCache = null;
-        const getSniff = () => {
-            if (!_sniffCache) _sniffCache = FormatSniffer.sniff(source.text);
-            return _sniffCache;
-        };
-
-        if(!chosen) {
-            // ── 0. HTML 剪贴板优先检测 ──
-            if (hasClipboardTable(source.html)) {
-                chosen = this.getParser('html-table');
-                if (chosen) scored = [{ parser: chosen, score: 1 }];
+    MAX_SAMPLE_CHARS:262144,
+    MAX_SAMPLE_RECORDS:512,
+    // Selection never asks an adapter to parse an unbounded input. Complete
+    // records, rather than physical lines, are used for quoted delimited text.
+    sample(text,limit,maxRecords=this.MAX_SAMPLE_RECORDS) {
+        const end=Math.min(text.length,limit);
+        let quoted=false,lastEnd=0,records=0,i=0;
+        for(;i<end;i++) {
+            const ch=text[i];
+            if(ch==='"') {
+                if(quoted && text[i+1]==='"'){i++;continue;}
+                quoted=!quoted;
             }
-
-            // Strong source structure takes precedence over a remembered format.
-            if(!chosen && !selectedType) {
-                const first = getSniff().candidates[0];
-                if(first && first.method === 'hard') {
-                    chosen = this.getParser(first.id);
-                    if(chosen) scored = [{ parser:chosen, score:first.score }];
-                } else if(first && first.structural) {
-                    const parser = this.getParser(first.id);
-                    if(parser) {
-                        try {
-                            const probeResult = parser.parse(source, options);
-                            if(probeResult.tables && probeResult.tables.length && this.parseQuality(probeResult) >= 0.2) {
-                                chosen = parser;
-                                parsed = probeResult;
-                                scored = [{ parser, score:first.score }];
-                            }
-                        } catch (_) { /* marker alone is not enough to select a parser */ }
-                    }
-                }
-            }
-
-            // ── 1. 记忆格式优先试探 ──
-            if (!chosen && !selectedType) {
-                const lastFmt = options.lastSuccessfulFormat || null;
-                if (lastFmt && lastFmt !== 'html-table') {
-                    const cachedParser = this.getParser(lastFmt);
-                    const candidates = getSniff().candidates || [];
-                    const first = candidates[0];
-                    const remembered = candidates.find(candidate => candidate.id === lastFmt);
-                    const compatible = !first || first.method === 'fallback' ||
-                        (remembered && first.score - remembered.score < 0.12);
-                    if (cachedParser && cachedParser.id !== 'plain-text' && compatible) {
-                        try {
-                            const probeResult = cachedParser.parse(source, options);
-                            const quality = this.parseQuality(probeResult);
-                            if (quality > 0.6) {
-                                chosen = cachedParser;
-                                parsed = probeResult;
-                                scored = [{ parser: cachedParser, score: quality }];
-                            }
-                        } catch (e) { /* 记忆格式不兼容，回退到 sniff */ }
-                    }
-                }
-            }
-
-            // ── 2. FormatSniffer：特征指纹匹配 ──
-            if (!chosen) {
-                const sniff = getSniff();
-                const sniffCandidates = sniff.candidates || [];
-
-                if (sniffCandidates.length > 0) {
-                    const evaluated = [];
-                    sniffCandidates.slice(0, 3).forEach(c => {
-                        const parser = this.getParser(c.id);
-                        if (!parser) return;
-                        try {
-                            const result = parser.parse(source, options);
-                            const quality = this.parseQuality(result);
-                            if (quality > 0) evaluated.push({ parser, score: c.score, parsed: result, quality, adjustedScore: c.score * (0.6 + quality * 0.4) });
-                        } catch (e) { /* 格式不兼容 */ }
-                    });
-
-                    if (evaluated.length > 0) {
-                        selectedEvaluation = evaluated.sort((a, b) => b.adjustedScore - a.adjustedScore)[0];
-                        chosen = selectedEvaluation.parser;
-                        parsed = selectedEvaluation.parsed;
-                        scored = sniffCandidates.slice(0, 3).map(c => {
-                            const ev = evaluated.find(e => e.parser.id === c.id);
-                            return { parser: ev ? ev.parser : this.getParser(c.id), score: ev ? ev.adjustedScore : c.score };
-                        }).filter(c => c.parser);
-                    }
-                }
-
-                // sniff 未产生可用结果 → 逐个尝试全部 parser（最终兜底）
-                if (!chosen) {
-                    for (const parser of this.parsers) {
-                        try {
-                            const result = parser.parse(source, options);
-                            const quality = this.parseQuality(result);
-                            if (quality > 0.2) {
-                                chosen = parser;
-                                parsed = result;
-                                scored = [{ parser, score: quality }];
-                                break;
-                            }
-                        } catch (e) { /* 继续尝试下一个 */ }
-                    }
-                }
+            if(ch==='\n' && !quoted) {
+                lastEnd=i+1;records++;
+                if(records>=maxRecords){i++;break;}
             }
         }
-        if(!chosen) return { tables:[], format:'empty', label:'空输入', diagnostics:[], candidates:[] };
-        if(!parsed) parsed = chosen.parse(source, options);
-        const tables = parsed.tables || [];
-
-        // 合并诊断（sniff 诊断 + parse 诊断 + 表格诊断）
-        const diagnostics = [];
-        const diagnosticKeys = new Set();
-        // sniff 诊断（复用缓存）
-        const sniffDiag = !selectedType ? getSniff() : null;
-        (sniffDiag && sniffDiag.diagnostics || []).forEach(item => {
-            const key = `${item.code || ''}|${item.message || ''}`;
-            if (!diagnosticKeys.has(key)) { diagnosticKeys.add(key); diagnostics.push(item); }
-        });
-        [...(Array.isArray(parsed.diagnostics) ? parsed.diagnostics : []), ...tables.flatMap(table => table.diagnostics || [])].forEach(item => {
-            const key = `${item.code || ''}|${item.table || ''}|${item.row || ''}|${item.message || ''}`;
-            if(!diagnosticKeys.has(key)) {
-                diagnosticKeys.add(key);
-                diagnostics.push(item);
-            }
-        });
-        const candidates = selectedType
-            ? [{ id:chosen.id, label:chosen.label, score:1, manual:true }]
-            : scored.slice(0, 3).map(item => {
-                const evaluation = selectedEvaluation && selectedEvaluation.parser.id === item.parser.id ? selectedEvaluation : null;
-                return { id:item.parser.id, label:item.parser.label, score:Math.max(0, Math.min(1, evaluation ? evaluation.adjustedScore : item.score)), rawScore:item.score, manual:false };
-            });
-        return { tables, format:chosen.id, label:chosen.label, diagnostics, candidates, sourceLength:source.text.length };
+        const complete=i>=text.length;
+        const length=complete?text.length:(lastEnd || end);
+        return {text:TableUtils.normalizeText(text.slice(0,length)),truncated:!complete,length,records};
+    },
+    detect(input,options={}) {
+        const source=typeof input==='string'?{text:input,html:options.html || ''}:{text:input.text || '',html:input.html || ''};
+        const manual=options.format && options.format!=='auto'?this.getParser(options.format):null;
+        const candidate=(parser,score,extra={})=>({id:parser.id,label:parser.label,score,manual:!!manual,...extra});
+        if(manual)return {format:manual.id,candidates:[candidate(manual,1)],diagnostics:[],sampleLength:0};
+        if(hasClipboardTable(source.html))return {format:'html-table',candidates:[candidate(this.getParser('html-table'),1)],diagnostics:[],sampleLength:0};
+        const initial=FormatSniffer.sniff(source.text);
+        const hard=initial.candidates[0];
+        if(hard?.method==='hard')return {format:hard.id,candidates:[{...hard,manual:false}],diagnostics:initial.diagnostics,sampleLength:0};
+        let evaluations=[],sniff=initial,sampleLength=0,truncated=false,rememberedSelected=false;
+        for(const [limit,records] of [[16384,64],[65536,256],[this.MAX_SAMPLE_CHARS,this.MAX_SAMPLE_RECORDS]]) {
+            const sample=this.sample(source.text,limit,records);
+            sampleLength=sample.length;truncated=sample.truncated;
+            sniff=FormatSniffer.sniff(sample.text,{maxChars:this.MAX_SAMPLE_CHARS,maxLines:this.MAX_SAMPLE_RECORDS});
+            if(sniff.candidates[0]?.method==='hard')return {format:sniff.candidates[0].id,candidates:[{...sniff.candidates[0],manual:false}],diagnostics:sniff.diagnostics,sampleLength};
+            evaluations=[];
+            const evaluate=c=>{
+                const parser=this.getParser(c.id);if(!parser)return;
+                try {
+                    const parsed=parser.parse({text:sample.text,html:''},options);
+                    const quality=this.parseQuality(parsed);
+                    if(!parsed.tables?.length || !quality)return;
+                    const width=parsed.tables.reduce((max,table)=>Math.max(max,table.headers.length),0);
+                    const score=Math.min(1,c.score*(0.6+quality*0.4)+Math.min(0.06,Math.log2(Math.max(1,width))/100));
+                    // Retain evidence only; candidate tables can be collected now.
+                    evaluations.push({parser,score,quality,structural:c.structural,reason:c.reason});
+                } catch (_) { /* An incompatible bounded probe is not a source failure. */ }
+            };
+            sniff.candidates.slice(0,6).forEach(evaluate);
+            if(!evaluations.length && sample.text.trim())this.parsers.filter(parser=>parser.id!=='html-table').forEach(parser=>evaluate({id:parser.id,score:0.25}));
+            evaluations.sort((a,b)=>b.score-a.score);
+            const structure=evaluations.find(item=>item.structural && item.quality>=0.2);
+            if(structure){evaluations=[structure,...evaluations.filter(item=>item!==structure)];break;}
+            const remembered=evaluations.find(item=>item.parser.id===options.lastSuccessfulFormat && item.parser.id!=='plain-text' && item.quality>0.6);
+            if(remembered && evaluations[0].score-remembered.score<0.12){rememberedSelected=true;evaluations=[remembered,...evaluations.filter(item=>item!==remembered)];break;}
+            if(!sample.truncated || (evaluations.length && (evaluations.length===1 || evaluations[0].score-evaluations[1].score>=0.12)))break;
+        }
+        const ambiguous=evaluations.length>1 && !evaluations[0].structural && evaluations[0].score-evaluations[1].score<0.12;
+        const diagnostics=[...(sniff.diagnostics || [])];
+        if(ambiguous && !diagnostics.some(item=>item.code==='FORMAT_AMBIGUOUS'))diagnostics.push({severity:'info',code:'FORMAT_AMBIGUOUS',message:'候选格式接近，请检查预览；可在详情中选择格式'});
+        if(truncated && !evaluations.length && source.text.length)diagnostics.push({severity:'warning',code:'DETECTION_BUDGET',message:'识别样本中没有完整可解析记录，请手动选择格式'});
+        return {format:ambiguous && truncated && source.text.length>this.MAX_SAMPLE_CHARS && !rememberedSelected?'ambiguous':evaluations[0]?.parser.id || 'empty',candidates:evaluations.slice(0,3).map(item=>candidate(item.parser,item.score,{reason:item.reason,ambiguous})),diagnostics,sampleLength};
+    },
+    parse(input, options={}) {
+        const source=typeof input==='string'?{text:input,html:options.html || ''}:{text:input.text || '',html:input.html || ''};
+        const detection=this.detect(source,options);
+        const chosen=this.getParser(detection.format);
+        if(!chosen)return {tables:[],format:detection.format,label:detection.format==='ambiguous'?'请确认输入格式':'未识别出表格',diagnostics:detection.diagnostics,candidates:detection.candidates};
+        // Only the selected adapter receives the complete normalized source.
+        source.text=TableUtils.normalizeText(source.text);
+        const parsed=chosen.parse(source,options),tables=parsed.tables || [];
+        const diagnostics=[],keys=new Set();
+        for(const item of [...detection.diagnostics,...(parsed.diagnostics || []),...tables.flatMap(table=>table.diagnostics || [])]) {
+            const key=`${item.code || ''}|${item.table || ''}|${item.row || ''}|${item.message || ''}`;
+            if(!keys.has(key)){keys.add(key);diagnostics.push(item);}
+        }
+        return {tables,format:chosen.id,label:chosen.label,diagnostics,candidates:detection.candidates,sourceLength:source.text.length};
     }
 };
 

@@ -2,11 +2,11 @@ OTA.define('format-sniffer', ["table-utils"], ({TableUtils}) => {
 /* FormatSniffer — 基于统计指纹的单次扫描格式检测
  *
  * 核心原理：
- *   每种表格格式在文本前 4KB 中留下独特的统计指纹。
+ *   每种表格格式在受限文本样本 中留下独特的统计指纹。
  *   一次扫描提取特征向量 → 声明式签名匹配 → 一击命中。
  *
  * 设计约束：
- *   - 只扫描前 4KB / 50 行，不解析全文
+ *   - 默认扫描前 4096 个 UTF-16 码元 / 50 行；ImportEngine 可在预算内扩大样本
  *   - 单次遍历，O(n) 时间，O(1) 空间（Welford 增量算法）
  *   - 纯函数，不依赖 DOM、Worker 或浏览器 API
  *   - require 门控：格式必须满足的正面特征，缺则直接排除
@@ -29,7 +29,7 @@ function welfordVariance(w) {
 // ── 格式签名库 ────────────────────────────────────────────────────
 
 const SIGNATURES = [
-    // ═══ 硬特征格式：100% 确定，不参与打分 ═══
+    // ═══ 明确的源结构标记，不参与软特征打分 ═══
     {
         id: 'json',
         label: 'JSON 表格',
@@ -210,13 +210,13 @@ const SIGNATURES = [
 
 // ── 特征提取器 ────────────────────────────────────────────────────
 
-const MAX_SCAN_BYTES = 4096;
+const DEFAULT_SCAN_CHARS = 4096;
 const MAX_SCAN_LINES = 50;
 const MIN_LINES_FOR_HIGH_CONFIDENCE = 3;
 
-function extractFeatures(rawText) {
+function extractFeatures(rawText, {maxChars=DEFAULT_SCAN_CHARS,maxLines=MAX_SCAN_LINES}={}) {
     const text = typeof rawText === 'string' ? rawText : '';
-    const chunk = text.length > MAX_SCAN_BYTES ? text.slice(0, MAX_SCAN_BYTES) : text;
+    const chunk = text.length > maxChars ? text.slice(0, maxChars) : text;
 
     const f = {
         M_json: /^\s*(?:\{\s*(?:["'}/]|[A-Za-z_$])|\[\s*(?:[\[{"'/]|-?\d|true\b|false\b|null\b|\])|(?:["'][^"'\n]{1,100}["']|[A-Za-z_$][\w$-]{0,99})\s*:\s*(?:["'{\[]|-?\d|true\b|false\b|null\b))/.test(chunk),
@@ -243,7 +243,7 @@ function extractFeatures(rawText) {
 
         lineCount: 0,
         nonEmptyLineCount: 0,
-        truncated: text.length > MAX_SCAN_BYTES,
+        truncated: text.length > maxChars,
     };
 
     let inQuotes = false;
@@ -284,7 +284,7 @@ function extractFeatures(rawText) {
     };
 
     let i = 0;
-    for (i = 0; i < chunk.length && f.lineCount < MAX_SCAN_LINES; i++) {
+    for (i = 0; i < chunk.length && f.lineCount < maxLines; i++) {
         const ch = chunk[i];
         currentLineLen++;
         lineBuf += ch;
@@ -338,7 +338,7 @@ function extractFeatures(rawText) {
     }
 
     // 最后一行（无结尾换行）
-    if (currentLineLen > 0) {
+    if (currentLineLen > 0 && !f.truncated && i >= text.length) {
         finalizeLine();
     }
 
@@ -527,8 +527,8 @@ const FormatSniffer = {
      * @param {string} text - 原始输入文本
      * @returns {{ candidates: Array, diagnostics: Array, features: Object }}
      */
-    sniff(text) {
-        const trimmed = (text || '').trim();
+    sniff(text, options={}) {
+        const trimmed = (text || '').slice(0,options.maxChars || DEFAULT_SCAN_CHARS).trim();
         if (!trimmed) {
             return {
                 candidates: [],
@@ -537,7 +537,7 @@ const FormatSniffer = {
             };
         }
 
-        const rawFeatures = extractFeatures(text);
+        const rawFeatures = extractFeatures(text,options);
         const nf = normalizeFeatures(rawFeatures);
         const diagnostics = [];
 

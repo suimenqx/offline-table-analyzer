@@ -6,6 +6,16 @@ All notable changes are documented here. The project follows semantic versioning
 
 No unreleased changes.
 
+## 23.1.0 — 2026-10-09
+
+### Performance and correctness
+
+- Separate bounded automatic format detection from full parsing. Adapt samples through 16,384/65,536/262,144 UTF-16 code units and 64/256/512 complete quoted records; only the selected adapter parses the full source. Ignore cut sample lines when computing delimiter statistics, fixing wide CSV misclassification caused by punctuation in cells.
+- Surface unresolved large-input ambiguity with format candidates before creating a workbook. Explicit parser choices and compatible remembered formats remain authoritative.
+- Keep complete large-text tables and query/JOIN results inside the Worker. Window receives table descriptors and current-page records only, with source indices for projected editing, off-page undo/redo and copying. Pages reuse Worker queries; raw/full/preview Excel still exports complete datasets/results.
+- Consume CSV/TSV records and CLI lines incrementally instead of constructing a second full raw matrix/line list. Bound Window diagnostic details to 200 entries with the total count visible.
+- Add independent 100,000 × 32 CSV Excel readback, cross-page editing workflows, and mixed-punctuation/multiline CSV responsiveness gates. Retain offline single-file delivery, resource budgets and schema 21 workspace compatibility.
+
 ## 23.0.0 — 2026-10-09
 
 ### Release

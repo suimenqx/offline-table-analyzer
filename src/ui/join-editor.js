@@ -44,12 +44,12 @@ const JoinEditor = {
         if(!table) return { type: 'empty', sample: '-' };
         const idx = table.headers.indexOf(col);
         if(idx === -1) return { type: 'empty', sample: '-' };
-        let sample = '';
+        let sample = table.columnSamples?.[idx]?.value || '';
         for(const row of table.rows.slice(0,1000)) {
             const v = row[idx];
             if(v !== undefined && v !== null && String(v).trim() !== '') { sample = v; break; }
         }
-        const type = sample==='' && (table.isView || table.rows.length>1000)?'unknown':this.inferType(sample);
+        const type = table.columnSamples?.[idx]?.truncated || (sample==='' && (table.isView || table.remote || table.rows.length>1000))?'unknown':this.inferType(sample);
         const sText = sample === '' ? '-' : String(sample);
         const short = sText.length > 20 ? `${sText.slice(0, 20)}…` : sText;
         const res = { type, sample: short };

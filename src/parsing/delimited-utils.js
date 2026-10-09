@@ -1,28 +1,34 @@
 OTA.define('delimited', ["table-utils"], ({TableUtils}) => {
 const Delimited = {
-    parse(text='', delimiter=',') {
-        const input = TableUtils.normalizeText(text);
-        const diagnostics = [];
-        const rows = [];
-        let row = [], cell = '', inQuotes = false;
-        for(let i=0; i<input.length; i++) {
-            const ch = input[i];
-            const next = input[i+1];
+    *records(text='',delimiter=',',diagnostics=[]) {
+        let row=[],cell='',inQuotes=false,cells=0,firstWidth=0;
+        const finishRow=()=>{
+            row.push(cell);cell='';
+            const completed=row;row=[];
+            if(TableUtils.isEmptyRow(completed))return null;
+            if(!firstWidth)firstWidth=completed.length;
+            cells+=completed.length;
+            if(cells>TableUtils.MAX_CELLS+firstWidth)throw new Error('解析结果超过 800 万单元格预算，请拆分数据；原文仍保留');
+            return completed;
+        };
+        for(let i=text.charCodeAt(0)===0xFEFF?1:0;i<text.length;i++) {
+            let ch=text[i];
+            if(ch==='\r'){if(text[i+1]==='\n')i++;ch='\n';}
             if(inQuotes) {
-                if(ch === '"' && next === '"') { cell += '"'; i++; }
-                else if(ch === '"') inQuotes = false;
-                else cell += ch;
-                continue;
-            }
-            if(ch === '"') { inQuotes = true; continue; }
-            if(ch === delimiter) { row.push(cell); cell = ''; continue; }
-            if(ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; continue; }
-            cell += ch;
+                if(ch==='"' && text[i+1]==='"'){cell+='"';i++;}
+                else if(ch==='"')inQuotes=false;
+                else cell+=ch;
+            } else if(ch==='"')inQuotes=true;
+            else if(ch===delimiter){row.push(cell);cell='';}
+            else if(ch==='\n'){const completed=finishRow();if(completed)yield completed;}
+            else cell+=ch;
         }
-        if(inQuotes) diagnostics.push({ severity:'warning', code:'UNCLOSED_QUOTE', message:'检测到未闭合的引号字段；已按当前内容继续解析' });
-        row.push(cell); rows.push(row);
-        const filtered = rows.filter(r => !TableUtils.isEmptyRow(r));
-        return { rows: filtered, diagnostics };
+        if(inQuotes)diagnostics.push({severity:'warning',code:'UNCLOSED_QUOTE',message:'检测到未闭合的引号字段；已按当前内容继续解析'});
+        const completed=finishRow();if(completed)yield completed;
+    },
+    parse(text='',delimiter=',') {
+        const diagnostics=[];
+        return {rows:Array.from(this.records(text,delimiter,diagnostics)),diagnostics};
     }
 };
 

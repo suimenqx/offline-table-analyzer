@@ -9,6 +9,7 @@ on:
       - 'tools/build-release.cjs'
       - 'tools/summarize-large-data-baseline.mjs'
       - 'e2e/large-data.perf.js'
+      - 'e2e/csv-data.perf.js'
       - 'e2e/helpers/large-data-probe.mjs'
       - 'tests/helpers/large-data.mjs'
       - 'playwright.performance.config.js'

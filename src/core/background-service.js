@@ -53,11 +53,10 @@ const BackgroundService = {
             try {lane.worker.postMessage({id,kind,payload});} catch(error) {lane.jobs.delete(id);reject(error);}
         }));
     },
-    async parse({text,options={},key},publish=true) {
+    async parse({text,options={},key}) {
         let result;
-        await this.request('parse',{text,options,key,publish},{
+        await this.request('parse',{text,options,key},{
             start:value=>{result=value;result.tables.forEach(table=>table.rows=[]);},
-            chunk:value=>{result.tables[value.table].rows.push(...value.rows);}
         });
         this.datasetKey=key;
         return result;
@@ -67,21 +66,7 @@ const BackgroundService = {
     },
     async query(input) {
         await this.prepare(input);
-        let tables;
-        await this.request('query',{ui:input.ui,globalViews:input.globalViews,key:input.datasetKey},{
-            start:value=>{tables=value;tables.forEach(item=>{
-                item.table.rows=item.table.isView?[]:input.rawTables.find(table=>table.name===item.table.name).rows;
-                item.res.rows=[];
-            });},
-            chunk:value=>{
-                const item=tables[value.table];
-                for(const record of value.rows) {
-                    const d=item.table.isView?record[3]:item.res.sourceCols.map(index=>item.table.rows[record[0]][index]);
-                    item.res.rows.push({d,_sourceRow:record[0],_hl:record[1],_resultIndex:record[2],_sourceCols:item.res.sourceCols,_readOnly:!!item.table.isView});
-                    if(item.table.isView)item.table.rows.push(d);
-                }
-            }
-        });
+        const tables=await this.request('query',{ui:input.ui,globalViews:input.globalViews,key:input.datasetKey});
         return {tables};
     },
     async export(input,mode) {

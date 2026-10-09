@@ -42,11 +42,11 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | --- | --- |
 | `HeaderResolver` | Header inference and forced header modes |
 | `TextLayout` | Display-width tokenization, stable data-column starts, aligned header/data slicing |
-| `FormatSniffer` | Statistical fingerprint-based single-pass format detection |
+| `FormatSniffer` | Bounded statistical fingerprint detection; ignores incomplete sample lines |
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
 | `parser-helpers` | Shared utilities for text/aligned/CLI parsers |
 | Parser adapters (`src/parsing/parsers/`) | 13 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `JsonTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
-| `ImportEngine` | Manual/automatic adapter selection, DOMParser requirement for background routing, structure-aware last-successful-format preference, candidates, normalized result and diagnostics |
+| `ImportEngine` | Budgeted record-aware sample verification followed by one selected full-source parse, DOMParser requirement for background routing, structure-aware last-successful-format preference, candidates, normalized result and diagnostics |
 | `legacy-facade` | Historical backward-compatible `Parser` entry point that returns structured errors without UI feedback |
 
 ### Transform (`src/transform/`)
@@ -78,7 +78,7 @@ The refactor decision, module manifest, dependency rules, migration phases, and 
 
 ```text
 schemaVersion: 21
-appVersion: 23.0.0
+appVersion: 23.1.0
 cellEditKeyEncoding: dollar-v1
 rawExternal?: committed snapshot generation (local settings stub only)
 revision / viewRevision / queryRevision
@@ -153,7 +153,7 @@ All downstream operations consume this shape regardless of the original source f
 
 For pasted JSON-like input, `JsonTableParser` tries standard JSON first, then a local text lexer for bare field names, single-quoted strings, comments, trailing commas, field bodies, and record lists without outer brackets. It can recover complete records from a selection cut through adjacent records and retain confirmed fields in a final record cut inside a string, number, or nested value. An unfinished field value is omitted; the corresponding normalized cell is empty when another row established that column. Truncation or skipped boundaries produce `JSON_FRAGMENT_RECOVERED`, and a retained partial row also produces `JSON_PARTIAL_RECORD`; other relaxed syntax produces `JSON_RELAXED_SYNTAX`. Input without any complete field or record still fails visibly. The parser never evaluates input, does not rewrite the stored source, and keeps normalized cells as strings. Workspace and configuration JSON imports continue to use strict JSON parsing.
 
-Automatic format selection checks strong hard and structural markers before probing the last successful parser. A remembered parser is retried only when its sniff score is close to the leading candidate or detection has no usable signature. Data-block, Markdown, bordered ASCII, aligned, and CLI multi-block candidates are parsed before they can override a remembered format; their marker alone is insufficient when parsing yields no usable table. HTML and CLI hard markers require source-shaped evidence, so marker text in CSV cells does not change the selected format. Explicit manual format selection remains authoritative.
+Automatic format selection uses `ImportEngine.detect()` on bounded complete-record samples; the final adapter alone receives the full normalized text. Samples expand through 16,384/65,536/262,144 UTF-16 code units and 64/256/512 records. Candidate parse results are reduced to evidence and released between probes. Large unresolved ambiguity returns candidates without a guessed table. Automatic format selection checks strong hard and structural markers before probing the last successful parser. A remembered parser is retried only when its sniff score is close to the leading candidate or detection has no usable signature. Data-block, Markdown, bordered ASCII, aligned, and CLI multi-block candidates are parsed before they can override a remembered format; their marker alone is insufficient when parsing yields no usable table. HTML and CLI hard markers require source-shaped evidence, so marker text in CSV cells does not change the selected format. Explicit manual format selection remains authoritative.
 
 ### Command, revision, and rendering contract
 
@@ -222,7 +222,7 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 
 ## 7. Performance model
 
-The accepted [large-data ADR](large-data.md) extends the single-file model with embedded Blob Workers and asynchronous raw storage. Text above 128 Ki characters is intercepted before textarea insertion and displayed as at most 100 lines/10,000 characters. Table-data/text parsing, filtering, JOIN statistics/execution and XLSX run in the Worker; DOMParser HTML remains on Window. Parsed rows and query records travel in acknowledged batches of 500 rows. Window and Worker each retain a normalized dataset; the module contract and correction overlay are preserved.
+The accepted [large-data ADR](large-data.md) extends the single-file model with embedded Blob Workers and asynchronous raw storage. Text above 128 Ki characters is intercepted before textarea insertion and displayed as at most 100 lines/10,000 characters. Table-data/text parsing, filtering, JOIN statistics/execution and XLSX run in the Worker; DOMParser HTML remains on Window. Complete normalized tables and full-query results stay in Worker. Window receives descriptors with empty rows, rowCount and bounded column samples, then current-page source-indexed records. QueryService caches full results on Worker and pages on Window; page settings affect page fetching but do not invalidate the full query. TableRegistry owns current-page cell access for projected editing; undo/redo updates Store overlays even when the edited page has been released. Raw/full/preview Excel uses full Worker tables/results. The original source and normalized string-cell contract remain unchanged.
 
 QueryService caches at most two results. Pagination and unrelated UI revisions reuse a complete query; source/configuration/correction changes invalidate it. DOM creation is limited to the current page. Combined query/export tables are budgeted before additional JOIN output allocation; caps and explicit failure behavior are specified in [requirements](../planning/requirements.md). Cancel terminates computation/export while the independent durable-storage queue continues. No main-thread fallback attempts the giant workload when Worker startup fails.
 

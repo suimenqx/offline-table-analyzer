@@ -2,6 +2,14 @@ OTA.define('header-resolver', ["table-utils"], ({TableUtils}) => {
 const HeaderResolver = {
     infer(rows, options={}) {
         const clean = (rows || []).map(r => TableUtils.trimRow(r)).filter(r => !TableUtils.isEmptyRow(r));
+        return this.resolve(clean,options);
+    },
+    fromRecords(records,options={}) {
+        const clean=[];
+        for(const record of records){const row=TableUtils.trimRow(record);if(!TableUtils.isEmptyRow(row))clean.push(row);}
+        return this.resolve(clean,options,true);
+    },
+    resolve(clean,options={},owned=false) {
         const width = TableUtils.maxWidth(clean);
         const forced = options.headerMode || 'auto';
         if(!clean.length || !width) return { headers:[], rows:[], hasHeader:false, generatedHeaders:true, diagnostics:[] };
@@ -25,7 +33,7 @@ const HeaderResolver = {
             headers = TableUtils.generatedHeaders(width);
             body = clean;
         }
-        const rowsOut = TableUtils.normalizeRows(body, headers.length, diagnostics, options.tableName || 'Table');
+        const rowsOut = TableUtils.normalizeRows(body, headers.length, diagnostics, options.tableName || 'Table',{normalized:owned});
         return {
             headers,
             rows:rowsOut,

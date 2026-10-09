@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service","background-service","import-engine"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}, {BackgroundService}, {ImportEngine}) => {
+OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service","background-service","import-engine","table-utils"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}, {BackgroundService}, {ImportEngine}, {TableUtils}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -259,7 +259,7 @@ const App = {
         if(ui.previewTable !== selected) dispatch('ui:set', { key:'previewTable', value:selected });
         tables.forEach(table => {
             const option = document.createElement('option');
-            const rowCount = (table.rows || []).length;
+            const rowCount = TableUtils.rowCount(table);
             const colCount = (table.headers || []).length;
             option.value = table.name;
             option.textContent = `${table.name} · ${rowCount.toLocaleString()} 行 × ${colCount} 列`;
@@ -275,7 +275,7 @@ const App = {
         const summary = $('datasetSummary');
         if(title) title.textContent = Store.curr().title || 'Analysis';
         const tableCount = TableRegistry.getRaw().length;
-        const rows = TableRegistry.getRaw().reduce((sum, table) => sum + (table.rows || []).length, 0);
+        const rows = TableRegistry.getRaw().reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
         const maxCols = TableRegistry.getRaw().reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
         const importItems = this.getImportSummaryItems();
         const format = (TableRegistry.getLastResult() && (TableRegistry.getLastResult().label || TableRegistry.getLastResult().format)) || (importItems[0] || '').replace(/^格式:\s*/, '');
@@ -363,11 +363,12 @@ const App = {
         const result = TableRegistry.getLastResult();
         this.sourceParseState = 'ready';
         const diagnostics = result.diagnostics || [];
-        const rowCount = (result.tables || []).reduce((sum, table) => sum + (table.rows || []).length, 0);
+        const rowCount = (result.tables || []).reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
             if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
-            else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${diagnostics.length} 项提示` : ''}`;
+            else if(result.format==='ambiguous')text.textContent='格式存在歧义 · 请在详情中确认格式';
+            else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
             else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
         }
@@ -894,6 +895,7 @@ validflag Time      Level   Message                 Code
     },
 
     applyStoredCellEdits() {
+        if(TableRegistry.isBackground())return;
         const edits = Store.curr().ui.cellEdits || {};
         TableRegistry.getRaw().forEach(table => {
             const tableEdits = edits[`$${table.name}`];
@@ -920,7 +922,8 @@ validflag Time      Level   Message                 Code
             return `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : score}${ambiguous ? ' · 需确认' : ''}</span><div class="muted">${this.escapeHtml(reason)}</div></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`;
         }).join('');
         const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.severity || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
-        this.modal('解析详情', `<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
+        const summary=result.diagnosticCount>result.diagnostics.length?`<p class="muted">共 ${result.diagnosticCount.toLocaleString()} 项提示，显示前 ${result.diagnostics.length} 项。完整原文仍保留。</p>`:'';
+        this.modal('解析详情', `${summary}<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
         document.querySelectorAll('.diagnostic-format-btn').forEach(button => {
             button.onclick = () => { this.closeModal(); this.setImportFormat(button.dataset.format); };
         });
@@ -1154,6 +1157,7 @@ validflag Time      Level   Message                 Code
 
         // Keep filtered results for full preview export and column configuration,
         // while only materializing one table's DOM in large-table mode.
+        TableRegistry.setPreview(processedTables);
         this.rendered = processedTables.map(({table, res}) => ({name:table.name, ...res}));
         const singleTableView = this.shouldUseSingleTableView(combined);
         const activeTableName = this.syncPreviewTablePicker(combined, singleTableView);
@@ -1175,8 +1179,8 @@ validflag Time      Level   Message                 Code
             if(t.isView) {
                 const badge = createEl('span', 'meta-tag'); badge.style.color='var(--primary)'; badge.style.background='var(--primary-soft)'; badge.textContent='VIEW'; meta.appendChild(badge);
             }
-            const rowTag = createEl('span', 'meta-tag'); rowTag.textContent = `Row: ${t.rows.length}`; meta.appendChild(rowTag);
-            const showTag = createEl('span', 'meta-tag'); showTag.textContent = `Show: ${res.rows.length}`; meta.appendChild(showTag);
+            const rowTag = createEl('span', 'meta-tag'); rowTag.textContent = `Row: ${TableUtils.rowCount(t)}`; meta.appendChild(rowTag);
+            const showTag = createEl('span', 'meta-tag'); showTag.textContent = `Show: ${res.totalRows ?? res.rows.length}`; meta.appendChild(showTag);
             if(singleTableView) {
                 const modeTag = createEl('span', 'meta-tag');
                 modeTag.textContent = `单表查看 · 共 ${combined.length} 表`;
@@ -1209,7 +1213,8 @@ validflag Time      Level   Message                 Code
             }
 
             const pageSize = Number(ui.pageSize) || 100;
-            const totalPages = Math.max(1, Math.ceil(res.rows.length / pageSize));
+            const totalRows=res.totalRows ?? res.rows.length;
+            const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
             const requestedPage = Number(ui.tablePages && ui.tablePages[t.name]) || 1;
             const page = Math.min(totalPages, Math.max(1, requestedPage));
             const tablePages = Object.assign({}, ui.tablePages || {});
@@ -1217,7 +1222,7 @@ validflag Time      Level   Message                 Code
                 tablePages[t.name] = page;
                 dispatch('ui:set', { key:'tablePages', value:tablePages });
             }
-            const pageRes = { headers:res.headers, rows:res.rows.slice((page - 1) * pageSize, page * pageSize) };
+            const pageRes = { headers:res.headers, rows:res.paged?res.rows:res.rows.slice((page - 1) * pageSize, page * pageSize) };
             const tbl = mode === 'row-header' ? this.buildRowHeaderTable(t, pageRes, tIdx, colFilters) : this.buildColumnHeaderTable(t, pageRes, tIdx, colFilters);
             const tableScroll = createEl('div', 'table-scroll');
             tableScroll.appendChild(tbl);
@@ -1226,8 +1231,8 @@ validflag Time      Level   Message                 Code
                 const pager = createEl('div', 'table-pagination');
                 const info = createEl('span');
                 const from = (page - 1) * pageSize + 1;
-                const to = Math.min(res.rows.length, page * pageSize);
-                info.textContent = `${from.toLocaleString()}–${to.toLocaleString()} / ${res.rows.length.toLocaleString()} 行 · 第 ${page}/${totalPages} 页`;
+                const to = Math.min(totalRows, page * pageSize);
+                info.textContent = `${from.toLocaleString()}–${to.toLocaleString()} / ${totalRows.toLocaleString()} 行 · 第 ${page}/${totalPages} 页`;
                 const prev = createEl('button'); prev.type = 'button'; prev.textContent = '上一页'; prev.disabled = page <= 1; prev.onclick = () => this.setTablePage(t.name, page - 1);
                 const next = createEl('button'); next.type = 'button'; next.textContent = '下一页'; next.disabled = page >= totalPages; next.onclick = () => this.setTablePage(t.name, page + 1);
                 pager.appendChild(info); pager.appendChild(prev); pager.appendChild(next); card.appendChild(pager);

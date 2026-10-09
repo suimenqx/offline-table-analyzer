@@ -2,8 +2,33 @@ OTA.define('table-utils', [], () => {
 /* Table utilities — normalization, headers, cell types */
 const TableUtils = {
     MAX_CELLS:8000000,
+    rowCount(table) { return table.remote ? Math.max(0,Number(table.rowCount) || 0) : (table.rows || []).length; },
+    describeTable(table,{samples=false}={}) {
+        const descriptor={name:table.name,headers:table.headers,rows:[],rowCount:this.rowCount(table),remote:true,isView:!!table.isView,
+            sourceType:table.sourceType,meta:table.meta,diagnostics:(table.diagnostics || []).slice(0,200)};
+        if(samples)descriptor.columnSamples=table.headers.map((_,col)=>{
+            let sample='';
+            for(let row=0;row<Math.min(1000,table.rows.length);row++){if(table.rows[row][col]?.trim()){sample=table.rows[row][col];break;}}
+            return {value:sample.slice(0,128),truncated:sample.length>128};
+        });
+        return descriptor;
+    },
+    useSingleTableView(tables) {
+        const rows=tables.reduce((n,table)=>n+this.rowCount(table),0);
+        const cells=tables.reduce((n,table)=>n+this.rowCount(table)*table.headers.length,0);
+        return tables.length>=8 || rows>=1000 || cells>=30000;
+    },
     normalizeText(text='') { return String(text || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n'); },
     lines(text='') { return this.normalizeText(text).split('\n'); },
+    *iterLines(text='') {
+        let start=text.charCodeAt(0)===0xFEFF?1:0;
+        for(let i=start;i<text.length;i++)if(text[i]==='\n' || text[i]==='\r') {
+            yield text.slice(start,i);
+            if(text[i]==='\r' && text[i+1]==='\n')i++;
+            start=i+1;
+        }
+        yield text.slice(start);
+    },
     isEmptyRow(row=[]) { return !row || row.every(v => String(v ?? '').trim() === ''); },
     normalizeCellText(value='', options={}) {
         const convertHtmlBreaks = options.convertHtmlBreaks !== false;
@@ -37,11 +62,11 @@ const TableUtils = {
             return next === 1 ? base : `${base}_${next}`;
         });
     },
-    normalizeRows(rows=[], width=0, diagnostics=[], tableName='Table') {
+    normalizeRows(rows=[], width=0, diagnostics=[], tableName='Table', {normalized=false}={}) {
         const out = [];
         let cells=0;
         rows.forEach((row, idx) => {
-            const r = this.trimRow(row || []);
+            const r = normalized?row:this.trimRow(row || []);
             if(this.isEmptyRow(r)) return;
             cells+=Math.max(r.length,width);
             if(cells>this.MAX_CELLS)throw new Error('解析结果超过 800 万单元格预算，请拆分数据；原文仍保留');

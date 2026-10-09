@@ -140,16 +140,18 @@ const CellEditController = {
      */
     apply(tableName, rowIdx, colIdx, value) {
         const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
-        if (!table || !table.rows[rowIdx] || colIdx < 0 || colIdx >= table.headers.length) return false;
+        if (!TableRegistry.hasCell(tableName,rowIdx,colIdx)) return false;
 
-        const previous = String(table.rows[rowIdx][colIdx] ?? '');
+        const current=TableRegistry.getCell(tableName,rowIdx,colIdx);
+        if(current===undefined)return false;
+        const previous = String(current);
         const next = String(value ?? '');
         if (previous === next) return false;
 
         // Persist via dispatch (single source of truth for Store writes)
         dispatch('cell:edit', { table: tableName, row: rowIdx, col: colIdx, value: next });
         // Apply to in-memory table immediately (synchronous with dispatch)
-        table.rows[rowIdx][colIdx] = next;
+        TableRegistry.updateCell(tableName,rowIdx,colIdx,next);
 
         CellEditController.editHistory.push({ tableName, rowIdx, colIdx, previous, next });
         if (CellEditController.editHistory.length > MAX_HISTORY) CellEditController.editHistory.shift();
@@ -180,9 +182,9 @@ const CellEditController = {
     /** Apply edit without recording history. Uses dispatch for consistency. */
     _applySilent(tableName, rowIdx, colIdx, value) {
         const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
-        if (!table || !table.rows[rowIdx]) return;
+        if (!TableRegistry.hasCell(tableName,rowIdx,colIdx)) return;
         dispatch('cell:edit', { table: tableName, row: rowIdx, col: colIdx, value });
-        table.rows[rowIdx][colIdx] = value;
+        TableRegistry.updateCell(tableName,rowIdx,colIdx,value);
     },
 
     /** Clear all history when source changes. */

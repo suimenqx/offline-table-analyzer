@@ -10,7 +10,7 @@ const CliTableDataParser = {
         return TableUtils.makeTableName(name, index, used);
     },
     parse(source, options={}) {
-        const lines = TableUtils.lines(source.text);
+        const lines = TableUtils.iterLines(source.text);
         const tables = [];
         const used = new Set();
         let cur = null;
@@ -68,25 +68,25 @@ const CliTableDataParser = {
             for(let k=0; k<ranges.length; k++) ranges[k].e = (k === ranges.length - 1) ? 99999 : ranges[k+1].s;
             cur.headers = TableUtils.ensureUniqueHeaders(ranges.map(r => line.substring(r.s, Math.min(r.e, line.length)).trim()));
         };
-        lines.forEach((line) => {
+        for(const line of lines) {
             const trim = line.trim();
             if(line.toLowerCase().includes('table-data')) {
                 finalize();
                 cur = { name:this.tableNameFromLine(line, tables.length, used), headers:[], rows:[], mode:'WS', diagnostics:[] };
                 inData = false;
-                return;
+                continue;
             }
-            if(!cur) return;
+            if(!cur) continue;
             if(trim.toLowerCase().startsWith('validflag')) {
                 setValidFlagHeader(line);
                 inData = true;
-                return;
+                continue;
             }
-            if(!inData) return;
-            if(trim.startsWith('<') || trim.startsWith('[')) { finalize(); return; }
-            if(!trim) return;
+            if(!inData) continue;
+            if(trim.startsWith('<') || trim.startsWith('[')) { finalize(); continue; }
+            if(!trim) continue;
             cur.rows.push(parseByMode(line));
-        });
+        }
         finalize();
         return { tables, diagnostics:tables.flatMap(table => table.diagnostics || []) };
     }

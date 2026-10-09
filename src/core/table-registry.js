@@ -1,7 +1,7 @@
 OTA.define('table-registry', ["store", "joiner", "background-service"], ({Store}, {Joiner}, {BackgroundService}) => {
 /* TableRegistry — single source of truth for parsed table data and metadata.
 
-   This module holds the complete parse result (tables, format, diagnostics,
+   This module holds local tables or Worker descriptors (tables, format, diagnostics,
    candidates) and provides column/table metadata queries. It breaks the
    circular dependency between join-editor and app.
 
@@ -12,6 +12,7 @@ OTA.define('table-registry', ["store", "joiner", "background-service"], ({Store}
 const TableRegistry = {
     /** @type {Object[]} raw parsed tables */
     _raw: [],
+    _pageCells:new Map(),
     /** @type {string} last successful format id */
     _format: 'empty',
     /** @type {string} human-readable format label */
@@ -26,6 +27,8 @@ const TableRegistry = {
      * @param {Object} result — ImportEngine.parse() return value
      */
     setResult(result) {
+        this._pageCells.clear();
+        this._diagnosticCount=result?.diagnosticCount ?? result?.diagnostics?.length ?? 0;
         this._background=!!result?.background;
         this._datasetKey=result?.datasetKey;
         this._parseOptions=result?.parseOptions;
@@ -50,6 +53,30 @@ const TableRegistry = {
     /** @returns {Object[]} all raw parsed tables */
     getRaw() { return this._raw; },
     isBackground() {return !!this._background;},
+    setPreview(tables) {
+        this._pageCells.clear();
+        for(const {table,res} of tables) {
+            if(table.isView || !table.remote)continue;
+            const cells=new Map();this._pageCells.set(table.name,cells);
+            for(const record of res.rows)cells.set(record._sourceRow,{...record,d:record.d.slice()});
+        }
+    },
+    hasCell(name,row,col) {
+        const table=this.getTable(name);
+        return !!table && !table.isView && Number.isInteger(row) && row>=0 && row<(table.remote?table.rowCount:table.rows.length) && Number.isInteger(col) && col>=0 && col<table.headers.length;
+    },
+    getCell(name,row,col) {
+        const table=this.getTable(name);if(!this.hasCell(name,row,col))return undefined;
+        if(!table.remote)return table.rows[row][col];
+        const record=this._pageCells.get(name)?.get(row),index=record?._sourceCols.indexOf(col);
+        return index>=0?record.d[index]:undefined;
+    },
+    updateCell(name,row,col,value) {
+        const table=this.getTable(name);if(!this.hasCell(name,row,col))return;
+        if(!table.remote){table.rows[row][col]=value;return;}
+        const record=this._pageCells.get(name)?.get(row),index=record?._sourceCols.indexOf(col);
+        if(index>=0)record.d[index]=value;
+    },
     getBackgroundInput() {
         const doc=Store.getDocument();
         if(doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
@@ -81,6 +108,7 @@ const TableRegistry = {
             format: this._format,
             label: this._label,
             diagnostics: this._diagnostics,
+            diagnosticCount:this._diagnosticCount,
             candidates: this._candidates,
         };
     },
@@ -109,6 +137,7 @@ const TableRegistry = {
 
     /** @deprecated Use setResult() instead */
     setRaw(tables) {
+        this._background=false;this._pageCells.clear();
         this._raw = tables || [];
     },
 };

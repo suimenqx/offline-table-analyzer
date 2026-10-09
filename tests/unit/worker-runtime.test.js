@@ -35,20 +35,18 @@ describe('background dataset session',()=>{
     assert.equal(rawTables[0].rows.length,2);
   });
 
-  it('acknowledges bounded row publication before sending the next batch',async()=>{
+  it('keeps parsed rows out of the Window publication',async()=>{
     const {OTA}=loadModules(['worker-runtime']);const {WorkerRuntime}=OTA.require('worker-runtime');
-    const messages=[];const waiters=[];
+    const messages=[],waiters=[];
     const port={postMessage(message){if(waiters.length)waiters.shift()(message);else messages.push(message);}};
     const receive=()=>messages.length?Promise.resolve(messages.shift()):new Promise(resolve=>waiters.push(resolve));
     WorkerRuntime.start(port);assert.equal((await receive()).ready,1);
     const fixture=createLargeTableData({rows:1201,columns:32});
     port.onmessage({data:{id:1,kind:'parse',payload:{text:fixture.text,key:'a',publish:true}}});
     const start=await receive();assert.equal(start.type,'start');assert.equal(start.value.tables[0].rowCount,1201);
-    const first=await receive();assert.equal(first.value.rows.length,500);
+    assert.ok(start.value.tables.every(table=>table.remote && table.rows.length===0));
+    const complete=await receive();assert.equal(complete.id,1);assert.equal(complete.type,undefined);
     await new Promise(resolve=>setImmediate(resolve));assert.equal(messages.length,0);
-    const counts=[];let current=first;
-    while(current.type==='chunk'){counts.push(current.value.rows.length);port.onmessage({data:{ack:1}});current=await receive();}
-    assert.deepEqual(counts,[500,500,201,20]);assert.equal(current.id,1);
   });
 
   it('rejects JOIN and export expansion at budgets without truncating source',()=>{

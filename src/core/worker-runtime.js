@@ -1,6 +1,6 @@
 OTA.define('worker-runtime', ['import-engine','query-service','joiner','exporter','workspace-storage','table-utils'], ({ImportEngine},{QueryService},{Joiner},{Exporter},{WorkspaceStorage},{TableUtils}) => {
-/* Dataset and expensive computation stay behind one worker session. Raw table
-   publication and query records use acknowledged bounded messages. */
+/* Complete normalized tables stay in the Worker. Window receives descriptors
+   and current-page records; full-query/export results never cross this boundary. */
 const WorkerRuntime = {
     createSession() {
         let rawTables=[],key=null,previousEdits=[];
@@ -33,6 +33,10 @@ const WorkerRuntime = {
                 rawTables=result.tables;key=payload.key;previousEdits=[];QueryService.clearCache();return result;
             },
             query,
+            preview(payload) {
+                assertCurrent(payload);applyEdits(payload.ui || {});
+                return QueryService.getPagePreview({rawTables,globalViews:payload.globalViews || [],ui:payload.ui || {},docId:key,sourceRevision:1}).tables;
+            },
             stats(payload) {assertCurrent(payload);applyEdits(payload.ui || {});return Joiner.stats(rawTables,payload.cfg,payload.globalViews || []);},
             excel(payload) {
                 assertCurrent(payload);
@@ -52,16 +56,11 @@ const WorkerRuntime = {
     },
     start(port) {
         const session=this.createSession();
-        let queue=Promise.resolve();const acknowledgements=new Map();const canceled=new Set();
-        const chunk=async(id,value)=>{
-            const acknowledged=new Promise(resolve=>acknowledgements.set(id,resolve));
-            port.postMessage({id,type:'chunk',value});await acknowledged;
-            if(canceled.has(id))throw new Error('操作已取消');
-        };
+        let queue=Promise.resolve();const canceled=new Set(),pending=new Set();
         port.onmessage=event=>{
             const message=event.data;
-            if(message.cancel) {canceled.add(message.cancel);acknowledgements.get(message.cancel)?.();return;}
-            if(message.ack) {acknowledgements.get(message.ack)?.();acknowledgements.delete(message.ack);return;}
+            if(message.cancel) {if(pending.has(message.cancel))canceled.add(message.cancel);return;}
+            pending.add(message.id);
             queue=queue.then(async()=>{
                 const {id,kind,payload}=message;
                 try {
@@ -69,12 +68,10 @@ const WorkerRuntime = {
                     let value;
                     if(kind==='parse') {
                         const result=session.parse(payload);
-                        port.postMessage({id,type:'start',value:{...result,tables:result.tables.map(table=>({...table,rows:[],rowCount:table.rows.length}))}});
-                        if(payload.publish)for(let table=0;table<result.tables.length;table++)for(let start=0;start<result.tables[table].rows.length;start+=500)await chunk(id,{table,rows:result.tables[table].rows.slice(start,start+500)});
+                        port.postMessage({id,type:'start',value:{...result,diagnostics:result.diagnostics.slice(0,200),diagnosticCount:result.diagnostics.length,
+                            tables:result.tables.map(table=>TableUtils.describeTable(table,{samples:true}))}});
                     } else if(kind==='query') {
-                        const tables=session.query(payload);
-                        port.postMessage({id,type:'start',value:tables.map(item=>({table:{name:item.table.name,headers:item.table.headers,isView:item.table.isView,rowCount:item.table.rows.length},tIdx:item.tIdx,res:{headers:item.res.headers,sourceCols:item.res.rows[0]?item.res.rows[0]._sourceCols:[],totalRows:item.res.rows.length}}))});
-                        for(let table=0;table<tables.length;table++)for(let start=0;start<tables[table].res.rows.length;start+=500)await chunk(id,{table,rows:tables[table].res.rows.slice(start,start+500).map(row=>tables[table].table.isView?[row._sourceRow,row._hl,row._resultIndex,row.d]:[row._sourceRow,row._hl,row._resultIndex])});
+                        value=session.preview(payload);
                     } else if(kind==='excel') {
                         const bytes=session.excel(payload);port.postMessage({id,value:new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})});return;
                     } else if(kind==='stats')value=session.stats(payload);
@@ -85,7 +82,7 @@ const WorkerRuntime = {
                     else throw new Error('未知后台操作');
                     port.postMessage({id,value});
                 } catch(error) {port.postMessage({id,error:error.message || String(error)});}
-                finally {canceled.delete(id);}
+                finally {canceled.delete(id);pending.delete(id);}
             });
         };
         port.postMessage({ready:1});

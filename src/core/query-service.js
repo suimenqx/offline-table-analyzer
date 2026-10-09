@@ -1,4 +1,4 @@
-OTA.define('query-service', ["filter-engine", "joiner"], ({FilterEngine}, {Joiner}) => {
+OTA.define('query-service', ["filter-engine", "joiner", "table-utils"], ({FilterEngine}, {Joiner}, {TableUtils}) => {
 /* QueryService — the single derived-data contract for preview and preview export.
    It deliberately receives snapshots and has no DOM, Store, or persistence access.
 */
@@ -116,12 +116,24 @@ const QueryService = {
         return result;
     },
 
+    getPagePreview(input) {
+        const full=this.getPreview(input),ui=input.ui || {};
+        const single=TableUtils.useSingleTableView(full.tables.map(item=>item.table));
+        const active=full.tables.some(item=>item.table.name===ui.previewTable)?ui.previewTable:full.tables[0]?.table.name;
+        return {tables:full.tables.map(item=>{
+            const page=this.paginate(full.tables,item.table.name,ui.tablePages?.[item.table.name],ui.pageSize);
+            const visible=(!single || item.table.name===active) && !ui.collapsedTables?.[item.table.name];
+            return {tIdx:item.tIdx,table:TableUtils.describeTable(item.table),
+                res:{...page,rows:visible?page.rows:[],offset:(page.page-1)*(Number(ui.pageSize) || 100),paged:true}};
+        })};
+    },
+
     getPreviewAsync(input, executor) {
-        const key=querySignature(input.ui || {}, {...input,rawToken:objectIdentity(input.rawTables)});
+        const key=querySignature(input.ui || {}, {...input,rawToken:objectIdentity(input.rawTables)})+JSON.stringify(stableValue({pageSize:input.ui?.pageSize,tablePages:input.ui?.tablePages,previewTable:input.ui?.previewTable,collapsedTables:input.ui?.collapsedTables}));
         if(asyncCache.has(key)) return asyncCache.get(key);
         executor.cancelQueries?.();
         const snapshot={...input,ui:JSON.parse(JSON.stringify(input.ui || {})),globalViews:JSON.parse(JSON.stringify(input.globalViews || []))};
-        const promise=executor.query(snapshot).catch(error=>{asyncCache.delete(key);throw error;});
+        const promise=executor.query(snapshot).catch(error=>{if(asyncCache.get(key)===promise)asyncCache.delete(key);throw error;});
         asyncCache.set(key,promise);
         while(asyncCache.size>MAX_CACHE_ENTRIES) asyncCache.delete(asyncCache.keys().next().value);
         return promise;
