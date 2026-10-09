@@ -1,0 +1,654 @@
+{
+  "schemaVersion": 1,
+  "case": {
+    "variant": "long",
+    "run": 1,
+    "method": "clipboard",
+    "fileDelivery": "local-path",
+    "rows": 100000,
+    "columns": 32,
+    "textCharacters": 38789361,
+    "receivedTextCharacters": 38789361,
+    "utf8Bytes": 38789361,
+    "estimatedTextBytes": 77578722
+  },
+  "environment": {
+    "commit": "33d2f68ce7da8b50d66610a722ffb1f4f8a7e4e7",
+    "browserVersion": "153.0.8010.12",
+    "headless": true,
+    "platform": "linux",
+    "architecture": "x64",
+    "nodeVersion": "v22.23.3",
+    "cpuModel": "AMD EPYC 7763 64-Core Processor",
+    "logicalCpus": 4,
+    "availableParallelism": 4,
+    "hostMemoryBytes": 16766406656,
+    "viewport": {
+      "width": 1440,
+      "height": 900
+    },
+    "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
+  },
+  "status": "passed",
+  "phases": [
+    {
+      "name": "paste",
+      "failed": false,
+      "actionWallMs": 172.5913630000141,
+      "before": {
+        "Nodes": 1410,
+        "ScriptDuration": 0.0216,
+        "TaskDuration": 0.928801,
+        "JSHeapUsedSize": 79904900,
+        "JSHeapTotalSize": 82268160
+      },
+      "startedAt": 2296.399999999994,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 3.2000000000116415,
+          "maxMs": 3.2000000000116415
+        }
+      },
+      "storageResults": [
+        {
+          "ok": false,
+          "bytes": 1628,
+          "message": "正在保存完整原文…"
+        }
+      ],
+      "pasteEvents": 1,
+      "longTaskCount": 1,
+      "longTaskTotalMs": 132,
+      "longestTaskMs": 132,
+      "maxTimerDelayMs": 124.20000000001164,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "pasteStartedAt": 2302.600000000006,
+      "clipboardTypes": [
+        "text/plain"
+      ],
+      "observerWindowMs": 575.7000000000116,
+      "after": {
+        "Nodes": 1520,
+        "ScriptDuration": 0.158131,
+        "TaskDuration": 1.118554,
+        "JSHeapUsedSize": 80096348,
+        "JSHeapTotalSize": 82530304
+      },
+      "cacheEntries": 0
+    },
+    {
+      "name": "save-raw",
+      "failed": false,
+      "actionWallMs": 23.469378999987384,
+      "before": {
+        "Nodes": 1524,
+        "ScriptDuration": 0.158727,
+        "TaskDuration": 1.133536,
+        "JSHeapUsedSize": 80105400,
+        "JSHeapTotalSize": 82530304
+      },
+      "startedAt": 3279.399999999994,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 0.3000000000174623,
+          "maxMs": 0.3000000000174623
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 77580290,
+          "message": "工作区已保存，完整原文快照已复用"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 0.10000000000582077,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 427.29999999998836,
+      "after": {
+        "Nodes": 1527,
+        "ScriptDuration": 0.160783,
+        "TaskDuration": 1.142894,
+        "JSHeapUsedSize": 80149884,
+        "JSHeapTotalSize": 82530304
+      },
+      "cacheEntries": 0
+    },
+    {
+      "name": "temporary-mode-control",
+      "failed": false,
+      "actionWallMs": 57.1628100000089,
+      "before": {
+        "Nodes": 1527,
+        "ScriptDuration": 0.161114,
+        "TaskDuration": 1.144137,
+        "JSHeapUsedSize": 80151656,
+        "JSHeapTotalSize": 82530304
+      },
+      "startedAt": 4112.399999999994,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 0.10000000000582077,
+          "maxMs": 0.10000000000582077
+        }
+      },
+      "storageResults": [
+        {
+          "ok": false,
+          "bytes": 1448,
+          "message": "配置已保存，正在清理旧原文…"
+        },
+        {
+          "ok": true,
+          "bytes": 1448,
+          "message": "原文已从设备存储移除，当前会话原文仍保留"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 0.8000000000174623,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 459.79999999998836,
+      "after": {
+        "Nodes": 1536,
+        "ScriptDuration": 0.163381,
+        "TaskDuration": 1.174492,
+        "JSHeapUsedSize": 80372768,
+        "JSHeapTotalSize": 82530304
+      },
+      "cacheEntries": 0
+    },
+    {
+      "name": "parse-and-preview",
+      "failed": false,
+      "actionWallMs": 1956.5549400000018,
+      "before": {
+        "Nodes": 1536,
+        "ScriptDuration": 0.163724,
+        "TaskDuration": 1.175948,
+        "JSHeapUsedSize": 80374552,
+        "JSHeapTotalSize": 82530304
+      },
+      "startedAt": 4978.899999999994,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 0.3000000000174623,
+          "maxMs": 0.3000000000174623
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 1672,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 66,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 2360.100000000006,
+      "after": {
+        "Nodes": 14875,
+        "ScriptDuration": 0.177431,
+        "TaskDuration": 1.519641,
+        "JSHeapUsedSize": 81192876,
+        "JSHeapTotalSize": 85938176
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "full-xlsx-export",
+      "failed": false,
+      "actionWallMs": 4438.43122899998,
+      "before": {
+        "Nodes": 14875,
+        "ScriptDuration": 0.177752,
+        "TaskDuration": 1.520909,
+        "JSHeapUsedSize": 81194648,
+        "JSHeapTotalSize": 85938176
+      },
+      "startedAt": 7746.600000000006,
+      "modules": {},
+      "storageResults": [],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 20.89999999999418,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 4842.399999999994,
+      "after": {
+        "Nodes": 14882,
+        "ScriptDuration": 0.194228,
+        "TaskDuration": 1.63834,
+        "JSHeapUsedSize": 81436192,
+        "JSHeapTotalSize": 85938176
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "page-2",
+      "failed": false,
+      "actionWallMs": 185.43103899998823,
+      "before": {
+        "Nodes": 14882,
+        "ScriptDuration": 0.200096,
+        "TaskDuration": 1.657228,
+        "JSHeapUsedSize": 81449844,
+        "JSHeapTotalSize": 85938176
+      },
+      "startedAt": 22216.100000000006,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 0.10000000000582077,
+          "maxMs": 0.10000000000582077
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 1672,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 59,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 587.8999999999942,
+      "after": {
+        "Nodes": 14771,
+        "ScriptDuration": 0.202458,
+        "TaskDuration": 1.835354,
+        "JSHeapUsedSize": 43469972,
+        "JSHeapTotalSize": 46039040
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "page-3",
+      "failed": false,
+      "actionWallMs": 140.86029700000654,
+      "before": {
+        "Nodes": 14771,
+        "ScriptDuration": 0.20255,
+        "TaskDuration": 1.835942,
+        "JSHeapUsedSize": 43471820,
+        "JSHeapTotalSize": 46039040
+      },
+      "startedAt": 23211,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 0.20000000001164153,
+          "maxMs": 0.20000000001164153
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 1672,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 49.89999999999418,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 544.3999999999942,
+      "after": {
+        "Nodes": 8114,
+        "ScriptDuration": 0.204544,
+        "TaskDuration": 2.016985,
+        "JSHeapUsedSize": 42103536,
+        "JSHeapTotalSize": 47349760
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "page-4",
+      "failed": false,
+      "actionWallMs": 155.20329700000002,
+      "before": {
+        "Nodes": 8114,
+        "ScriptDuration": 0.204716,
+        "TaskDuration": 2.017853,
+        "JSHeapUsedSize": 42105384,
+        "JSHeapTotalSize": 47349760
+      },
+      "startedAt": 24162.600000000006,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 0.20000000001164153,
+          "maxMs": 0.20000000001164153
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 1672,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 49.5,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 558.7999999999884,
+      "after": {
+        "Nodes": 14770,
+        "ScriptDuration": 0.207199,
+        "TaskDuration": 2.181736,
+        "JSHeapUsedSize": 42511836,
+        "JSHeapTotalSize": 48136192
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "filter-bucket",
+      "failed": false,
+      "actionWallMs": 299.14446800001315,
+      "before": {
+        "Nodes": 14786,
+        "ScriptDuration": 0.20903,
+        "TaskDuration": 2.333896,
+        "JSHeapUsedSize": 42832660,
+        "JSHeapTotalSize": 48136192
+      },
+      "startedAt": 25252.29999999999,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 0.20000000001164153,
+          "maxMs": 0.20000000001164153
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 1730,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 51.70000000001164,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 702.5,
+      "after": {
+        "Nodes": 21446,
+        "ScriptDuration": 0.21597,
+        "TaskDuration": 2.510322,
+        "JSHeapUsedSize": 43184964,
+        "JSHeapTotalSize": 48136192
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "filter-100-records",
+      "failed": false,
+      "actionWallMs": 241.03227600001264,
+      "before": {
+        "Nodes": 21446,
+        "ScriptDuration": 0.216236,
+        "TaskDuration": 2.511944,
+        "JSHeapUsedSize": 43186780,
+        "JSHeapTotalSize": 48136192
+      },
+      "startedAt": 26362,
+      "modules": {
+        "Store.save": {
+          "calls": 1,
+          "totalMs": 0.3000000000174623,
+          "maxMs": 0.3000000000174623
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 1726,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 1,
+      "longTaskTotalMs": 56,
+      "longestTaskMs": 56,
+      "maxTimerDelayMs": 63.90000000002328,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 646.1000000000058,
+      "after": {
+        "Nodes": 34740,
+        "ScriptDuration": 0.219245,
+        "TaskDuration": 2.720839,
+        "JSHeapUsedSize": 43239540,
+        "JSHeapTotalSize": 48398336
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "copy-page",
+      "failed": false,
+      "actionWallMs": 302.52560500000254,
+      "before": {
+        "Nodes": 34740,
+        "ScriptDuration": 0.219329,
+        "TaskDuration": 2.72265,
+        "JSHeapUsedSize": 43241476,
+        "JSHeapTotalSize": 48398336
+      },
+      "startedAt": 27415.399999999994,
+      "modules": {},
+      "storageResults": [],
+      "pasteEvents": 0,
+      "longTaskCount": 2,
+      "longTaskTotalMs": 184,
+      "longestTaskMs": 93,
+      "maxTimerDelayMs": 128.60000000000582,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 706.1000000000058,
+      "after": {
+        "Nodes": 34754,
+        "ScriptDuration": 0.404951,
+        "TaskDuration": 2.970987,
+        "JSHeapUsedSize": 45618532,
+        "JSHeapTotalSize": 51834880
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "filtered-xlsx-export",
+      "failed": false,
+      "actionWallMs": 88.38252199999988,
+      "before": {
+        "Nodes": 34754,
+        "ScriptDuration": 0.405203,
+        "TaskDuration": 2.972053,
+        "JSHeapUsedSize": 45620304,
+        "JSHeapTotalSize": 51834880
+      },
+      "startedAt": 28529.600000000006,
+      "modules": {},
+      "storageResults": [],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 24.900000000023283,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 491.8999999999942,
+      "after": {
+        "Nodes": 34761,
+        "ScriptDuration": 0.407063,
+        "TaskDuration": 3.006504,
+        "JSHeapUsedSize": 45823824,
+        "JSHeapTotalSize": 51834880
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "join-200k-records",
+      "failed": false,
+      "actionWallMs": 1384.7055980000005,
+      "before": {
+        "Nodes": 34761,
+        "ScriptDuration": 0.407317,
+        "TaskDuration": 3.007773,
+        "JSHeapUsedSize": 45825608,
+        "JSHeapTotalSize": 51834880
+      },
+      "startedAt": 29449.600000000006,
+      "modules": {
+        "Store.save": {
+          "calls": 3,
+          "totalMs": 0.8000000000174623,
+          "maxMs": 0.3000000000174623
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 1712,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        },
+        {
+          "ok": true,
+          "bytes": 2060,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        },
+        {
+          "ok": true,
+          "bytes": 2206,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 1,
+      "longTaskTotalMs": 56,
+      "longestTaskMs": 56,
+      "maxTimerDelayMs": 66.39999999999418,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 1787.8999999999942,
+      "after": {
+        "Nodes": 57969,
+        "ScriptDuration": 0.434219,
+        "TaskDuration": 3.592769,
+        "JSHeapUsedSize": 46722792,
+        "JSHeapTotalSize": 53641216
+      },
+      "cacheEntries": 2
+    },
+    {
+      "name": "second-document-file-import",
+      "failed": false,
+      "actionWallMs": 1940.1459409999952,
+      "before": {
+        "Nodes": 57969,
+        "ScriptDuration": 0.434453,
+        "TaskDuration": 3.595955,
+        "JSHeapUsedSize": 46724588,
+        "JSHeapTotalSize": 53641216
+      },
+      "startedAt": 31643.899999999994,
+      "modules": {
+        "Store.save": {
+          "calls": 3,
+          "totalMs": 0.7999999999883585,
+          "maxMs": 0.29999999998835847
+        },
+        "ImportEngine.parse": {
+          "calls": 1,
+          "totalMs": 0.20000000001164153,
+          "maxMs": 0.20000000001164153
+        }
+      },
+      "storageResults": [
+        {
+          "ok": true,
+          "bytes": 3052,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        },
+        {
+          "ok": true,
+          "bytes": 3052,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        },
+        {
+          "ok": true,
+          "bytes": 3276,
+          "message": "规则已保存，原始数据仅保留在本次会话"
+        }
+      ],
+      "pasteEvents": 0,
+      "longTaskCount": 0,
+      "longTaskTotalMs": 0,
+      "longestTaskMs": 0,
+      "maxTimerDelayMs": 65.20000000001164,
+      "longTasksSupported": true,
+      "maxSampledPageHeapBytes": 123000000,
+      "observerWindowMs": 2342.600000000006,
+      "after": {
+        "Nodes": 15566,
+        "ScriptDuration": 0.480966,
+        "TaskDuration": 4.006283,
+        "JSHeapUsedSize": 43139880,
+        "JSHeapTotalSize": 54951936
+      },
+      "cacheEntries": 2
+    }
+  ],
+  "unexpectedRequests": [],
+  "pageErrors": [],
+  "observations": [],
+  "importLimitBytes": 134217728,
+  "temporaryMode": {
+    "storeEnabled": false,
+    "controlChecked": false
+  },
+  "downloads": [
+    {
+      "filename": "full.xlsx",
+      "bytes": 251131475
+    },
+    {
+      "filename": "filtered.xlsx",
+      "bytes": 246226
+    }
+  ],
+  "outcome": "full-workflow-completed"
+}

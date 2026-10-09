@@ -4,7 +4,7 @@ Offline Table Analyzer is a privacy-first table workbench that runs entirely in 
 
 Version: **23.1.0**
 
-[100,000-row performance results and recovery checks](docs/planning/large-data-performance-results.md) are measured automatically in desktop Chromium CI; development can remain on a Termux phone.
+[100,000-row performance results and recovery checks](docs/planning/large-data-23.1-results.md) are measured automatically in desktop Chromium CI; development can remain on a Termux phone.
 
 ## Why this project exists
 
@@ -20,7 +20,7 @@ Operational data rarely arrives as a perfect spreadsheet. It is often copied fro
 
 ### Import and normalization
 
-Source text is parsed through a 12-parser pipeline tried in this priority order:
+Automatic detection checks explicit structures, validates bounded candidate samples, and passes the full source only to the selected parser. Supported formats include:
 
 1. **CLI table-data** — legacy multi-table format with `table-data` and `validflag` markers
 2. **Data-Block structured text** — multiple `data <table> [...]` blocks with named tables

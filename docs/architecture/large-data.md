@@ -56,3 +56,5 @@ CSV/TSV 通过 Delimited.records 增量生成记录，HeaderResolver.fromRecords
 QueryService 的 Worker 查询缓存不包含页码，Window 页缓存包含页码/大小/预览表/折叠状态，最多各两项。完整结果、JOIN 和 XLSX 保持后台；Window 仅持有描述信息、当前页与有限诊断。诊断完整数量可见，详情最多 200 项。列样例最多扫描首 1000 行，每列最多返回 128 码元，过长样例标记未知类型。
 
 HTML DOMParser 仍保留 Window 路径。本次不增加网络、WASM、SQL 引擎或外存存储策略。新增 Chromium CSV 十万行读回/跨页编辑/撤销/复制/筛选流程及混合标点、引号多行 CSV 性能样本；旧 CLI 样本继续测量，完整记录首尾校验改由独立 XLSX 读回承担，同时断言 Window 完整表行数为零。500 ms 是初始退化门槛，不等于逐帧流畅保证。
+
+[23.1 实测结果](../planning/large-data-23.1-results.md)：420 项 Node、13 项 Chromium 流程和八组十万行性能样本全部通过。主线程最长任务 132 ms，最大心跳延迟 243.6 ms；短字段样本解析后 Window V8 堆中位数从 23.0 的 102.2 MiB 降至 14.7 MiB。完整报告及比较基线已归档，Worker 内存不包含在该堆指标中。
