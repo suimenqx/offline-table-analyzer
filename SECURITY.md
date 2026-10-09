@@ -2,7 +2,7 @@
 
 ## Supported version
 
-Security fixes are provided for the latest v22 release line.
+Security fixes are provided for the latest v23 release line.
 
 ## Reporting a vulnerability
 

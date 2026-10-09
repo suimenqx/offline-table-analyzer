@@ -4,6 +4,15 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## Unreleased
 
+No unreleased changes.
+
+## 23.0.0 — 2026-10-09
+
+### Release
+
+- Promote the validated large-data workflow to a new major release: finite source previews, cancellable background text parsing/querying/JOIN and complete Excel export, with automatic preparation from the latest pasted source.
+- Synchronize package, runtime, visible version markers and current documentation at 23.0.0. Existing schema 21 workspaces, original snapshots and correction overlays remain compatible.
+
 ### Architecture
 
 - Moved ephemeral clipboard and file source metadata into `SourceSnapshot`; parser format preference is now passed explicitly, and parse errors use one App-owned feedback path.

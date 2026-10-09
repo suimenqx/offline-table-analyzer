@@ -4,7 +4,9 @@ v21 delivered the first wave of architecture modularisation: domain logic extrac
 
 v22 completed the reliability pass: a command/event protocol (`Store.transition` / `onChange` / `dispatch`), source-revision isolation, the pure `QueryService` preview pipeline, 42 deterministic source modules, accessible status/chips/dialog behavior, and architecture validation.
 
-## 22.x — reliability and browser coverage (current)
+v23 releases the validated large-data workflow with background text parsing and Excel export, exact original recovery, visible storage failures, and shared export column projection. Existing schema 21 workspaces remain compatible.
+
+## 23.x — reliability and browser coverage (current)
 
 - Chromium E2E automation for paste → parse → filter → JOIN → copy → XLSX download and readback is implemented and configured in CI.
 - Cross-browser clipboard and download matrix, including Safari.
