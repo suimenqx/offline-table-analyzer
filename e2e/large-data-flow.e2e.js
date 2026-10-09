@@ -6,13 +6,20 @@ import {test,expect,chromium} from '@playwright/test';
 import {createLargeTableData} from '../tests/helpers/large-data.mjs';
 import {readSheet} from 'read-excel-file/node';
 
-test('native 100,000-row paste exports a complete Excel workbook without clicking parse',async({page,context},testInfo)=>{
+for(const rich of [false,true]) {
+test(`native 100,000-row ${rich?'rich-text':'plain-text'} paste exports a complete Excel workbook without clicking parse`,async({page,context},testInfo)=>{
   test.setTimeout(90000);
   const fixture=createLargeTableData({rows:100000,variant:'unicode-crlf'});
   await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:4173'});
   await page.goto('/index.html');
   const errors=[];page.on('pageerror',error=>errors.push(String(error)));
-  await page.evaluate(async text=>navigator.clipboard.writeText(text),fixture.text);
+  await page.evaluate(async({text,rich})=>{
+    if(rich)await navigator.clipboard.write([new ClipboardItem({
+      'text/plain':new Blob([text],{type:'text/plain'}),
+      'text/html':new Blob(['<pre>copied CLI output</pre>'],{type:'text/html'})
+    })]);
+    else await navigator.clipboard.writeText(text);
+  },{text:fixture.text,rich});
   await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
   await expect(page.locator('#parseStatusText')).toContainText('全量 Excel');
   expect(await page.evaluate(()=>OTA.require('table-registry').TableRegistry.getRaw().length)).toBe(0);
@@ -29,8 +36,35 @@ test('native 100,000-row paste exports a complete Excel workbook without clickin
   expect(rows[100000]).toHaveLength(fixture.columns);expect(rows[100000][1]).toBe(100000);expect(rows[100000][31]).toBe('值1');
   const lookup=await readSheet(workbook,'Lookup');expect(lookup).toHaveLength(fixture.lookupRows+1);
   expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);
+  expect(await page.evaluate(()=>OTA.require('table-registry').TableRegistry.isBackground())).toBe(true);
   expect(await page.locator('#rawInput').evaluate(el=>el.value.length)).toBeLessThanOrEqual(10000);
   expect(errors).toEqual([]);
+});
+}
+
+test('offline workspace retains BOM and lone surrogates across a browser restart',async()=>{
+  const directory=await fs.mkdtemp(path.join(os.tmpdir(),'ota-source-units-'));
+  const filename=path.join(directory,'index.html');await fs.copyFile('index.html',filename);
+  const profile=path.join(directory,'profile');
+  const raw='\uFEFFtable-data Original\r\nvalidflag ID Value\r\n1 001 \uD800X\uDC00\r\n'+'1 002 kept\r\n'.repeat(15000);
+  let context;
+  const open=async()=>{
+    context=await chromium.launchPersistentContext(profile,{headless:true});await context.setOffline(true);
+    const page=context.pages()[0];await page.goto(pathToFileURL(filename).href);return page;
+  };
+  try {
+    let page=await open();
+    expect(await page.evaluate(async text=>{
+      const {Store}=OTA.require('store');Store.transition('ui:autoParse',{enabled:false});
+      Store.transition('source:replace',{text});
+      const saved=await Store.save();await Store.cleanupPromise;return saved;
+    },raw)).toBe(true);
+    await context.close();context=null;
+    page=await open();
+    await expect.poll(()=>page.evaluate(()=>OTA.require('store').Store.restoring)).toBe(false);
+    expect(await page.evaluate(()=>OTA.require('store').Store.loadFailed)).toBe(false);
+    expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(raw);
+  } finally {if(context)await context.close();await fs.rm(directory,{recursive:true,force:true});}
 });
 
 test('cancelling direct export retains the large source and a replacement can be exported',async({page,context},testInfo)=>{

@@ -1,7 +1,16 @@
 OTA.define('import-engine', ["table-utils","format-sniffer","html-parser","json-parser","delimited-parsers","pipe-table-parser","ascii-table-parser","fixed-width-parser","cli-multi-block-parser","aligned-table-parser","plain-text-parser","cli-table-data-parser","data-block-parser"], ({TableUtils}, {FormatSniffer}, {HtmlTableParser}, {JsonTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, PipeTableParser, AsciiTableParser, FixedWidthParser, CliMultiBlockParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, {DataBlockParser}) => {
+const hasClipboardTable=html=>/<table[\s>]/i.test(html || '') && /<tr[\s>]/i.test(html || '');
 const ImportEngine = {
     parsers: [CliTableDataParser, DataBlockParser, HtmlTableParser, JsonTableParser, CliMultiBlockParser, AsciiTableParser, PipeTableParser, ExcelPasteParser, CsvParser, SemicolonCsvParser, FixedWidthParser, AlignedTableParser, PlainTextTableParser],
     getParser(type) { return this.parsers.find(p => p.id === type); },
+    requiresDOMParser(input,options={}) {
+        const source=typeof input==='string'?{text:input,html:options.html || ''}:input;
+        const manual=this.getParser(options.format);
+        if(manual)return manual.id==='html-table';
+        // Rich clipboard metadata alone does not select the HTML adapter.
+        // Feature extraction examines only the sniffer's bounded text sample.
+        return hasClipboardTable(source.html) || FormatSniffer.extractFeatures(source.text).M_html;
+    },
     parseQuality(parsed) {
         const tables = parsed && Array.isArray(parsed.tables) ? parsed.tables : [];
         if(!tables.length) return 0;
@@ -40,7 +49,7 @@ const ImportEngine = {
 
         if(!chosen) {
             // ── 0. HTML 剪贴板优先检测 ──
-            if (source.html && /<table[\s>]/i.test(source.html) && /<tr[\s>]/i.test(source.html)) {
+            if (hasClipboardTable(source.html)) {
                 chosen = this.getParser('html-table');
                 if (chosen) scored = [{ parser: chosen, score: 1 }];
             }

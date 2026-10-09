@@ -15,7 +15,9 @@ const WorkspaceStorage = {
     async write(key,payload) {
         const db=await this.open();
         try {
-            const snapshot={...payload,docs:payload.docs.map(doc=>({...doc,raw:new Blob([doc.raw || ''],{type:'text/plain;charset=utf-8'})}))};
+            // IndexedDB's structured clone preserves strings as UTF-16 code
+            // units. Blob's UTF-8 conversion would replace lone surrogates.
+            const snapshot={...payload,docs:payload.docs.map(doc=>({...doc,raw:doc.raw || ''}))};
             await new Promise((resolve,reject)=>{
                 const tx=db.transaction('snapshots','readwrite');
                 tx.objectStore('snapshots').put(snapshot,key);
@@ -33,7 +35,11 @@ const WorkspaceStorage = {
             });
         } finally { db.close(); }
         if(!snapshot) throw new Error('保存的原文快照不存在，请恢复工作区备份');
-        for(const doc of snapshot.docs) doc.raw=doc.raw instanceof Blob ? await doc.raw.text() : String(doc.raw || '');
+        for(const doc of snapshot.docs) {
+            // Released snapshots used UTF-8 Blobs. Decode without consuming
+            // an original BOM; new string snapshots need no transcoding.
+            if(doc.raw instanceof Blob)doc.raw=new TextDecoder('utf-8',{ignoreBOM:true}).decode(await doc.raw.arrayBuffer());
+        }
         return snapshot;
     },
     async prune(prefix,keep) {

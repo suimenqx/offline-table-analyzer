@@ -17,6 +17,14 @@ const TableUtils = {
     },
     trimRow(row=[]) { return row.map(v => this.normalizeCellText(v).trim()); },
     maxWidth(rows=[]) { return rows.reduce((m, r) => Math.max(m, (r || []).length), 0); },
+    projectColumns(table,focus=[]) {
+        const indexes=(Array.isArray(focus)?focus:[]).map(column=>table.headers.indexOf(column)).filter(index=>index>=0);
+        return {
+            name:table.name,
+            headers:indexes.length?indexes.map(index=>table.headers[index]):table.headers.slice(),
+            rows:table.rows.map(row=>indexes.length?indexes.map(index=>row[index]):row.slice())
+        };
+    },
     generatedHeaders(width) { return Array.from({length: Math.max(0, width)}, (_, i) => `Column${i + 1}`); },
     ensureUniqueHeaders(headers=[]) {
         const seen = new Map();

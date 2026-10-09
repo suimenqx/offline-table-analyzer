@@ -14,7 +14,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | --- | --- |
 | `OTA` (module-loader) | Local module registry: `define`, `require`, `start` (`src/core/module-loader.js`) |
 | `runtime` | DOM query helpers (`$`, `createEl`), `Tooltip`, `Toast` |
-| `TableUtils` | Text/cell normalization, row width handling, unique names and headers |
+| `TableUtils` | Text/cell normalization, row width handling, unique names and headers, shared export column projection |
 | `SourceSnapshot` | Ephemeral clipboard/file source metadata, bounded diagnostic previews, and tab/text matching |
 | `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
 | `BackgroundService` | Sole owner of local Blob Worker lifecycle, version handshake, cancellation and acknowledged transport |
@@ -46,7 +46,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
 | `parser-helpers` | Shared utilities for text/aligned/CLI parsers |
 | Parser adapters (`src/parsing/parsers/`) | 13 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `JsonTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
-| `ImportEngine` | Manual/automatic adapter selection, structure-aware last-successful-format preference, candidates, normalized result and diagnostics |
+| `ImportEngine` | Manual/automatic adapter selection, DOMParser requirement for background routing, structure-aware last-successful-format preference, candidates, normalized result and diagnostics |
 | `legacy-facade` | Historical backward-compatible `Parser` entry point that returns structured errors without UI feedback |
 
 ### Transform (`src/transform/`)

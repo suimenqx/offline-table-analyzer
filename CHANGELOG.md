@@ -11,6 +11,10 @@ All notable changes are documented here. The project follows semantic versioning
 
 ### Fixes
 
+- Keep large table-data parsing and Excel export in Workers when pasted rich text contains only non-table HTML; explicit text parser choices also take precedence over clipboard HTML tables.
+- Preserve BOM, CRLF and lone UTF-16 surrogates in new original-text snapshots, and retain BOM when recovering released Blob snapshots. Recover large workspaces with more than 2000 corrected rows using their latest settings.
+- Show snapshot cleanup failures and retry them on a later save. Superseding saves, including budget failures, no longer leave the status stuck at saving or cleanup; recoverable memory and committed storage remain available.
+- Share Excel column projection between Window and Worker, retaining selected order, missing-column fallback and complete export semantics.
 - Preserve HTML clipboard table snapshots when the browser normalizes pasted CRLF line endings to LF, preventing multiline cells from falling through to split TSV rows.
 - Preserve multiline cell values during inline editing with a textarea editor; Shift+Enter inserts a newline while Enter/Tab commits.
 

@@ -1,4 +1,4 @@
-OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine", "query-service", "background-service"], ({$, Toast}, {Store, APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_WORKSPACE_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}, {QueryService}, {BackgroundService}) => {
+OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine", "query-service", "background-service", "table-utils"], ({$, Toast}, {Store, APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_WORKSPACE_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}, {QueryService}, {BackgroundService}, {TableUtils}) => {
 /* ExportController — file exports, workspace/config backup, copy format.
 
    Responsibilities:
@@ -206,29 +206,8 @@ const ExportController = {
     },
 
     _projectTableForExport(table, shownOnly) {
-        if (!shownOnly) {
-            return { name: table.name, headers: table.headers.slice(), rows: table.rows.map(r => r.slice()) };
-        }
-        const ui = Store.curr().ui;
-        const rules = ui.rules && ui.rules[table.name];
-        const focus = (rules && rules.focus && rules.focus.length > 0) ? rules.focus : null;
-        if (!focus) {
-            return { name: table.name, headers: table.headers.slice(), rows: table.rows.map(r => r.slice()) };
-        }
-        const indexes = [];
-        const headers = [];
-        focus.forEach(col => {
-            const i = table.headers.indexOf(col);
-            if (i > -1) { headers.push(col); indexes.push(i); }
-        });
-        if (!headers.length) {
-            return { name: table.name, headers: table.headers.slice(), rows: table.rows.map(r => r.slice()) };
-        }
-        return {
-            name: table.name,
-            headers: headers,
-            rows: table.rows.map(r => indexes.map(i => r[i]))
-        };
+        const focus=shownOnly?Store.curr().ui.rules?.[table.name]?.focus:[];
+        return TableUtils.projectColumns(table,focus);
     },
 
     _getFullExportTables() {

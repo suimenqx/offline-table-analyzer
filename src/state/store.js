@@ -143,17 +143,24 @@ const Store = {
             this.notifyStorage(false,'正在恢复完整原文…');
             this.restorePromise=BackgroundService.storage('loadWorkspace',{key:loaded.rawExternal}).then(payload=>{
                 if(this.revision!==revision)throw new Error('恢复期间已有新输入；当前输入已保留，请备份后重新打开恢复旧工作区');
-                payload=migrateWorkspacePayload(payload);
+                // Only source identity and raw text belong to this snapshot.
+                // Released snapshots also held obsolete UI; its correction
+                // count must not prevent recovery of the latest small settings.
+                if(!payload || !Array.isArray(payload.docs))throw new Error('大原文快照结构无效，请恢复备份');
+                payload=migrateWorkspacePayload({schemaVersion:payload.schemaVersion,docs:payload.docs.map(doc=>({id:doc?.id,sourceRevision:doc?.sourceRevision,raw:doc?.raw}))});
                 if(!this.isSafePayload(payload) || !Array.isArray(payload.docs))throw new Error('大原文快照结构无效，请恢复备份');
                 if(payload.docs.length!==loaded.docs.length)throw new Error('原文快照与工作区不匹配');
+                const rawDocs=new Map(payload.docs.map(doc=>[doc.id,doc]));
+                if(rawDocs.size!==payload.docs.length)throw new Error('原文快照包含重复页签');
+                if(payload.docs.some(doc=>typeof doc.raw!=='string') || payload.docs.reduce((sum,doc)=>sum+doc.raw.length*2,0)>MAX_WORKSPACE_BYTES)throw new Error('原文快照超过保存预算或结构无效');
                 const restored={...loaded,docs:loaded.docs.map(doc=>{
-                    const saved=payload.docs.find(item=>item.id===doc.id && item.sourceRevision===doc.sourceRevision);
-                    if(!saved || typeof saved.raw!=='string')throw new Error('原文快照与页签不匹配');
+                    const saved=rawDocs.get(doc.id);
+                    if(!saved || saved.sourceRevision!==doc.sourceRevision)throw new Error('原文快照与页签不匹配');
                     return {...doc,raw:saved.raw};
                 })};
                 delete restored.rawExternal;
                 this.state=restored;
-                this._rawSnapshot={key:loaded.rawExternal,docs:restored.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw}))};
+                this._rawSnapshot={key:loaded.rawExternal,needsCleanup:true,docs:restored.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw}))};
                 this.state.docs.forEach((doc,index)=>this.normalizeDoc(doc,index));
                 this.restoring=false;this.loadFailed=false;this.lastSaveError=null;
                 this._notify('workspace:restored',{});this._notify('state:changed',{changed:['workspace']});
@@ -183,8 +190,30 @@ const Store = {
         if(typeof document === 'undefined' || typeof document.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') return;
         document.dispatchEvent(new CustomEvent('ota:storage', { detail:{ ok, message, bytes:this.storageBytes, savedAt:this.state.lastSavedAt } }));
     },
+    _pruneRawSnapshots(keep,generation) {
+        this.cleaning=true;
+        this.notifyStorage(false,keep?'完整原文已保存，正在清理旧快照…':'配置已保存，正在清理旧原文…');
+        this.cleanupPromise=BackgroundService.storage('pruneWorkspace',{prefix:`${STORE_KEY}:`,keep}).then(()=>{
+            if(generation!==this._saveGeneration)return false;
+            this.cleaning=false;this._storageTouched=!!keep;
+            if(keep && this._rawSnapshot?.key===keep)this._rawSnapshot.needsCleanup=false;
+            this.notifyStorage(true,keep?'完整原文已保存到此设备':'原文已从设备存储移除，当前会话原文仍保留');
+            return true;
+        }).catch(error=>{
+            if(generation===this._saveGeneration) {
+                this.cleaning=false;
+                this.lastSaveError=`${keep?'完整原文已保存，但':''}旧原文快照清理失败：${error.message || error}`;
+                this.notifyStorage(false,this.lastSaveError);
+            }
+            return false;
+        });
+        return this.cleanupPromise;
+    },
     save() {
         const generation=++this._saveGeneration;
+        // This attempt supersedes earlier completion handlers, including when
+        // it fails before starting I/O. No older job can own the status now.
+        this.saving=false;this.cleaning=false;
         if(this.loadFailed) {
             this.notifyStorage(false, this.lastSaveError || '本地工作区读取失败；请先备份或清除损坏的数据');
             return false;
@@ -194,17 +223,22 @@ const Store = {
             if(rawBytes>MAX_WORKSPACE_BYTES) {this.lastSaveError='工作区原文超过 256 MiB 保存预算；请导出备份或拆分页签';this.notifyStorage(false,this.lastSaveError);return false;}
             const metadata=this.serializeState({omitRaw:true});
             const previous=this._rawSnapshot;
-            if(previous && !this.saving && previous.docs.length===this.state.docs.length && previous.docs.every(saved=>this.state.docs.some(doc=>doc.id===saved.id && doc.sourceRevision===saved.sourceRevision && doc.raw===saved.raw))) {
+            if(previous && previous.docs.length===this.state.docs.length && previous.docs.every(saved=>this.state.docs.some(doc=>doc.id===saved.id && doc.sourceRevision===saved.sourceRevision && doc.raw===saved.raw))) {
                 try {
                     const stub={...metadata,lastSavedAt:new Date().toISOString(),rawExternal:previous.key};
                     const json=JSON.stringify(stub);localStorage.setItem(STORE_KEY,json);
                     this.state.lastSavedAt=stub.lastSavedAt;this.storageBytes=json.length*2+rawBytes;this.lastSaveError=null;
-                    this.notifyStorage(true,'工作区已保存，完整原文快照已复用');return true;
+                    if(previous.needsCleanup)this._pruneRawSnapshots(previous.key,generation);
+                    else this.notifyStorage(true,'工作区已保存，完整原文快照已复用');
+                    return true;
                 } catch(error){this.lastSaveError=`工作区设置保存失败：${error.message}`;this.notifyStorage(false,this.lastSaveError);return false;}
             }
-            const snapshot={...metadata,docs:metadata.docs.map((doc,index)=>({...doc,raw:this.state.docs[index].raw || ''}))};
+            const snapshot={schemaVersion:WORKSPACE_SCHEMA_VERSION,docs:this.state.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw || ''}))};
             snapshot.lastSavedAt=new Date().toISOString();
             const key=`${STORE_KEY}:${Date.now()}:${generation}:${Math.random().toString(36).slice(2)}`;
+            // An in-flight replacement may become an orphan if the user
+            // returns to this committed snapshot before it finishes.
+            if(previous)previous.needsCleanup=true;
             this._storageTouched=true;this.cleaning=false;
             this.saving=true;this.notifyStorage(false,'正在保存完整原文…');
             const pending=BackgroundService.storage('saveWorkspace',{key,workspace:snapshot}).then(()=>{
@@ -212,14 +246,14 @@ const Store = {
                 const stub={...metadata,lastSavedAt:snapshot.lastSavedAt,rawExternal:key};
                 const json=JSON.stringify(stub);
                 localStorage.setItem(STORE_KEY,json);
-                this._rawSnapshot={key,docs:snapshot.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw}))};
+                this._rawSnapshot={key,needsCleanup:true,docs:snapshot.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw}))};
                 this.state.lastSavedAt=snapshot.lastSavedAt;
                 this.storageBytes=json.length*2+rawBytes;this.lastSaveError=null;this.saving=false;
                 if(this.migratedFrom)localStorage.removeItem(this.migratedFrom);
                 this.migratedFrom=null;
                 this.notifyStorage(true,'完整原文已保存到此设备');
                 this._notify('workspace:saved',{bytes:this.storageBytes,savedAt:this.state.lastSavedAt});
-                BackgroundService.storage('pruneWorkspace',{prefix:`${STORE_KEY}:`,keep:key}).catch(()=>{});
+                this._pruneRawSnapshots(key,generation);
                 return true;
             }).catch(error=>{
                 if(generation!==this._saveGeneration)return false;
@@ -241,12 +275,7 @@ const Store = {
                 this.migratedFrom = null;
             }
             if(this._storageTouched) {
-                this.cleaning=true;this.notifyStorage(false,'配置已保存，正在清理旧原文…');
-                this.cleanupPromise=BackgroundService.storage('pruneWorkspace',{prefix:`${STORE_KEY}:`,keep:null}).then(()=>{
-                    if(generation!==this._saveGeneration)return false;
-                    this.cleaning=false;this._storageTouched=false;this.notifyStorage(true,'原文已从设备存储移除，当前会话原文仍保留');return true;
-                }).catch(error=>{if(generation===this._saveGeneration){this.cleaning=false;this.lastSaveError=`旧原文清理失败：${error.message}`;this.notifyStorage(false,this.lastSaveError);}return false;});
-                return this.cleanupPromise;
+                return this._pruneRawSnapshots(null,generation);
             }
             this.notifyStorage(true, this.state.persistRaw === false ? '规则已保存，原始数据仅保留在本次会话' : '工作区已保存到此设备');
             return true;
@@ -266,7 +295,7 @@ const Store = {
     },
     clearLocalData() {
         clearTimeout(this.saveTimer);this.saveTimer=null;
-        this._saveGeneration++;this.saving=false;this._rawSnapshot=null;
+        const generation=++this._saveGeneration;this.saving=false;this.cleaning=false;this._rawSnapshot=null;
         try {
             if(typeof localStorage.removeItem === 'function') {
                 localStorage.removeItem(STORE_KEY);
@@ -276,9 +305,7 @@ const Store = {
             this.loadFailed = false;
             this.lastSaveError = null;
             if(BackgroundService.canUse() || this._storageTouched) {
-                this.cleaning=true;
-                this.cleanupPromise=BackgroundService.storage('pruneWorkspace',{prefix:`${STORE_KEY}:`,keep:null}).then(()=>{this.cleaning=false;this._storageTouched=false;return true;}).catch(error=>{this.cleaning=false;this.lastSaveError=`大原文清理失败：${error.message}`;this.notifyStorage(false,this.lastSaveError);return false;});
-                return this.cleanupPromise;
+                return this._pruneRawSnapshots(null,generation);
             }
             return true;
         } catch(e) {

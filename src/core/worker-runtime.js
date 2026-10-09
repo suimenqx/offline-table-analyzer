@@ -1,4 +1,4 @@
-OTA.define('worker-runtime', ['import-engine','query-service','joiner','exporter','workspace-storage'], ({ImportEngine},{QueryService},{Joiner},{Exporter},{WorkspaceStorage}) => {
+OTA.define('worker-runtime', ['import-engine','query-service','joiner','exporter','workspace-storage','table-utils'], ({ImportEngine},{QueryService},{Joiner},{Exporter},{WorkspaceStorage},{TableUtils}) => {
 /* Dataset and expensive computation stay behind one worker session. Raw table
    publication and query records use acknowledged bounded messages. */
 const WorkerRuntime = {
@@ -43,11 +43,7 @@ const WorkerRuntime = {
                     tables=rawTables;
                     if(payload.mode!=='raw') {
                         tables=QueryService.collectTables(rawTables,payload.globalViews || [],ui,!!ui.exportOnlyChecked);
-                        if(ui.exportCols==='shown')tables=tables.map(table=>{
-                            const focus=ui.rules?.[table.name]?.focus;
-                            const indexes=(focus || []).map(col=>table.headers.indexOf(col)).filter(index=>index>=0);
-                            return indexes.length?{name:table.name,headers:indexes.map(index=>table.headers[index]),rows:table.rows.map(row=>indexes.map(index=>row[index]))}:table;
-                        });
+                        if(ui.exportCols==='shown')tables=tables.map(table=>TableUtils.projectColumns(table,ui.rules?.[table.name]?.focus));
                     }
                 }
                 return Exporter.createExcelBytes(tables);

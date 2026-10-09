@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service","background-service"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}, {BackgroundService}) => {
+OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service","background-service","import-engine"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}, {BackgroundService}, {ImportEngine}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -948,7 +948,7 @@ validflag Time      Level   Message                 Code
             if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
             parseContext = {...this.getSourceContext(sourceText),started};
             const options=parseContext.options;
-            if(BackgroundService.isLarge(sourceText) && !options.html && options.format!=='html-table') {
+            if(BackgroundService.isLarge(sourceText) && !ImportEngine.requiresDOMParser(sourceText,options)) {
                 const pending={context:parseContext};
                 this._pendingParse=pending;
                 pending.promise=this.runBackground(sourceText,options,parseContext,render);

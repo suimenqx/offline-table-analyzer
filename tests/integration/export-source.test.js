@@ -11,7 +11,7 @@ const deferred = () => {
   const promise = new Promise((yes, no) => {resolve = yes; reject = no;});
   return {promise, resolve, reject};
 };
-let App, Store, Parser, SourceController, ExportController, BackgroundService, TableRegistry, dom, downloads, messages;
+let App, Store, Parser, SourceController, ExportController, BackgroundService, TableRegistry, WorkerRuntime, dom, downloads, messages;
 
 beforeEach(() => {
   dom = createDOMSandbox();
@@ -20,6 +20,7 @@ beforeEach(() => {
   ({App} = OTA.require('app')); ({Store} = OTA.require('store')); ({Parser} = OTA.require('parser-facade'));
   ({SourceController} = OTA.require('source-controller')); ({ExportController} = OTA.require('export-controller'));
   ({BackgroundService} = OTA.require('background-service')); ({TableRegistry} = OTA.require('table-registry'));
+  ({WorkerRuntime} = OTA.require('worker-runtime'));
   downloads = []; messages = [];
   OTA.require('exporter').Exporter.download = (filename, blob) => downloads.push({filename,blob});
   OTA.require('runtime').Toast.show = message => messages.push(message);
@@ -65,6 +66,22 @@ describe('Excel export prepares the current source', () => {
     assert.equal(rows[1][2], 'Corrected');
   });
 
+  for(const focus of [['Name','Missing','ID'],['Missing'],[]]) {
+    it(`preserves column projection in Window and Worker Excel (${focus.join(',') || 'empty focus'})`,async()=>{
+      replace(small);
+      Store.transition('rule:set',{table:'Items',field:'focus',value:focus});
+      Store.transition('ui:set',{key:'exportCols',value:'shown'});
+      await clickExport();
+      const session=WorkerRuntime.createSession();session.parse({text:small,key:'projection'});
+      const bytes=session.excel({key:'projection',mode:'full',ui:Store.getDocument().ui});
+      const expected=focus.includes('Name')?[['Name','ID'],['Alice','001'],['Bob','002']]
+        :[['validflag','ID','Name'],[1,'001','Alice'],[1,'002','Bob']];
+      assert.deepEqual(await readSheet(Buffer.from(await downloads[0].blob.arrayBuffer()),'Items'),expected);
+      assert.deepEqual(await readSheet(Buffer.from(bytes),'Items'),expected);
+      assert.deepEqual(TableRegistry.getTable('Items').headers,['validflag','ID','Name']);
+    });
+  }
+
   for (const mode of ['raw','preview']) {
     it(`also prepares the source for ${mode} export and preserves that export's semantics`, async () => {
       replace(small);
@@ -106,6 +123,24 @@ describe('Excel export prepares the current source', () => {
     assert.equal(parses, 1); assert.equal(exports, 1); assert.equal(downloads.length, 1);
     assert.ok(messages.some(message => message.includes('导出正在进行')));
   });
+
+  for(const format of ['auto','cli-table-data']) {
+    it(`keeps rich clipboard table-data parsing and full Excel in the background (${format})`,async()=>{
+      const html=format==='auto'?'<pre>copied CLI output</pre>':'<table><tr><td>unrelated HTML table</td></tr></table>';
+      SourceController.captureClipboard({types:['text/plain','text/html'],getData:type=>type==='text/plain'?large:type==='text/html'?html:''});
+      Store.transition('source:replace',{text:large,preservePaste:true});SourceController.displayText(large);
+      Store.transition('import:setFormat',{format});dom.getElementById('formatSelect').value=format;
+      const session=WorkerRuntime.createSession();let parses=0,exports=0;
+      BackgroundService.parse=async payload=>{parses++;return structuredClone(session.parse(payload));};
+      BackgroundService.export=async(input,mode)=>{exports++;return new Blob([session.excel({key:input.datasetKey,ui:input.ui,globalViews:input.globalViews,mode})]);};
+      await clickExport();
+      assert.equal(TableRegistry.getFormat(),'cli-table-data');assert.equal(TableRegistry.isBackground(),true);
+      assert.equal(parses,1);assert.equal(exports,1);assert.equal(downloads.length,1);
+      const rows=await readSheet(Buffer.from(await downloads[0].blob.arrayBuffer()),'Wide');
+      assert.equal(rows.length,2001);assert.equal(rows[0].length,32);assert.equal(rows[2000][1],2000);
+      assert.equal(Store.getDocument().raw,large);
+    });
+  }
 
   it('stops the parse/export chain on cancellation and allows retry with the intact original', async () => {
     replace(large); const pending = deferred();

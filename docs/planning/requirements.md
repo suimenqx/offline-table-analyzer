@@ -82,6 +82,8 @@ The defining constraints are:
 - Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
 - Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
 - Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.
+- Raw snapshots retain exact UTF-16 strings, including BOM, CRLF and lone surrogates; released UTF-8 Blob snapshots remain readable without consuming their BOM. New snapshots contain only source identity/raw and commit metadata. Recovery ignores obsolete snapshot UI, so legitimate correction overlays exceeding 2000 edited rows cannot block original recovery. External import safety checks remain unchanged.
+- A superseding save ends earlier saving/cleanup status even when rejected before I/O. Snapshot cleanup failures are visible and retried on the next save, without replacing the committed workspace or repeating successful cleanup for unchanged raw.
 - Show saving/restoring/cleanup status. Background storage errors preserve memory and the previous committed workspace. Wait for a saved status before closing; pending save offers the browser close confirmation.
 - Catch `QuotaExceededError` in `save()` and report the specific failure in the status bar; in-memory data remains usable.
 - Show saved/failed state, estimated storage use (`json.length * 2` for UTF-16 approximation), and a usage meter in the status bar.
@@ -123,6 +125,7 @@ The defining constraints are:
 - For slow parses (>800 ms elapsed), a Toast notification shows the parse time.
 - Original text above 128 Ki characters uses at most 100 lines/10,000 characters of read-only preview; complete text remains the parse/save/export source. New paste replaces large text.
 - Large table-data/text parsing, querying, JOIN and XLSX run in cancellable embedded Workers; large HTML retains its DOMParser Window path. Error/cancel/stale source results cannot discard original text or overwrite a newer source.
+- Non-table clipboard HTML does not force text onto Window. ImportEngine owns the DOMParser routing decision; a manual text parser remains authoritative even with an HTML table in the clipboard.
 - At most 8 million cells in parsed datasets, combined selected/query/export tables; 1 million rows per JOIN; 256 MiB XLSX output. Budget failures are explicit, without silent truncation. These are implementation protection budgets, not universal capacity guarantees.
 - Pages reuse the same query and raw snapshot; only source/query/view/correction changes invalidate derived results. Result cache has at most two entries. Parsed/query rows use acknowledged batches of at most 500.
 - All original raw text is retained, including CRLF for intercepted large paste/file input. XLSX exports full filtered results across pages.
@@ -133,6 +136,7 @@ The defining constraints are:
 - Direct paste → Full Excel exports all rows/columns by default, subject to explicit table/column/JOIN export settings and existing resource budgets. Preview/page limits never truncate full export.
 - The export lock covers parsing and serialization. Show each stage, preserve cancellation, and validate document/source/options again immediately before download. Failure, cancellation, changed source/options or tab switch cannot download an outdated result; keep original text recoverable.
 - "Export displayed columns": when `exportCols === 'shown'`, `projectTableForExport` projects focus columns during full export.
+- Window and Worker share TableUtils column projection: preserve requested order, ignore missing columns, fall back to all columns when none are valid, and leave the original table unchanged.
 - Export options (`exportOnlyChecked`, `exportCols`) are stored per-tab in the doc UI state and restored on tab changes.
 - HTML clipboard state is scoped to the current tab via `docId` tracking in `lastPaste`; it is cleared on tab switch or plain-text edit.
 - Full-screen source editor Escape behavior synchronizes back to the main input via `syncSourceTextFromLarge()` before closing with `closeSourceEditor()`.
