@@ -192,7 +192,11 @@ const SourceController = {
         this._bindInputResizer();
         this._bindFilePicker();
         const exportSource = $('exportSourceBtn');
-        if (exportSource) exportSource.onclick = () => Exporter.download('original-source.txt', Store.getDocument()?.raw || '', 'text/plain;charset=utf-8');
+        if (exportSource) exportSource.onclick = () => {
+            const doc = Store.getDocument();
+            const prefix = Exporter.sanitizeFilePrefix(`${doc?.title || 'Analysis'}_source`);
+            Exporter.download(`${prefix}_${Exporter.getTimestamp()}.txt`, doc?.raw || '', 'text/plain;charset=utf-8');
+        };
 
     },
 

@@ -11,7 +11,7 @@ const deferred = () => {
   const promise = new Promise((yes, no) => {resolve = yes; reject = no;});
   return {promise, resolve, reject};
 };
-let App, Store, Parser, SourceController, ExportController, BackgroundService, TableRegistry, WorkerRuntime, dom, downloads, messages;
+let App, Store, Parser, SourceController, ExportController, Exporter, BackgroundService, TableRegistry, WorkerRuntime, dom, downloads, messages;
 
 beforeEach(() => {
   dom = createDOMSandbox();
@@ -22,7 +22,8 @@ beforeEach(() => {
   ({BackgroundService} = OTA.require('background-service')); ({TableRegistry} = OTA.require('table-registry'));
   ({WorkerRuntime} = OTA.require('worker-runtime'));
   downloads = []; messages = [];
-  OTA.require('exporter').Exporter.download = (filename, blob) => downloads.push({filename,blob});
+  ({Exporter} = OTA.require('exporter'));
+  Exporter.download = (filename, blob, type) => downloads.push({filename,blob,type});
   OTA.require('runtime').Toast.show = message => messages.push(message);
   const select = dom.getElementById('targetTableSelect'); select.options = []; select.add = option => select.options.push(option);
   App.init();
@@ -42,6 +43,37 @@ function replace(text) {
 const clickExport = () => dom.getElementById('exportFullBtn').onclick();
 const small = 'table-data Items\nvalidflag ID Name\n1 001 Alice\n1 002 Bob';
 const large = createLargeTableData({rows:2000}).text;
+
+describe('Original source export filenames', () => {
+  it('matches the full Excel naming style and preserves the original text', async () => {
+    const source='\uFEFF'+small.replace(/\n/g,'\r\n');
+    replace(source);
+    Store.transition('tab:rename',{id:Store.getDocument().id,title:'排查 / 数据 : 1'});
+    Exporter.getTimestamp=()=> '20261009_160708';
+    dom.getElementById('exportSourceBtn').onclick();
+    await clickExport();
+    assert.equal(downloads[0].filename,'排查_数据_1_source_20261009_160708.txt');
+    assert.equal(downloads[1].filename,'排查_数据_1_full_20261009_160708.xlsx');
+    assert.equal(downloads[0].blob,source);
+    assert.equal(downloads[0].type,'text/plain;charset=utf-8');
+    assert.equal(Store.getDocument().raw,source);
+  });
+
+  it('timestamps each click and exports the full large source independently of parsing', () => {
+    replace(large);
+    assert.ok(dom.getElementById('rawInput').value.length<large.length);
+    Exporter.getTimestamp=()=> '20261009_160708';
+    dom.getElementById('exportSourceBtn').onclick();
+    const title=Store.getDocument().title;
+    Exporter.getTimestamp=()=> '20261009_160709';
+    dom.getElementById('exportSourceBtn').onclick();
+    assert.equal(downloads[0].filename,`${title.replace(/\s+/g,'_')}_source_20261009_160708.txt`);
+    assert.equal(downloads[1].filename,`${title.replace(/\s+/g,'_')}_source_20261009_160709.txt`);
+    assert.equal(downloads[0].blob,large);
+    assert.equal(downloads[1].blob,large);
+    assert.equal(TableRegistry.getRaw().length,0);
+  });
+});
 
 describe('Excel export prepares the current source', () => {
   it('exports a newly pasted source without clicking parse, including all rows and text IDs', async () => {

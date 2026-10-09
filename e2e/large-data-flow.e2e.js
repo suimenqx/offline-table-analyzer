@@ -156,6 +156,7 @@ test('offline release preserves large original, corrections, export and browser 
     await expect(wide(page).locator('tbody tr').first().locator('td').nth(3)).toHaveText('修正值');
     await expect.poll(()=>page.evaluate(()=>{const {Store,STORE_KEY}=OTA.require('store');const json=JSON.parse(localStorage.getItem(STORE_KEY));const saved=json.docs.find(doc=>doc.id===Store.getDocument().id);return {saving:Store.saving,rawReference:!!json.rawExternal,edits:saved.ui.cellEdits,currentEdits:Store.getDocument().ui.cellEdits,error:Store.lastSaveError};}),{timeout:10000}).toMatchObject({saving:false,rawReference:true,edits:{$Wide:{0:{3:'修正值'}}}});
     const pending=page.waitForEvent('download');await page.locator('#exportSourceBtn').click();const source=await pending;
+    expect(source.suggestedFilename()).toMatch(/^Analysis_1_source_\d{8}_\d{6}\.txt$/);
     const sourcePath=testInfo.outputPath('original.txt');await source.saveAs(sourcePath);expect(await fs.readFile(sourcePath,'utf8')).toBe(fixture.text);
     await context.close();context=null;
     page=await open();await waitRows(page,fixture.rows);expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);

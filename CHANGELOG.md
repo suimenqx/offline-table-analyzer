@@ -4,7 +4,7 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## Unreleased
 
-No unreleased changes.
+- Name original-source downloads as `<analysis-title>_source_<YYYYMMDD_HHMMSS>.txt`, sharing the full Excel export's timestamp and safe filename conventions while preserving the complete source text.
 
 ## 23.1.0 — 2026-10-09
 
