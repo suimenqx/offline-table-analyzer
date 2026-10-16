@@ -1,5 +1,10 @@
 OTA.define('selection', ["runtime","store","clipboard"], ({$ , Toast}, {Store}, {ClipboardFormatter}) => {
 /* Selection Logic */
+function isTextEditingElement(element) {
+    const tag = (element && element.tagName || '').toLowerCase();
+    return ['input', 'textarea', 'select'].includes(tag) || !!(element && element.isContentEditable);
+}
+
 const Select = {
     start: null, end: null, active: false, tableEl: null, lastPointer: null, autoScrollRaf: null,
     init() {
@@ -38,7 +43,12 @@ const Select = {
             this.active=false;
             this.stopAutoScroll();
         });
-        document.addEventListener('copy', e => { if(this.start && this.end) { e.preventDefault(); this.copy(e); } });
+        document.addEventListener('copy', e => {
+            // Let the browser copy the actual text selection in editors and other
+            // text controls instead of replacing it with the remembered table range.
+            if (isTextEditingElement(e.target) || isTextEditingElement(document.activeElement)) return;
+            if(this.start && this.end) { e.preventDefault(); this.copy(e); }
+        });
         document.addEventListener('keydown', e => {
             if(!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'a') return;
             const tag = (document.activeElement && document.activeElement.tagName || '').toLowerCase();

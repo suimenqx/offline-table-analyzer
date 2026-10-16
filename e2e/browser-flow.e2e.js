@@ -112,6 +112,23 @@ test('parse JSON records and copy both JSON layouts', async ({ page, context }) 
   expect(inline).toBe('[\n  {"id":"001","name":"Alice"},\n  {"id":"002","name":"Bob"}\n]');
 });
 
+test('copies only selected text from an inline cell editor', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin:'http://127.0.0.1:4173' });
+  await page.goto('/index.html');
+  await page.locator('#autoParseToggle').uncheck();
+  await page.locator('#rawInput').fill('id,name\n001,Alice');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#previewArea tbody td').first()).toHaveText('001');
+
+  await page.locator('#previewArea tbody td').first().dblclick();
+  const editor = page.locator('#previewArea textarea.cell-editor');
+  await expect(editor).toBeFocused();
+  await expect(editor).toHaveValue('001');
+  await page.keyboard.press('Control+C');
+
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('001');
+});
+
 test('parse a copied JSON fragment and show recovery diagnostics', async ({ page }) => {
   await page.goto('/index.html');
   await page.locator('#autoParseToggle').uncheck();
