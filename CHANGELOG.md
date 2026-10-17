@@ -6,6 +6,16 @@ All notable changes are documented here. The project follows semantic versioning
 
 - Name original-source downloads as `<analysis-title>_source_<YYYYMMDD_HHMMSS>.txt`, sharing the full Excel export's timestamp and safe filename conventions while preserving the complete source text.
 
+## 23.2.0 — 2026-10-17
+
+### Table extraction and confirmation
+
+- Locate separate CSV, semicolon CSV, TSV, pipe, fixed-width, and aligned-text regions inside surrounding prose; retain original-source offsets and preserve quoted multiline cell values.
+- Stop returning a guessed table when automatic format evidence, row widths, or header evidence is ambiguous. Show bounded, safely escaped candidate previews and reparse only after a user choice.
+- Keep region/header confirmations temporary and source-bound. Do not let the last successful format silently break ties, and prevent exporting unresolved guesses.
+- Preserve overflow cells and existing diagnostics after users confirm irregular regions. Keep runtime offline, single-file, dependency-free, and compatible with schema 21 workspaces.
+- Add region, ambiguity, CRLF/BOM offset, safe-preview, and confirmation regressions; verify the generated release with the full Node and Chromium suites.
+
 ## 23.1.0 — 2026-10-09
 
 ### Performance and correctness

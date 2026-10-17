@@ -113,13 +113,16 @@ test('offline workspace retains BOM and lone surrogates across a browser restart
 test('cancelling direct export retains the large source and a replacement can be exported',async({page,context},testInfo)=>{
   const fixture=createLargeTableData();
   await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:4173'});
+  await page.addInitScript(()=>document.addEventListener('paste',event=>{window.__otaPastedText=event.clipboardData?.getData('text/plain')??null;},{capture:true}));
   await page.goto('/index.html');
   const downloads=[];page.on('download',download=>downloads.push(download));
   await page.evaluate(async text=>navigator.clipboard.writeText(text),fixture.text);
   await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
   await page.locator('#exportFullBtn').click();await expect(page.locator('#backgroundJob')).toBeVisible();
   await page.locator('#cancelJobBtn').click();await expect(page.locator('#backgroundJob')).toBeHidden();
-  expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(fixture.text);
+  const pastedText=await page.evaluate(()=>window.__otaPastedText);
+  expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw)).toBe(pastedText);
+  expect(pastedText.replace(/\r\n?/g,'\n')).toBe(fixture.text);
   expect(downloads).toHaveLength(0);
   const replacement='table-data Replacement\nvalidflag ID\n1 009';
   await page.evaluate(async text=>navigator.clipboard.writeText(text),replacement);

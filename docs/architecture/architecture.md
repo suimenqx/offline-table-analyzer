@@ -46,7 +46,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `Delimited` | Quote-aware delimiter parsing and diagnostics |
 | `parser-helpers` | Shared utilities for text/aligned/CLI parsers |
 | Parser adapters (`src/parsing/parsers/`) | 13 adapters: `CliTableDataParser`, `DataBlockParser`, `HtmlTableParser`, `JsonTableParser`, `CliMultiBlockParser`, `AsciiTableParser`, `PipeTableParser`, `ExcelPasteParser`, `CsvParser`, `SemicolonCsvParser`, `FixedWidthParser`, `AlignedTableParser`, `PlainTextTableParser` |
-| `ImportEngine` | Budgeted record-aware sample verification followed by one selected full-source parse, DOMParser requirement for background routing, structure-aware last-successful-format preference, candidates, normalized result and diagnostics |
+| `ImportEngine` | Bounded candidate verification, delimited/fixed-width region discovery, low-confidence confirmation, per-region adapter parsing, DOMParser requirement for background routing, normalized result and diagnostics |
 | `legacy-facade` | Historical backward-compatible `Parser` entry point that returns structured errors without UI feedback |
 
 ### Transform (`src/transform/`)
@@ -78,7 +78,7 @@ The refactor decision, module manifest, dependency rules, migration phases, and 
 
 ```text
 schemaVersion: 21
-appVersion: 23.1.0
+appVersion: 23.2.0
 cellEditKeyEncoding: dollar-v1
 rawExternal?: committed snapshot generation (local settings stub only)
 revision / viewRevision / queryRevision
@@ -153,7 +153,9 @@ All downstream operations consume this shape regardless of the original source f
 
 For pasted JSON-like input, `JsonTableParser` tries standard JSON first, then a local text lexer for bare field names, single-quoted strings, comments, trailing commas, field bodies, and record lists without outer brackets. It can recover complete records from a selection cut through adjacent records and retain confirmed fields in a final record cut inside a string, number, or nested value. An unfinished field value is omitted; the corresponding normalized cell is empty when another row established that column. Truncation or skipped boundaries produce `JSON_FRAGMENT_RECOVERED`, and a retained partial row also produces `JSON_PARTIAL_RECORD`; other relaxed syntax produces `JSON_RELAXED_SYNTAX`. Input without any complete field or record still fails visibly. The parser never evaluates input, does not rewrite the stored source, and keeps normalized cells as strings. Workspace and configuration JSON imports continue to use strict JSON parsing.
 
-Automatic format selection uses `ImportEngine.detect()` on bounded complete-record samples; the final adapter alone receives the full normalized text. Samples expand through 16,384/65,536/262,144 UTF-16 code units and 64/256/512 records. Candidate parse results are reduced to evidence and released between probes. Large unresolved ambiguity returns candidates without a guessed table. Automatic format selection checks strong hard and structural markers before probing the last successful parser. A remembered parser is retried only when its sniff score is close to the leading candidate or detection has no usable signature. Data-block, Markdown, bordered ASCII, aligned, and CLI multi-block candidates are parsed before they can override a remembered format; their marker alone is insufficient when parsing yields no usable table. HTML and CLI hard markers require source-shaped evidence, so marker text in CSV cells does not change the selected format. Explicit manual format selection remains authoritative.
+Automatic format selection uses `ImportEngine.detect()` on bounded complete-record samples; the selected adapter then receives either the full source or the source slices identified as delimited/fixed-width table regions. Samples expand through 16,384/65,536/262,144 UTF-16 code units and 64/256/512 records. Candidate parse results are reduced to evidence and released between probes. Strong hard and structural signatures remain authoritative, and explicit manual format selection remains authoritative. Close format candidates, weak non-structural evidence, unstable region widths, and low-confidence automatic headers return no guessed table; parse details offer an explicit choice. Ranking scores are heuristic ordering references, not calibrated probabilities. The last successful parser is not used to resolve an ambiguous input. Generic region discovery currently covers CSV, semicolon CSV, TSV, pipe tables, fixed-width, and aligned text; HTML, JSON, CLI, and data-block formats retain their dedicated structural adapters.
+
+Delimited region discovery respects quoted delimiters and embedded newlines. Stable separated regions produce separate normalized tables and retain source offsets in `meta.sourceRange`. Irregular-width regions require confirmation; parsing them preserves overflow cells and emits the existing row-width diagnostics. Region/header selections are temporary, tied to the active document, source revision, and text, and are excluded from persisted workspace state. Unresolved parse ambiguity blocks export until the user chooses a candidate.
 
 ### Command, revision, and rendering contract
 
@@ -182,11 +184,12 @@ reused accidentally.
 ```text
 paste / drop / file / fullscreen editor
   → source text + SourceSnapshot metadata + optional clipboard HTML
-  → App passes parse options and last successful format to ImportEngine
-  → ImportEngine format scoring or manual adapter
-  → adapter parse (TextLayout supplies position-aware aligned parsing)
+  → App passes format/header options and any source-bound temporary region choice to ImportEngine
+  → ImportEngine bounded scoring and source-region discovery, or manual adapter choice
+  → candidate/region/header ambiguity confirmation when evidence is weak
+  → adapter parses selected source region(s); TextLayout supplies position-aware aligned parsing
   → HeaderResolver and TableUtils normalization
-  → diagnostics + normalized tables or structured error result
+  → source ranges + diagnostics + normalized tables or structured error result
   → App owns user-facing parse-error feedback
   → persisted correction overlay + edit undo/redo
   → QueryService: JOIN resolution + FilterEngine filtering/highlighting/focus + bounded cache
@@ -199,7 +202,7 @@ Drag-and-drop of local files onto the source area is supported. A fullscreen sou
 
 The full processed result remains in memory for export, while only the selected page is materialized as table DOM.
 
-Excel buttons use `App.prepareExport()` through an injected `ExportController.init({prepareSource})` callback. App owns source synchronization and parse lifecycle: a completed matching parse is reused, and an export waits for a matching in-flight parse instead of restarting it. Matching includes document ID, source revision, original text, clipboard HTML, parser and header mode; last-successful-format is only a detection hint. `App.run()` reports successful completion as a boolean or a Promise of that boolean. Preparation returns a transient download validator or null after an already-reported parse failure/empty input. ExportController owns one lock and stage feedback across preparation and serialization, then invokes the validator immediately before download. Cancellation invalidates the validator; a changed source/options/tab rejects the old result. No new persisted fields, modules or dependencies are introduced.
+Excel buttons use `App.prepareExport()` through an injected `ExportController.init({prepareSource})` callback. App owns source synchronization and parse lifecycle: a completed matching parse is reused, and an export waits for a matching in-flight parse instead of restarting it. Matching includes document ID, source revision, original text, clipboard HTML, parser, header mode, and temporary region selection; the last successful format is not an option. `App.run()` reports successful completion as a boolean or a Promise of that boolean. Preparation returns a transient download validator or null after an already-reported parse failure/empty input. ExportController owns one lock and stage feedback across preparation and serialization, then invokes the validator immediately before download. Cancellation invalidates the validator; a changed source/options/tab rejects the old result. No new persisted fields, modules or dependencies are introduced.
 
 ## 5. Persistence and migration
 

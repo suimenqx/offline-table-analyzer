@@ -10,6 +10,8 @@ const App = {
     _pendingParse:null,
     _renderGeneration:0,
     _jobGeneration:0,
+    _regionSelection:null,
+    _headerModeConfirmation:null,
     showJob(label) {
         const id=++this._jobGeneration;
         const status=$('backgroundJob');if(status)status.hidden=false;
@@ -70,6 +72,8 @@ const App = {
                 case 'source:textChanged':
                     if (!payload || payload.docId === Store.state.activeId) {
                         if(payload && payload.sourceRevision!==Store.getDocument().sourceRevision)break;
+                        this._regionSelection=null;
+                        this._headerModeConfirmation=null;
                         if(this._parseToken && this._parseToken.sourceRevision!==payload.sourceRevision) {BackgroundService.cancel();this._parseGeneration++;TableRegistry.setResult(null);this.requestRender();}
                         CellEditController.reset();
                         // Paste lifetime follows the source text, not the transition that
@@ -367,7 +371,7 @@ const App = {
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
             if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
-            else if(result.format==='ambiguous')text.textContent='格式存在歧义 · 请在详情中确认格式';
+            else if(result.format==='ambiguous')text.textContent='解析结果需要确认 · 请在详情中选择候选';
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
             else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
@@ -422,17 +426,22 @@ const App = {
     },
 
     setHeaderMode(mode) {
+        this._headerModeConfirmation=null;
         const current = Store.curr().ui.importHeaderMode || 'auto';
         if(current !== mode) this.invalidateCellEdits();
         dispatch('import:setHeaderMode', { mode });
+        this.syncImportControls();
         this.run();
     },
 
     setImportFormat(format) {
+        this._regionSelection=null;
+        this._headerModeConfirmation=null;
         const next = format || 'auto';
         const current = Store.curr().ui.importFormat || 'auto';
         if(current !== next) this.invalidateCellEdits();
         dispatch('import:setFormat', { format: next });
+        this.syncImportControls();
         this.run();
     },
 
@@ -490,8 +499,15 @@ const App = {
         const formatEl = $('formatSelect');
         const headerEl = $('headerModeSelect');
         const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
-        const headerMode = (headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
-        return { html, format, headerMode, lastSuccessfulFormat: Store.lastSuccessfulFormat || null };
+        const storedHeaderMode=(headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
+        const confirmation=this._headerModeConfirmation;
+        const confirmationMatches=confirmation && confirmation.docId===d.id && confirmation.sourceRevision===d.sourceRevision && confirmation.text===text;
+        const headerMode=confirmationMatches?confirmation.mode:storedHeaderMode;
+        const selectedRegion=this._regionSelection;
+        const regionSelection=selectedRegion && selectedRegion.docId===d.id && selectedRegion.sourceRevision===d.sourceRevision && selectedRegion.text===text
+            ? selectedRegion.selection
+            : null;
+        return { html, format, headerMode, regionSelection };
     },
 
     getSourceContext(text=SourceController.readText()) {
@@ -500,9 +516,9 @@ const App = {
     },
 
     matchesSourceContext(a,b) {
-        // The remembered format is a detection hint, not a changed source option.
         return !!a && !!b && a.docId===b.docId && a.sourceRevision===b.sourceRevision && a.text===b.text
-            && ['format','headerMode','html'].every(key=>a.options[key]===b.options[key]);
+            && ['format','headerMode','html'].every(key=>a.options[key]===b.options[key])
+            && JSON.stringify(a.options.regionSelection||null)===JSON.stringify(b.options.regionSelection||null);
     },
 
     /** Resolve the current parse and return a validator for the eventual download. */
@@ -529,7 +545,11 @@ const App = {
             }
         };
         validate();
-        if(!TableRegistry.getRaw().length){Toast.show('无数据可导出',true);return null;}
+        if(!TableRegistry.getRaw().length){
+            if(TableRegistry.getFormat()==='ambiguous')Toast.show('请先在解析详情中确认格式、表格区域或表头',true);
+            else Toast.show('无数据可导出',true);
+            return null;
+        }
         return {validate}; // Rechecked by ExportController immediately before download.
     },
 
@@ -915,18 +935,44 @@ validflag Time      Level   Message                 Code
 
     showDiagnostics() {
         const result = TableRegistry.getLastResult();
-        const candidates = (result.candidates || []).map(item => {
-            const score = Number.isFinite(item.score) ? `识别分数 ${Math.round(item.score * 100)}%` : '';
+        const candidates = (result.candidates || []).map((item,index) => {
+            const score = Number.isFinite(item.score) ? `候选排序参考 ${item.score.toFixed(2)}` : '';
             const reason = item.reason || item.explanation || '依据解析器特征进行判断';
             const ambiguous = item.ambiguous || (item.risk && item.risk !== 'low');
-            return `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted">${item.manual ? '用户指定' : score}${ambiguous ? ' · 需确认' : ''}</span><div class="muted">${this.escapeHtml(reason)}</div></div>${item.id !== result.format ? `<button class="sm diagnostic-format-btn" type="button" data-format="${this.escapeHtml(item.id)}">切换</button>` : '<span class="meta-tag">当前</span>'}</div>`;
+            const requiresAction=item.kind==='region-set'||item.kind==='header-mode'||item.id!==result.format;
+            const action=item.kind==='region-set'?'使用这些区域':item.kind==='header-mode'?'按此表头方式解析':'切换格式';
+            const preview=item.preview?`<pre class="diagnostic-preview">${this.escapeHtml(item.preview)}</pre>`:'';
+            return `<div class="diagnostic-item" style="display:flex;align-items:center;gap:10px;"><div style="flex:1;min-width:0;"><strong>${this.escapeHtml(item.label)}</strong><span class="muted" title="启发式排序参考值，不是正确概率">${item.manual ? '用户指定' : score}${ambiguous ? ' · 需确认' : ''}</span><div class="muted">${this.escapeHtml(reason)}</div>${preview}</div>${requiresAction ? `<button class="sm diagnostic-candidate-btn" type="button" data-candidate-index="${index}">${action}</button>` : '<span class="meta-tag">当前</span>'}</div>`;
         }).join('');
         const diagnostics = (result.diagnostics || []).map(item => `<div class="diagnostic-item"><strong>${this.escapeHtml(item.code || item.severity || item.level || '提示')}</strong><span>${this.escapeHtml(item.message || '')}</span></div>`).join('');
         const summary=result.diagnosticCount>result.diagnostics.length?`<p class="muted">共 ${result.diagnosticCount.toLocaleString()} 项提示，显示前 ${result.diagnostics.length} 项。完整原文仍保留。</p>`:'';
         this.modal('解析详情', `${summary}<div class="diagnostic-list">${candidates || '<div class="muted">没有格式候选信息</div>'}${diagnostics || '<div class="muted">未发现需要处理的数据问题</div>'}</div>`);
-        document.querySelectorAll('.diagnostic-format-btn').forEach(button => {
-            button.onclick = () => { this.closeModal(); this.setImportFormat(button.dataset.format); };
+        document.querySelectorAll('.diagnostic-candidate-btn').forEach(button => {
+            button.onclick = () => {
+                const candidate=(result.candidates||[])[Number(button.dataset.candidateIndex)];
+                if(!candidate)return;
+                this.closeModal();
+                if(candidate.kind==='header-mode') {
+                    this.rememberRegionSelection(candidate.regionSelection);
+                    this.rememberHeaderMode(candidate.headerMode);
+                    this.run();
+                } else if(candidate.kind==='region-set') {
+                    this.rememberRegionSelection(candidate.regionSelection);
+                    this.run();
+                } else this.setImportFormat(candidate.id);
+            };
         });
+    },
+
+    rememberRegionSelection(selection) {
+        if(!selection){this._regionSelection=null;return;}
+        const doc=Store.getDocument();
+        this._regionSelection={docId:doc.id,sourceRevision:doc.sourceRevision,text:SourceController.readText(),selection};
+    },
+
+    rememberHeaderMode(mode) {
+        const doc=Store.getDocument();
+        this._headerModeConfirmation={docId:doc.id,sourceRevision:doc.sourceRevision,text:SourceController.readText(),mode};
     },
 
     showHelp() {
@@ -965,9 +1011,6 @@ validflag Time      Level   Message                 Code
                 throw new Error(message || result.label || '解析失败');
             }
             TableRegistry.setResult(result);
-            if (result.format !== 'empty' && result.tables.length) {
-                Store.lastSuccessfulFormat = result.format;  // remember for faster future parses
-            }
             CellEditController.setRawTables(result.tables);
             this.applyStoredCellEdits();
             this.updateImportSummary();
@@ -1036,7 +1079,6 @@ validflag Time      Level   Message                 Code
             if(generation!==this._parseGeneration || !this.matchesSourceContext(context,this.getSourceContext()))return false;
             TableRegistry.setResult({...result,background:true,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision});
             this.applyStoredCellEdits();
-            if(result.tables.length && result.format!=='empty')Store.lastSuccessfulFormat=result.format;
             this.updateImportSummary();
             dispatch('parse:completed',{docId:doc.id,sourceRevision:doc.sourceRevision,format:result.format,tables:result.tables,elapsed:Math.round(performance.now()-context.started)});
             if(render)this.requestRender();

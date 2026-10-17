@@ -166,7 +166,7 @@ const HtmlTableParser = {
             const dataName = /data-name\s*=\s*["']([^"']+)/i.exec(tableHtml);
             const name = TableUtils.makeTableName((dataName && dataName[1]) || (summary && summary[1]) || `HTML Table ${idx + 1}`, idx, used);
             const resolved = HeaderResolver.infer(matrix, { ...options, hasHeader: explicitHeader || undefined, tableName:name });
-            tables.push({ name, headers:resolved.headers, rows:resolved.rows, sourceType:this.id, meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders, headerConfidence:resolved.headerConfidence, headerReasons:resolved.headerReasons }, diagnostics:resolved.diagnostics });
+            tables.push({ name, headers:resolved.headers, rows:resolved.rows, sourceType:this.id, meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders, headerConfidence:resolved.headerConfidence, headerAmbiguous:resolved.headerAmbiguous, headerReasons:resolved.headerReasons }, diagnostics:resolved.diagnostics });
             diagnostics.push(...resolved.diagnostics);
         };
         if(typeof DOMParser !== 'undefined') {

@@ -507,6 +507,7 @@
         .diagnostic-list { display: flex; flex-direction: column; gap: 7px; }
         .diagnostic-item { padding: 9px 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-elevated); }
         .diagnostic-item strong { display: block; margin-bottom: 2px; }
+        .diagnostic-preview { max-height: 112px; margin: 7px 0 0; padding: 7px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-main); background: var(--bg-input); font: 10px/1.45 var(--font-mono); user-select: text; }
         .clipboard-source-meta { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-elevated); font-size: 12px; }
         .clipboard-type { display: inline-block; margin: 2px 4px 2px 0; padding: 2px 6px; border: 1px solid var(--border); border-radius: 999px; background: var(--bg-card); color: var(--text-mid); font: 10px var(--font-mono); }
         .clipboard-source-warning { margin-bottom: 12px; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--text-mid); font-size: 11px; }

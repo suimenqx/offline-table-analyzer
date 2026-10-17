@@ -1,4 +1,4 @@
-# Offline Table Analyzer — User Guide (v23.1.0)
+# Offline Table Analyzer — User Guide (v23.2.0)
 
 ## 1. Import data
 
@@ -46,9 +46,9 @@ The **Format** dropdown includes fourteen options:
 13. **Aligned fixed width** — delimiter-free aligned output whose column positions are inferred from the header row.
 14. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
 
-**When auto-detection is wrong:** Open the **Details** panel (beside the parse status indicator). It lists format candidates with confidence scores (e.g., "Excel/TSV — 87%"). Click any candidate to switch format and re-parse immediately.
+**When auto-detection needs help:** Open the **Details** panel (beside the parse status indicator). It lists format candidates with heuristic ranking references, which are not correctness probabilities. If the format, table region, or header is ambiguous, no guessed table is loaded; choose a candidate to re-parse the current source. Confirmation choices for detected headers and regions do not change the saved automatic settings.
 
-Automatic selection verifies bounded samples and expands them within a fixed budget. The final parser reads the complete source. Large unresolved ambiguity keeps the original and asks you to select a format in Details; no guessed workbook is produced.
+Automatic selection verifies bounded samples and expands them within a fixed budget. The final parser reads the complete source or identified table regions. Unresolved format, region, or header ambiguity keeps the original and asks you to choose in Details; no guessed workbook is produced.
 
 CLI `table-data` mode additionally auto-detects each data block's internal format (TSV, CSV, pipe, or fixed-width) based on the content of the `validflag` header row.
 

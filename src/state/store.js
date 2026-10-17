@@ -69,7 +69,6 @@ const Store = {
     migratedFrom: null,
     saveTimer: null,
     loadFailed: false,
-    lastSuccessfulFormat: null,  // session-only: last format that parsed successfully
     _listeners: null,  // Set of onChange callbacks; lazily initialised
     _notifyQueue: null, // pending events queued for batched async delivery
     _notifyTimer: null, // single batched async timer

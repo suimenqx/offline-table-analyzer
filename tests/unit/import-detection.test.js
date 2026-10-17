@@ -44,7 +44,7 @@ describe('bounded automatic detection',()=>{
     assert.equal(result.format,'ambiguous');assert.deepEqual(result.tables,[]);
     assert.ok(result.candidates.length>1);assert.ok(result.diagnostics.some(item=>item.code==='FORMAT_AMBIGUOUS'));
     assert.equal(ImportEngine.parse(text,{format:'csv'}).tables[0].rows.length,30000);
-    assert.equal(ImportEngine.parse(text,{lastSuccessfulFormat:'semicolon-csv'}).format,'semicolon-csv');
+    assert.equal(ImportEngine.parse(text,{lastSuccessfulFormat:'semicolon-csv'}).format,'ambiguous');
   });
 
   it('detects a large single-line data block using bounded structural evidence',()=>{
@@ -52,5 +52,105 @@ describe('bounded automatic detection',()=>{
     const text='data Records ['+Array(15000).fill('{id:1,name:"Alice"}').join(',')+']';
     const result=ImportEngine.parse(text);assert.equal(result.format,'data-block');assert.equal(result.tables[0].rows.length,15000);
     assert.equal(result.diagnostics.some(item=>item.code==='UNCLOSED_DATA_BLOCK'),false);
+  });
+
+  it('extracts exact rectangular CSV regions from mixed prose and preserves quoted multiline values',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const text=[
+      '库存报告 · 导出时间 10:30',
+      '筛选条件：状态=正常',
+      'id,name,note',
+      '001,Alice,"含逗号,和换行',
+      '第二行"',
+      '002,Bob,ok',
+      '共 2 条记录'
+    ].join('\n');
+    const result=ImportEngine.parse(text);
+    assert.equal(result.format,'csv');
+    assert.equal(result.tables.length,1);
+    assert.deepEqual(result.tables[0].headers,['id','name','note']);
+    assert.deepEqual(result.tables[0].rows,[['001','Alice','含逗号,和换行\n第二行'],['002','Bob','ok']]);
+    assert.equal(result.tables[0].meta.sourceRange.start,text.indexOf('id,name,note'));
+    assert.ok(result.diagnostics.some(item=>item.code==='TABLE_REGIONS_EXTRACTED'));
+  });
+
+  it('maps extracted region offsets back to original BOM and CRLF source positions',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const text='\uFEFF报告\r\nid,name\r\n001,Alice\r\n002,Bob';
+    const result=ImportEngine.parse(text);
+    assert.equal(result.format,'csv');
+    assert.equal(result.tables[0].meta.sourceRange.start,text.indexOf('id,name'));
+    assert.equal(result.tables[0].meta.sourceRange.end,text.length);
+  });
+
+  it('returns separate rectangular tables when mixed prose separates same-format regions',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const text='导出一\nid,name\n001,Alice\n第一段结束\n导出二\ncode,status\nX1,ok\nX2,hold\n';
+    const result=ImportEngine.parse(text);
+    assert.equal(result.format,'csv');
+    assert.equal(result.tables.length,2);
+    assert.deepEqual(result.tables.map(table=>table.headers),[['id','name'],['code','status']]);
+    assert.deepEqual(result.tables.map(table=>table.rows),[[['001','Alice']],[['X1','ok'],['X2','hold']]]);
+    assert.deepEqual(result.tables.map(table=>table.meta.sourceRange.start),[text.indexOf('id,name'),text.indexOf('code,status')]);
+  });
+
+  it('extracts fixed-width rows from surrounding prose when the parser is explicitly selected',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const text='设备巡检报告\n设备范围：机房 A\nid    name    status\n001   Alice   ok\n002   Bob     hold\n共 2 台设备';
+    const result=ImportEngine.parse(text,{format:'fixed-width'});
+    assert.equal(result.format,'fixed-width');
+    assert.deepEqual(result.tables[0].headers,['id','name','status']);
+    assert.deepEqual(result.tables[0].rows,[['001','Alice','ok'],['002','Bob','hold']]);
+    assert.equal(result.tables[0].meta.sourceRange.start,text.indexOf('id    name'));
+  });
+
+  it('uses aligned-table parsing on isolated aligned regions surrounded by prose',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const text='运行摘要\nID    Name     Status\n001   Alice    ok\n002   Bob      hold\n共 2 项';
+    const result=ImportEngine.parse(text,{format:'aligned-table'});
+    assert.equal(result.format,'aligned-table');
+    assert.deepEqual(result.tables[0].headers,['ID','Name','Status']);
+    assert.deepEqual(result.tables[0].rows,[['001','Alice','ok'],['002','Bob','hold']]);
+    assert.equal(result.tables[0].meta.sourceRange.start,text.indexOf('ID    Name'));
+  });
+
+  it('asks before accepting a delimited region with unstable row widths, then preserves overflow when confirmed',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const text='报告\nid,name\n1,Alice\nbad,too,many,fields\n2,Bob\n结束';
+    const result=ImportEngine.parse(text);
+    assert.equal(result.format,'ambiguous');
+    assert.deepEqual(result.tables,[]);
+    assert.equal(result.candidates[0].kind,'region-set');
+    assert.ok(result.candidates[0].preview.includes('bad,too,many,fields'));
+    assert.equal(Object.hasOwn(result.candidates[0],'score'),false);
+    const confirmed=ImportEngine.parse(text,{regionSelection:result.candidates[0].regionSelection});
+    assert.equal(confirmed.format,'csv');
+    assert.deepEqual(confirmed.tables[0].rows[1],['bad','too','many','fields']);
+    assert.ok(confirmed.diagnostics.some(item=>item.code==='ROW_WIDTH_MISMATCH'));
+  });
+
+  it('asks for format confirmation on a small delimiter tie even when a format was used previously',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const text='id,name;state\n1,Alice;ok';
+    const result=ImportEngine.parse(text,{lastSuccessfulFormat:'semicolon-csv'});
+    assert.equal(result.format,'ambiguous');
+    assert.deepEqual(result.tables,[]);
+    assert.ok(result.candidates.some(item=>item.id==='csv'));
+    assert.ok(result.candidates.some(item=>item.id==='semicolon-csv'));
+    assert.ok(result.diagnostics.some(item=>item.code==='FORMAT_AMBIGUOUS'));
+    assert.equal(ImportEngine.parse(text,{format:'csv'}).format,'csv');
+  });
+
+  it('asks whether an ambiguous first row is a header before returning a table',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const text='alpha,beta\none,two\nthree,four';
+    const result=ImportEngine.parse(text);
+    assert.equal(result.format,'ambiguous');
+    assert.deepEqual(result.tables,[]);
+    assert.deepEqual(result.candidates.filter(item=>item.kind==='header-mode').map(item=>item.headerMode),['first-row','none']);
+    const confirmed=ImportEngine.parse(text,{headerMode:'first-row'});
+    assert.equal(confirmed.format,'csv');
+    assert.deepEqual(confirmed.tables[0].headers,['alpha','beta']);
+    assert.deepEqual(confirmed.tables[0].rows,[['one','two'],['three','four']]);
   });
 });

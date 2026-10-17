@@ -235,6 +235,16 @@ describe('Excel export prepares the current source', () => {
     assert.ok(messages.some(message => message.includes('解析失败')));
   });
 
+  it('blocks workbook export until an ambiguous header interpretation is confirmed', async () => {
+    const ambiguous = 'alpha,beta\none,two\nthree,four';
+    replace(ambiguous);
+    await clickExport();
+    assert.equal(downloads.length, 0);
+    assert.equal(TableRegistry.getFormat(), 'ambiguous');
+    assert.ok(messages.some(message => message.includes('请先在解析详情中确认')));
+    assert.equal(Store.getDocument().raw, ambiguous);
+  });
+
   it('reports empty source without generating a workbook', async () => {
     replace(''); await clickExport();
     assert.equal(downloads.length, 0); assert.ok(messages.some(message => message.includes('无数据可导出')));

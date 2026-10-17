@@ -2,7 +2,7 @@
 
 Offline Table Analyzer 是一个隐私优先、完全离线的表格整理与分析工作台。它以单个 `index.html` 交付，可直接处理从终端、网页、Excel、Markdown 和日志中复制出来的杂乱表格，不上传数据、不需要账号，也没有运行时依赖。
 
-当前版本：**23.1.0**
+当前版本：**23.2.0**
 
 [十万行性能实测与恢复验收](docs/planning/large-data-23.1-results.md)由桌面 Chromium CI 自动执行，开发可以继续使用 Termux 手机。
 

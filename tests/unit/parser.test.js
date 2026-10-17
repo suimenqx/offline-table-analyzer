@@ -246,10 +246,12 @@ describe('Header resolution', () => {
     assert.equal(firstTable(r).rows.length, 2);
   });
 
-  it('treats ambiguous string-first rows as data, not headers', () => {
+  it('asks before deciding ambiguous string-first rows are headers or data', () => {
     const r = parse('Alice,NY\nBob,LA');
-    assert.equal(firstTable(r).headers[0], 'Column1');
-    assert.equal(firstTable(r).rows.length, 2);
+    assert.equal(r.format, 'ambiguous');
+    assert.deepEqual(r.tables, []);
+    assert.ok(r.candidates.some(item => item.kind === 'header-mode' && item.headerMode === 'first-row'));
+    assert.ok(r.candidates.some(item => item.kind === 'header-mode' && item.headerMode === 'none'));
   });
 
   it('normalizes duplicate and blank headers', () => {
@@ -263,10 +265,14 @@ describe('Header resolution', () => {
     assert.equal(firstTable(r).rows[0][0], 'id');
   });
 
-  it('handles row width mismatch with overflow', () => {
-    const r = parse('id,name,age\n1,Alice,20\n2,Bob\n3,Cindy,25,extra');
+  it('asks before accepting irregular rows, then preserves overflow values', () => {
+    const input='id,name,age\n1,Alice,20\n2,Bob\n3,Cindy,25,extra';
+    const unresolved=parse(input);
+    assert.equal(unresolved.format,'ambiguous');
+    assert.deepEqual(unresolved.tables,[]);
+    const r=parse(input,{regionSelection:unresolved.candidates[0].regionSelection});
     assert.equal(firstTable(r).rows[2][3], 'extra');
-    assert.ok(r.diagnostics.length > 0);
+    assert.ok(r.diagnostics.some(d=>d.code==='ROW_WIDTH_MISMATCH'));
   });
 });
 
@@ -287,14 +293,16 @@ describe('Pipe table (Markdown) parser', () => {
 
   it('is not confused by horizontal rules with pipe text', () => {
     const r = parse('| a | b |\n| 1 | 2 |\n---\ntext');
-    assert.equal(r.format, 'pipe-table');
-    assert.equal(firstTable(r).rows[0][0], '1');
+    assert.equal(r.format, 'ambiguous');
+    assert.deepEqual(r.tables, []);
+    assert.ok(r.candidates.some(item => item.id === 'pipe-table'));
   });
 
   it('falls back to plain text for horizontal rule prose', () => {
     const r = parse('Title\n---\nparagraph text');
-    assert.equal(r.format, 'plain-text');
-    assert.equal(r.tables.length, 1);
+    assert.equal(r.format, 'ambiguous');
+    assert.deepEqual(r.tables, []);
+    assert.ok(r.candidates.some(item => item.id === 'plain-text'));
   });
 });
 
@@ -788,10 +796,11 @@ describe('Automatic format precedence', () => {
     for(const [input, format] of cases) assert.equal(parse(input, { lastSuccessfulFormat:'csv' }).format, format);
   });
 
-  it('keeps a remembered delimiter when two formats are genuinely ambiguous', () => {
+  it('requires confirmation when two delimiters remain genuinely ambiguous', () => {
     const input = 'id,name;state\n1,Alice;ok';
-    assert.equal(parse(input).format, 'csv');
-    assert.equal(parse(input, { lastSuccessfulFormat:'semicolon-csv' }).format, 'semicolon-csv');
+    assert.equal(parse(input).format, 'ambiguous');
+    assert.equal(parse(input, { lastSuccessfulFormat:'semicolon-csv' }).format, 'ambiguous');
+    assert.equal(parse(input, { format:'semicolon-csv' }).format, 'semicolon-csv');
   });
 });
 

@@ -13,7 +13,7 @@ const TableRegistry = {
     /** @type {Object[]} raw parsed tables */
     _raw: [],
     _pageCells:new Map(),
-    /** @type {string} last successful format id */
+    /** @type {string} format id from the last parse result */
     _format: 'empty',
     /** @type {string} human-readable format label */
     _label: '',

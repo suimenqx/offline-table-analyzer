@@ -334,7 +334,7 @@ function parseTable(values, name, options) {
             headers:resolved.headers,
             rows:resolved.rows,
             sourceType:'json',
-            meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders, headerConfidence:resolved.headerConfidence, headerReasons:resolved.headerReasons },
+            meta:{ hasHeader:resolved.hasHeader, generatedHeaders:resolved.generatedHeaders, headerConfidence:resolved.headerConfidence, headerAmbiguous:resolved.headerAmbiguous, headerReasons:resolved.headerReasons },
             diagnostics:resolved.diagnostics
         };
     }

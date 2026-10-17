@@ -1,6 +1,6 @@
 # Requirements and Scope
 
-The current workspace schema is `21`; application release **23.1.0**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
+The current workspace schema is `21`; application release **23.2.0**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
 
 ## 1. Product definition
 
@@ -78,7 +78,7 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Schema version `21`, application version `23.1.0`.
+- Schema version `21`, application version `23.2.0`.
 - Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
 - Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
 - Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.
@@ -96,8 +96,8 @@ The defining constraints are:
 - Rows shorter than the max column width are padded with empty strings rather than truncated.
 - Overflow cells (longer than headers) are preserved and flagged via a `ROW_WIDTH_MISMATCH` diagnostic.
 - The CLI parser expands headers when rows contain extra columns (the `validflag` line determines the header set).
-- Parser diagnostics and format candidates (with confidence scores) are returned through the public `ImportEngine.parse()` result.
-- `ImportEngine.detect()` validates bounded record-aware samples before `parse()` calls the selected full-source adapter. Sampling expands through 16,384/65,536/262,144 UTF-16 code units and 64/256/512 records, with at most six fingerprint candidates per round (bounded adapter fallback if none is usable). Sample-cut rows never distort separator consistency. Unresolved ambiguity above the maximum sample size produces an `ambiguous` result with no guessed table; explicit/manual or compatible remembered choices resolve it.
+- Parser diagnostics and format candidates (with heuristic ranking references, not calibrated confidence scores) are returned through the public `ImportEngine.parse()` result.
+- `ImportEngine.detect()` validates bounded record-aware samples before parsing selected source regions. Sampling expands through 16,384/65,536/262,144 UTF-16 code units and 64/256/512 records, with at most six fingerprint candidates per round (bounded adapter fallback if none is usable). Sample-cut rows never distort separator consistency. Close or weak format evidence, unstable candidate-region widths, and low-confidence automatic headers return `ambiguous` with no guessed table; explicit format/header/region choice resolves it. The last successful format cannot silently resolve ambiguity. Delimited and fixed-width regions retain source offsets; confirmed overflow values remain intact.
 - Complete diagnostics stay in Worker; Window displays at most 200 details and their full count. Source records and Excel rows are never capped by this diagnostic display limit.
 - Diagnostics are visible via a "Details" button and include format candidates with one-click correction to switch parsers.
 
@@ -172,7 +172,7 @@ The defining constraints are:
 ### Import and parsing
 - File selection via button and drag/drop import with automatic format detection from file extension.
 - Thirteen parsers: CLI table-data, Data-Block, HTML, JSON, CLI multi-block, ASCII, Markdown/pipe, Excel-paste (TSV), CSV, semicolon-CSV, fixed-width, aligned fixed-width, plain text.
-- Format candidates returned with confidence scores; one-click format switching via the "Details" diagnostic dialog.
+- Format candidates returned with heuristic ranking references; one-click format switching via the "Details" diagnostic dialog.
 - Parse-time Toast notification when parsing exceeds 800 ms.
 - `ROW_WIDTH_MISMATCH` diagnostics for mismatched rows (overflow preserved, short rows padded).
 - CLI parser header expansion when rows have more columns than headers.

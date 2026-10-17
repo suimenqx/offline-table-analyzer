@@ -14,6 +14,7 @@ const HeaderResolver = {
         const forced = options.headerMode || 'auto';
         if(!clean.length || !width) return { headers:[], rows:[], hasHeader:false, generatedHeaders:true, diagnostics:[] };
         let hasHeader = false;
+        const explicitDecision = forced !== 'auto' || options.hasHeader === true || options.hasHeader === false;
         if(forced === 'first-row') hasHeader = true;
         else if(forced === 'none') hasHeader = false;
         else if(options.hasHeader === true) hasHeader = true;
@@ -34,12 +35,14 @@ const HeaderResolver = {
             body = clean;
         }
         const rowsOut = TableUtils.normalizeRows(body, headers.length, diagnostics, options.tableName || 'Table',{normalized:owned});
+        const headerConfidence = hasHeader ? headerAnalysis.score : Math.max(0, 1 - headerAnalysis.score);
         return {
             headers,
             rows:rowsOut,
             hasHeader,
             generatedHeaders:!hasHeader,
-            headerConfidence: hasHeader ? headerAnalysis.score : Math.max(0, 1 - headerAnalysis.score),
+            headerConfidence,
+            headerAmbiguous:!explicitDecision && headerConfidence < 0.65,
             headerReasons: headerAnalysis.reasons,
             diagnostics
         };

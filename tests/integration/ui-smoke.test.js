@@ -86,7 +86,7 @@ describe('App bootstrap', () => {
     }
   });
 
-  it('routes structured parser errors through App and preserves the last successful format', () => {
+  it('routes structured parser errors through App without replacing recoverable workspace state', () => {
     setupDOM();
     const { App } = OTA.require('app');
     const { Store } = OTA.require('store');
@@ -98,7 +98,6 @@ describe('App bootstrap', () => {
     targetSelect.add = option => targetSelect.options.push(option);
     Store.state.docs = [{ id: 'a', title: 'First', raw: '', ui: {} }];
     Store.state.activeId = 'a';
-    Store.lastSuccessfulFormat = 'csv';
 
     const previousParse = ImportEngine.parse;
     const previousToast = Toast.show;
@@ -111,7 +110,6 @@ describe('App bootstrap', () => {
       document.getElementById('rawInput').value = 'broken input';
       App.run(false);
       assert.equal(TableRegistry.getFormat(), 'error');
-      assert.equal(Store.lastSuccessfulFormat, 'csv');
       assert.equal(Store.curr().lastParse.format, 'error');
       assert.deepEqual(shown, ['解析失败：invalid source']);
     } finally {
@@ -121,15 +119,105 @@ describe('App bootstrap', () => {
     }
   });
 
-  it('passes the remembered successful format to the parser', () => {
+  it('does not pass a remembered format that could silently resolve ambiguity', () => {
     setupDOM();
     const { App } = OTA.require('app');
     const { Store } = OTA.require('store');
     Store.state.docs = [{ id: 'a', title: 'First', raw: '', ui: {} }];
     Store.state.activeId = 'a';
-    Store.lastSuccessfulFormat = 'csv';
+    assert.equal(Object.hasOwn(App.getParseOptions(),'lastSuccessfulFormat'), false);
+  });
 
-    assert.equal(App.getParseOptions().lastSuccessfulFormat, 'csv');
+  it('lets the user resolve an ambiguous header from parse details before tables are loaded', () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { Store } = OTA.require('store');
+    const { TableRegistry } = OTA.require('table-registry');
+    const text = 'alpha,beta\none,two\nthree,four';
+    Store.state.docs = [{ id:'header-confirm', title:'Header confirmation', raw:'', ui:{} }];
+    Store.state.activeId = 'header-confirm';
+    document.getElementById('rawInput').value = text;
+    const target = document.getElementById('targetTableSelect');
+    target.options = [];
+    target.add = option => target.options.push(option);
+
+    const previousModal = App.modal;
+    const previousClose = App.closeModal;
+    const previousQuerySelectorAll = document.querySelectorAll;
+    const previousOption = globalThis.Option;
+    const buttons = [];
+    App.modal = () => {};
+    App.closeModal = () => {};
+    globalThis.Option = function(text,value){ return {text,value}; };
+    document.querySelectorAll = selector => selector === '.diagnostic-candidate-btn' ? buttons : previousQuerySelectorAll(selector);
+    try {
+      assert.equal(App.run(false), true);
+      assert.equal(TableRegistry.getFormat(), 'ambiguous');
+      assert.equal(TableRegistry.getRaw().length, 0);
+      const candidate = TableRegistry.getLastResult().candidates[0];
+      buttons.push({ dataset:{ candidateIndex:'0' }, onclick:null });
+      App.showDiagnostics();
+      buttons[0].onclick();
+      assert.equal(Store.curr().ui.importHeaderMode, 'auto');
+      assert.equal(App.getParseOptions().headerMode, 'first-row');
+      assert.equal(TableRegistry.getFormat(), 'csv');
+      assert.deepEqual(TableRegistry.getRaw()[0].headers, ['alpha','beta']);
+      assert.deepEqual(TableRegistry.getRaw()[0].rows, [['one','two'],['three','four']]);
+      assert.ok(candidate.reason.includes('首行'));
+      document.getElementById('rawInput').value = `${text}\nnew input`;
+      assert.equal(App.getParseOptions().headerMode, 'auto');
+    } finally {
+      App.modal = previousModal;
+      App.closeModal = previousClose;
+      document.querySelectorAll = previousQuerySelectorAll;
+      if(previousOption===undefined)delete globalThis.Option;else globalThis.Option=previousOption;
+    }
+  });
+
+  it('lets the user confirm an irregular mixed-text region and preserves overflow cells', () => {
+    setupDOM();
+    const { App } = OTA.require('app');
+    const { Store } = OTA.require('store');
+    const { TableRegistry } = OTA.require('table-registry');
+    const text = '报告\nid,name\n1,Alice\nbad,<b>too</b>,many,fields\n2,Bob\n结束';
+    Store.state.docs = [{ id:'region-confirm', title:'Region confirmation', raw:'', ui:{} }];
+    Store.state.activeId = 'region-confirm';
+    document.getElementById('rawInput').value = text;
+    const target = document.getElementById('targetTableSelect');
+    target.options = [];
+    target.add = option => target.options.push(option);
+
+    const previousModal = App.modal;
+    const previousClose = App.closeModal;
+    const previousQuerySelectorAll = document.querySelectorAll;
+    const previousOption = globalThis.Option;
+    const buttons = [];
+    let modalContent='';
+    App.modal = (title,content) => { modalContent=content; };
+    App.closeModal = () => {};
+    globalThis.Option = function(text,value){ return {text,value}; };
+    document.querySelectorAll = selector => selector === '.diagnostic-candidate-btn' ? buttons : previousQuerySelectorAll(selector);
+    try {
+      assert.equal(App.run(false), true);
+      assert.equal(TableRegistry.getFormat(), 'ambiguous');
+      assert.equal(TableRegistry.getLastResult().candidates[0].kind, 'region-set');
+      buttons.push({ dataset:{ candidateIndex:'0' }, onclick:null });
+      App.showDiagnostics();
+      assert.ok(modalContent.includes('&lt;b&gt;too&lt;/b&gt;'));
+      assert.equal(modalContent.includes('<b>too</b>'), false);
+      buttons[0].onclick();
+      assert.equal(TableRegistry.getFormat(), 'csv');
+      assert.deepEqual(TableRegistry.getRaw()[0].rows[1], ['bad','<b>too</b>','many','fields']);
+      assert.ok(TableRegistry.getLastResult().diagnostics.some(item => item.code === 'ROW_WIDTH_MISMATCH'));
+      assert.equal(Object.hasOwn(Store.curr().ui,'regionSelection'), false);
+      document.getElementById('rawInput').value = `${text}\nnew source`;
+      assert.equal(App.getParseOptions().regionSelection, null);
+    } finally {
+      App.modal = previousModal;
+      App.closeModal = previousClose;
+      document.querySelectorAll = previousQuerySelectorAll;
+      if(previousOption===undefined)delete globalThis.Option;else globalThis.Option=previousOption;
+    }
   });
 
   it('builds preview results from QueryService without routing through export internals', () => {

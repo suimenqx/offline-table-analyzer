@@ -2,7 +2,7 @@
 
 Offline Table Analyzer is a privacy-first table workbench that runs entirely in one HTML file. Paste or drop messy tabular data, inspect and filter it, build JOIN views, copy a selected range, and export clean Excel files—without uploading data or installing an application.
 
-Version: **23.1.0**
+Version: **23.2.0**
 
 [100,000-row performance results and recovery checks](docs/planning/large-data-23.1-results.md) are measured automatically in desktop Chromium CI; development can remain on a Termux phone.
 
