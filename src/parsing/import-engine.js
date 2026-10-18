@@ -4,9 +4,20 @@ const REGION_DELIMITERS=new Map([['csv',','],['semicolon-csv',';'],['excel-paste
 const REGION_FORMATS=new Set([...REGION_DELIMITERS.keys(),'fixed-width','aligned-table']);
 const MAX_TABLE_REGIONS=128;
 
-function findDelimitedRegions(text='',delimiter=',') {
+// Detection scoring weights. The sniff fingerprint is the strongest signal;
+// parse quality and table shape confirm it. Region evidence applies only when
+// the whole sample is rectangular, so its contribution is capped far below
+// the ambiguity gap. All values are ranking heuristics, not probabilities.
+const SCORE_WEIGHTS={sniff:0.72,quality:0.18,region:0.4};
+const SHAPE_EVIDENCE={perLog2Width:0.025,max:0.3};
+const REGION_EVIDENCE={perRegion:0.025,max:0.08};
+
+// One structural run of records sharing a delimiter-derived width becomes one
+// candidate region. Delimited and fixed-width scanners only differ in how each
+// record's width is read; both share this run collector.
+function createRegionCollector() {
     const regions=[];
-    let run=null, recordStart=text.charCodeAt(0)===0xFEFF?1:0, delimiters=0, quoted=false, overBudget=false;
+    let run=null, overBudget=false;
     const finishRun=()=>{
         if(run && run.rowCount>=2 && run.widthCounts.size) {
             let width=0, support=0;
@@ -18,14 +29,24 @@ function findDelimitedRegions(text='',delimiter=',') {
         }
         run=null;
     };
-    const finishRecord=(end,nextStart)=>{
-        const value=text.slice(recordStart,end);
-        if(value.trim() && delimiters>0) {
-            const width=delimiters+1;
-            if(!run) run={start:recordStart,end,rowCount:0,widthCounts:new Map()};
+    return {
+        accept(start,end,width) {
+            if(!run)run={start,end,rowCount:0,widthCounts:new Map()};
             run.end=end;run.rowCount++;
             run.widthCounts.set(width,(run.widthCounts.get(width)||0)+1);
-        } else finishRun();
+        },
+        skip:finishRun,
+        finish() { finishRun(); return {regions,overBudget}; }
+    };
+}
+
+function findDelimitedRegions(text='',delimiter=',') {
+    const collector=createRegionCollector();
+    let recordStart=text.charCodeAt(0)===0xFEFF?1:0, delimiters=0, quoted=false;
+    const finishRecord=(end,nextStart)=>{
+        const value=text.slice(recordStart,end);
+        if(value.trim() && delimiters>0) collector.accept(recordStart,end,delimiters+1);
+        else collector.skip();
         recordStart=nextStart;delimiters=0;
     };
     for(let i=recordStart;i<text.length;i++) {
@@ -44,38 +65,23 @@ function findDelimitedRegions(text='',delimiter=',') {
         } else if(ch==='\n' && !quoted) finishRecord(i,i+1);
     }
     if(recordStart<text.length)finishRecord(text.length,text.length);
-    finishRun();
-    return {regions,overBudget};
+    return collector.finish();
 }
 
 function findFixedWidthRegions(text='') {
-    const regions=[];
-    let run=null, lineStart=0, overBudget=false;
-    const finishRun=()=>{
-        if(run && run.rowCount>=2 && run.widthCounts.size) {
-            let width=0, support=0;
-            for(const [candidate,count] of run.widthCounts)if(count>support){width=candidate;support=count;}
-            if(width>=2) {
-                if(regions.length<MAX_TABLE_REGIONS)regions.push({start:run.start,end:run.end,rowCount:run.rowCount,width,support,rectangular:run.widthCounts.size===1,coverage:support/run.rowCount});
-                else overBudget=true;
-            }
-        }
-        run=null;
-    };
+    const collector=createRegionCollector();
+    let lineStart=0;
     const finishLine=(end,nextStart)=>{
         const value=text.slice(lineStart,end);
         const trimmed=value.trim();
         const width=trimmed ? trimmed.split(/\s{2,}/).length : 0;
-        if(width>=2) {
-            if(!run)run={start:lineStart,end,rowCount:0,widthCounts:new Map()};
-            run.end=end;run.rowCount++;run.widthCounts.set(width,(run.widthCounts.get(width)||0)+1);
-        } else finishRun();
+        if(width>=2) collector.accept(lineStart,end,width);
+        else collector.skip();
         lineStart=nextStart;
     };
     for(let i=0;i<text.length;i++)if(text[i]==='\n')finishLine(i,i+1);
     if(lineStart<text.length)finishLine(text.length,text.length);
-    finishRun();
-    return {regions,overBudget};
+    return collector.finish();
 }
 
 function findParserRegions(text,parserId) {
@@ -244,9 +250,9 @@ const ImportEngine = {
                     const quality=this.parseQuality(parsed);
                     if(!parsed.tables?.length || !quality)return;
                     const width=parsed.tables.reduce((max,table)=>Math.max(max,table.headers.length),0);
-                    const regionEvidence=regions.length && regions.every(region=>region.rectangular)?Math.min(0.08,regions.length*0.025):0;
-                    const shapeEvidence=Math.min(0.3,Math.log2(Math.max(1,width))*0.025);
-                    const score=Math.min(1,c.score*0.72+quality*0.18+shapeEvidence+regionEvidence*0.4);
+                    const regionEvidence=regions.length && regions.every(region=>region.rectangular)?Math.min(REGION_EVIDENCE.max,regions.length*REGION_EVIDENCE.perRegion):0;
+                    const shapeEvidence=Math.min(SHAPE_EVIDENCE.max,Math.log2(Math.max(1,width))*SHAPE_EVIDENCE.perLog2Width);
+                    const score=Math.min(1,c.score*SCORE_WEIGHTS.sniff+quality*SCORE_WEIGHTS.quality+shapeEvidence+regionEvidence*SCORE_WEIGHTS.region);
                     // Retain evidence only; candidate tables can be collected now.
                     evaluations.push({parser,score,quality,structural:c.structural,reason:c.reason,regions});
                 } catch (_) { /* An incompatible bounded probe is not a source failure. */ }
@@ -256,7 +262,14 @@ const ImportEngine = {
             evaluations.sort((a,b)=>b.score-a.score);
             const structure=evaluations.find(item=>item.structural && item.quality>=0.2);
             if(structure){evaluations=[structure,...evaluations.filter(item=>item!==structure)];break;}
-            if(!sample.truncated || (evaluations.length && (evaluations.length===1 || evaluations[0].score-evaluations[1].score>=0.12)))break;
+            if(!sample.truncated || (evaluations.length && (evaluations.length===1 || evaluations[0].score-evaluations[1].score>=0.12))){
+                // A truncated prose sample can hide delimited or fixed-width
+                // table regions later in the source. When the prose fallback
+                // wins confidently, keep expanding within the sampling budget
+                // instead of settling before the table is ever seen.
+                if(sample.truncated && evaluations[0]?.parser.id==='plain-text')continue;
+                break;
+            }
         }
         const scoreGap=evaluations.length>1?evaluations[0].score-evaluations[1].score:Infinity;
         const lowScore=Boolean(evaluations[0] && !evaluations[0].structural && evaluations[0].score<0.55);

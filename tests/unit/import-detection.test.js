@@ -141,6 +141,23 @@ describe('bounded automatic detection',()=>{
     assert.equal(ImportEngine.parse(text,{format:'csv'}).format,'csv');
   });
 
+  it('expands past a confident prose sample to find a later table region with full-source offsets',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    // The first 64-record sampling round sees only prose and settles on
+    // plain-text; expansion must keep looking so the CSV region and its
+    // original source offsets survive detection and full-source parsing.
+    const padding=Array.from({length:70},(_,i)=>'no delimiters in this padding line '+i).join('\n');
+    const table=['id,name',...Array.from({length:20},(_,i)=>'0'+(i+1)+',Row'+(i+1))].join('\n');
+    const text=`${padding}\n${table}\n共 20 条记录`;
+    const result=ImportEngine.parse(text);
+    assert.equal(result.format,'csv');
+    assert.equal(result.tables.length,1);
+    assert.deepEqual(result.tables[0].headers,['id','name']);
+    assert.equal(result.tables[0].rows.length,20);
+    assert.equal(result.tables[0].meta.sourceRange.start,text.indexOf('id,name'));
+    assert.ok(result.diagnostics.some(item=>item.code==='TABLE_REGIONS_EXTRACTED'));
+  });
+
   it('asks whether an ambiguous first row is a header before returning a table',()=>{
     const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
     const text='alpha,beta\none,two\nthree,four';

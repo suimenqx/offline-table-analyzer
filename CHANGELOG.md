@@ -4,6 +4,9 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## Unreleased
 
+- Keep expanding the bounded detection sample when a truncated sample's confident winner is the plain-text fallback, so a table region after a long prose prefix is still found with original source offsets.
+- Extract the shared region-run collector used by delimited and fixed-width region scans and name the detection scoring weights; no behavior change beyond the sampling expansion.
+
 - Name original-source downloads as `<analysis-title>_source_<YYYYMMDD_HHMMSS>.txt`, sharing the full Excel export's timestamp and safe filename conventions while preserving the complete source text.
 
 ## 23.2.0 — 2026-10-17
