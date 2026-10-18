@@ -6,6 +6,7 @@ All notable changes are documented here. The project follows semantic versioning
 
 - Keep expanding the bounded detection sample when a truncated sample's confident winner is the plain-text fallback, so a table region after a long prose prefix is still found with original source offsets.
 - Extract the shared region-run collector used by delimited and fixed-width region scans and name the detection scoring weights; no behavior change beyond the sampling expansion.
+- Add a synthetic region-extraction evaluation tool (`npm run eval:regions`) reporting region recall, boundary accuracy, cell precision, silent mis-split, confirmation rate, and runtime budget; it fails on regressions against the designed behavior encoded in its fixtures.
 
 - Name original-source downloads as `<analysis-title>_source_<YYYYMMDD_HHMMSS>.txt`, sharing the full Excel export's timestamp and safe filename conventions while preserving the complete source text.
 
