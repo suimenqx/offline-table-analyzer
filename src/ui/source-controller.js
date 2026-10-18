@@ -37,7 +37,7 @@ const SourceController = {
         const notice = $('sourcePreviewNotice');
         if (notice) {
             notice.hidden = !large;
-            notice.textContent = large ? `完整原文 ${formatBytes(text.length * 2)} 已保留。这里只显示有限预览；粘贴会替换原文，可导出原文备份。` : '';
+            notice.textContent = large ? `完整原文 ${formatBytes(text.length * 2)} 已保留，此处仅预览。需要修改时，请在本地编辑器中完成后再粘贴替换，或导出原文备份。` : '';
         }
     },
 

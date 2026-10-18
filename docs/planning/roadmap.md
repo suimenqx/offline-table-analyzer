@@ -33,3 +33,5 @@ Virtual scrolling, Arrow/SQL, external-memory query execution and streaming XLSX
 ## Out of scope
 
 Accounts, remote synchronization, telemetry, server databases, and cloud connectors conflict with the default offline/private product model and are not planned for the core release.
+
+In-page editing of large pasted source text is not planned: users browse and edit data in their own local editor (e.g. Notepad++) before pasting; the product imports, parses, browses, and analyzes. The bounded read-only preview for large sources stays, and small-text editing plus page-scoped cell corrections remain supported.
