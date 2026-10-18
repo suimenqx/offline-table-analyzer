@@ -94,6 +94,9 @@ const App = {
                     this.renderCards();
                     this.requestRender();
                     break;
+                case 'card:removed':
+                    if(payload && payload.id) BackgroundService.removeCard(payload.id);
+                    break;
                 case 'card:activated':
                     this.renderCards();
                     this.loadDoc();
