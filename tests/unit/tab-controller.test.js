@@ -24,13 +24,17 @@ beforeEach(() => {
 
   Store.state = {
     docs: [
-      { id: 'a', title: 'Analysis 1', raw: '', ui: {} },
-      { id: 'b', title: 'Analysis 2', raw: '', ui: {} },
-      { id: 'c', title: 'Analysis 3', raw: '', ui: {} },
+      { id: 'a', title: 'Analysis 1', raw: '', visible: true, ui: {} },
+      { id: 'b', title: 'Analysis 2', raw: '', visible: true, ui: {} },
+      { id: 'c', title: 'Analysis 3', raw: '', visible: true, ui: {} },
     ],
-    activeId: 'b',
+    projects: [
+      { id: 'a', title: 'Analysis 1', cardIds: ['a'], activeCardId: 'a', enabledViews: [], views: [] },
+      { id: 'b', title: 'Analysis 2', cardIds: ['b'], activeCardId: 'b', enabledViews: [], views: [] },
+      { id: 'c', title: 'Analysis 3', cardIds: ['c'], activeCardId: 'c', enabledViews: [], views: [] },
+    ],
+    activeProjectId: 'b',
     theme: 'light',
-    globalViews: [],
     nextAnalysisSeq: 4,
     copyFormat: 'default',
     spreadsheetSafe: true,
@@ -62,13 +66,15 @@ describe('TabController — render', () => {
     assert.ok(container.innerHTML.includes('aria-selected="true"'));
   });
 
-  it('normalizes docs on render', () => {
-    // Add a doc with missing fields
+  it('builds 1:1 projects for legacy doc-shaped state (ensureProjects)', () => {
     Store.state.docs.push({ id: 'd', title: 'Raw', raw: undefined, ui: null });
-    TabController.render();
-    const doc = Store.state.docs[3];
-    assert.equal(typeof doc.ui, 'object');
-    assert.equal(doc.raw, '');
+    Store.state.projects = [];
+    Store.state.activeId = 'b';
+    Store.ensureProjects();
+    const project = Store.getProject('d');
+    assert.equal(typeof project, 'object');
+    assert.deepEqual(project.cardIds, ['d']);
+    assert.equal(Store.state.activeProjectId, 'b');
   });
 });
 
@@ -106,7 +112,7 @@ describe('TabController — canonical mutations', () => {
       const result = TabController.remove('b');
       assert.equal(result, true);
       assert.equal(Store.state.docs.map(doc => doc.id).join(''), 'ac');
-      assert.equal(Store.state.activeId, 'a');
+      assert.equal(Store.state.activeProjectId, 'a');
     } finally {
       if (previousConfirm === undefined) delete globalThis.confirm;
       else globalThis.confirm = previousConfirm;
@@ -117,9 +123,11 @@ describe('TabController — canonical mutations', () => {
     const previousConfirm = globalThis.confirm;
     globalThis.confirm = () => true;
     try {
-      Store.state.docs = [{ id: 'only', title: 'Only', raw: '', ui: {} }];
+      Store.state.docs = [{ id: 'only', title: 'Only', raw: '', visible: true, ui: {} }];
+      Store.state.projects = [{ id: 'only', title: 'Only', cardIds: ['only'], activeCardId: 'only', enabledViews: [], views: [] }];
+      Store.state.activeProjectId = 'only';
       Store.state.activeId = 'only';
-      assert.equal(TabController.remove('only'), 'last_doc');
+      assert.equal(TabController.remove('only'), 'last_project');
       assert.equal(Store.state.docs.length, 1);
     } finally {
       if (previousConfirm === undefined) delete globalThis.confirm;

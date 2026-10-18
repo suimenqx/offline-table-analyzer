@@ -1,7 +1,7 @@
 OTA.define('store', ['background-service'], ({BackgroundService}) => {
 /* Core */
 const APP_VERSION = '__OTA_APP_VERSION__';
-const WORKSPACE_SCHEMA_VERSION = 21;
+const WORKSPACE_SCHEMA_VERSION = 22;
 const STORE_KEY = 'ota_v21_workspace';
 const LEGACY_STORE_KEYS = ['ota_v20_workspace','v16_4_store'];
 const MAX_IMPORT_BYTES = 128 * 1024 * 1024;
@@ -36,6 +36,27 @@ const MIGRATIONS = Object.freeze({
     18(payload) { return Object.assign({}, payload, { schemaVersion:19 }); },
     19(payload) { return Object.assign({}, payload, { schemaVersion:20 }); },
     20(payload) { return Object.assign({}, payload, {schemaVersion:21}); },
+    21(payload) {
+        // 21 → 22：页签（文档）1:1 升级为工程 + 卡片；view 上移工程级。
+        // 每个旧文档成为一个工程（同 id、同标题），其中一张同名卡片；
+        // 每卡 enabledViews 合并上移为工程的启用列表；globalViews 复制为每工程的 views。
+        const next = Object.assign({}, payload);
+        const docs = Array.isArray(next.docs) ? next.docs.filter(d => d && typeof d === 'object') : [];
+        next.projects = docs.map(doc => ({
+            id: doc.id,
+            title: typeof doc.title === 'string' ? doc.title : 'Analysis',
+            cardIds: [doc.id],
+            activeCardId: doc.id,
+            enabledViews: Array.isArray(doc.ui && doc.ui.enabledViews) ? doc.ui.enabledViews.slice() : [],
+            views: Array.isArray(next.globalViews) ? next.globalViews.slice() : [],
+        }));
+        next.docs = docs.map(doc => Object.assign({}, doc, { visible:true }));
+        next.activeProjectId = next.projects.some(p => p.id === next.activeId)
+            ? next.activeId
+            : (next.projects[0] && next.projects[0].id);
+        delete next.globalViews;
+        return Object.assign({}, next, { schemaVersion:22 });
+    },
 });
 
 function migrateWorkspacePayload(payload) {
@@ -60,7 +81,7 @@ function migrateWorkspacePayload(payload) {
 }
 
 const Store = {
-    state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, docs:[], activeId:null, theme:'light', globalViews:[], nextAnalysisSeq:1, copyFormat:'default', copyWithHeaders:true, spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
+    state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, projects:[], docs:[], activeProjectId:null, theme:'light', nextAnalysisSeq:1, copyFormat:'default', copyWithHeaders:true, spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
     revision: 0,
     viewRevision: 0,
     queryRevision: 0,
@@ -79,11 +100,59 @@ const Store = {
     _storageTouched:false,
     _rawSnapshot:null,
     getState() { return this.state; },
-    getDocument(id=this.state.activeId) {
-        return (this.state.docs || []).find(doc => doc.id === id) || null;
+    /** 当前选中卡片（v22 起文档升级为工程+卡片，docs 数组即卡片列表） */
+    getCard(id) {
+        if(!id) return this.curr();
+        return (this.state.docs || []).find(card => card.id === id) || null;
     },
+    /** 兼容旧形状：手设 docs/activeId 而无 projects 时，按 1:1 惰性构建工程（迁移语义的运行时兜底） */
+    ensureProjects() {
+        if(!Array.isArray(this.state.projects)) this.state.projects = [];
+        if(!Array.isArray(this.state.docs)) this.state.docs = [];
+        for(const project of this.state.projects) {
+            if(!Array.isArray(project.cardIds)) project.cardIds = [];
+            project.cardIds = project.cardIds.filter(id => this.state.docs.some(d => d.id === id));
+            if(!project.cardIds.includes(project.activeCardId)) project.activeCardId = project.cardIds[0] || null;
+            if(!Array.isArray(project.enabledViews)) project.enabledViews = [];
+            if(!Array.isArray(project.views)) project.views = [];
+        }
+        for(const doc of this.state.docs) {
+            if(this.state.projects.some(p => p.cardIds.includes(doc.id))) continue;
+            this.state.projects.push({ id:doc.id, title:doc.title || 'Analysis', cardIds:[doc.id], activeCardId:doc.id,
+                enabledViews:Array.isArray(doc.ui && doc.ui.enabledViews) ? doc.ui.enabledViews.slice() : [], views:[] });
+        }
+        this.state.projects = this.state.projects.filter(p => p.cardIds.length > 0 || p.id === this.state.activeProjectId);
+        if(this.state.projects.length === 0 && this.state.docs.length > 0) {
+            const doc = this.state.docs[0];
+            this.state.projects.push({ id:doc.id, title:doc.title || 'Analysis', cardIds:[doc.id], activeCardId:doc.id,
+                enabledViews:Array.isArray(doc.ui && doc.ui.enabledViews) ? doc.ui.enabledViews.slice() : [], views:[] });
+        }
+        if(!this.state.projects.some(p => p.id === this.state.activeProjectId)) {
+            if(this.state.activeId !== undefined && this.state.projects.some(p => p.id === String(this.state.activeId))) this.state.activeProjectId = String(this.state.activeId);
+            else if(this.state.projects[0]) this.state.activeProjectId = this.state.projects[0].id;
+        }
+        return this.state.projects;
+    },
+    /** 兼容别名：旧称「文档」即现在的卡片 */
+    getDocument(id) { return this.getCard(id); },
+    getProject(id=this.state.activeProjectId) {
+        const projects = this.ensureProjects();
+        return projects.find(p => p.id === id) || projects[0] || null;
+    },
+    getActiveProject() { return this.getProject(this.state.activeProjectId); },
     getView(name) {
-        return (this.state.globalViews || []).find(view => view.view === name) || null;
+        const project = this.getActiveProject();
+        return ((project && project.views) || []).find(view => view.view === name) || null;
+    },
+    /** 当前工程的 view 定义列表（旧 globalViews 的工程级替代） */
+    getViews() {
+        const project = this.getActiveProject();
+        return (project && project.views) || [];
+    },
+    /** 当前工程的启用 view 列表（旧每文档 enabledViews 的工程级替代） */
+    getEnabledViews() {
+        const project = this.getActiveProject();
+        return (project && project.enabledViews) || [];
     },
     init() {
         this._rawSnapshot=null;
@@ -110,19 +179,20 @@ const Store = {
         if(loaded && Array.isArray(loaded.docs)) this.state = Object.assign({}, this.state, loaded);
         this.state.schemaVersion = WORKSPACE_SCHEMA_VERSION;
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
-        if(!Array.isArray(this.state.globalViews)) this.state.globalViews = [];
+        if(!Array.isArray(this.state.projects)) this.state.projects = [];
         if(!COPY_FORMATS.includes(this.state.copyFormat)) this.state.copyFormat = 'default';
         if(typeof this.state.copyWithHeaders !== 'boolean') this.state.copyWithHeaders = true;
         if(typeof this.state.spreadsheetSafe !== 'boolean') this.state.spreadsheetSafe = true;
         if(typeof this.state.persistRaw !== 'boolean') this.state.persistRaw = true;
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
-        if(this.state.docs.length===0) {
+        if(this.state.projects.length===0) {
             if(this.loadFailed) {
-                const doc = this.normalizeDoc({ id:this.generateDocId(), title:'Analysis 1', raw:'', ui:{} }, 0);
-                this.state.docs.push(doc);
-                this.state.activeId = doc.id;
-            } else this.addDoc();
+                const card = this.normalizeDoc({ id:this.generateDocId(), title:'Analysis 1', raw:'', visible:true, ui:{} }, 0);
+                this.state.docs.push(card);
+                this.state.projects.push({ id:this.generateProjectId(), title:'Analysis 1', cardIds:[card.id], activeCardId:card.id, enabledViews:[], views:[] });
+                this.state.activeProjectId = this.state.projects[0].id;
+            } else this.addProject();
         }
         const seenIds = new Set();
         this.state.docs.forEach((d, idx) => {
@@ -130,8 +200,27 @@ const Store = {
             if(seenIds.has(d.id)) d.id = this.generateDocId();
             seenIds.add(d.id);
         });
+        const seenProjectIds = new Set();
+        this.state.projects.forEach(project => {
+            if(!project.id || seenProjectIds.has(project.id)) project.id = this.generateDocId();
+            seenProjectIds.add(project.id);
+            if(!Array.isArray(project.cardIds)) project.cardIds = [];
+            project.cardIds = project.cardIds.filter(id => this.state.docs.some(d => d.id === id));
+            const orphans = this.state.docs.filter(d => !this.state.projects.some(p => p.cardIds.includes(d.id)));
+            if(project === this.state.projects[0]) {
+                orphans.forEach(orphan => { if(!project.cardIds.includes(orphan.id)) project.cardIds.push(orphan.id); });
+            }
+            if(project.cardIds.length === 0) {
+                const card = this.normalizeDoc({ id:this.generateDocId(), title:'数据段 1', raw:'', visible:true, ui:{} }, this.state.docs.length);
+                this.state.docs.push(card);
+                project.cardIds.push(card.id);
+            }
+            if(!project.cardIds.includes(project.activeCardId)) project.activeCardId = project.cardIds[0];
+            if(!Array.isArray(project.enabledViews)) project.enabledViews = [];
+            if(!Array.isArray(project.views)) project.views = [];
+        });
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
-        if(!this.state.docs.some(d => d.id === this.state.activeId)) this.state.activeId = this.state.docs[0] && this.state.docs[0].id;
+        if(!this.state.projects.some(p => p.id === this.state.activeProjectId)) this.state.activeProjectId = this.state.projects[0].id;
         this.applyTheme();
         if(this.loadFailed) this.notifyStorage(false, this.lastSaveError);
         else if(loaded && loaded.rawExternal) {
@@ -325,47 +414,51 @@ const Store = {
         if(!payload || typeof payload !== 'object' || !this.isSafePayload(payload)) throw new Error('工作区文件包含不安全或过深的数据结构');
         if(!['ota-workspace','table-tool-tabs'].includes(payload.kind)) throw new Error('不是受支持的工作区文件');
         payload = migrateWorkspacePayload(payload);
-        if(!Array.isArray(payload.docs) || payload.docs.length === 0 || payload.docs.length > 100) throw new Error('工作区页签数量无效');
-        const imported = payload.docs.map((doc, idx) => {
-            if(!doc || typeof doc !== 'object') throw new Error(`第 ${idx + 1} 个页签无效`);
-            const raw = typeof doc.raw === 'string' ? doc.raw : '';
-            if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`页签“${doc.title || idx + 1}”的数据超过 128 MiB 限制`);
-            return {
-                id:typeof doc.id === 'string' ? doc.id : '',
-                title:typeof doc.title === 'string' ? doc.title : `Analysis ${idx + 1}`,
-                raw,
-                sourceRevision:Number.isInteger(doc.sourceRevision) && doc.sourceRevision >= 0 ? doc.sourceRevision : undefined,
-                lastParse:null,
-                ui:(doc.ui && typeof doc.ui === 'object') ? doc.ui : {}
-            };
-        });
-        const base = merge ? this.state.docs.slice() : [];
-        const usedIds = new Set(base.map(doc => doc.id));
-        imported.forEach(doc => {
-            if(!doc.id || usedIds.has(doc.id)) doc.id = this.generateDocId();
-            usedIds.add(doc.id);
-            base.push(doc);
-        });
-        if(base.length>100 || base.reduce((sum,doc)=>sum+(doc.raw || '').length*2,0)>MAX_WORKSPACE_BYTES)throw new Error('工作区超过 100 个页签或 256 MiB 原文预算');
-        this.state.docs = base;
-        const usedTitles = new Set();
-        this.state.docs.forEach((doc, idx) => {
-            this.normalizeDoc(doc, idx);
-            const clean = String(doc.title || `Analysis ${idx + 1}`).replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim() || `Analysis ${idx + 1}`;
-            let title = clean.slice(0, 40), suffixNo = 2;
-            while(usedTitles.has(title)) {
-                const suffix = ` (${suffixNo++})`;
-                title = `${clean.slice(0, Math.max(1, 40 - suffix.length))}${suffix}`;
+        if(!Array.isArray(payload.docs) || payload.docs.length === 0 || payload.docs.length > 100) throw new Error('工作区卡片数量无效');
+        const projects = Array.isArray(payload.projects) && payload.projects.length > 0
+            ? payload.projects
+            : [{ title:null, cardIds: payload.docs.map(d => d && d.id).filter(Boolean), enabledViews:[], views:[] }];
+        const newCards = [];
+        const newProjects = [];
+        for(const project of projects) {
+            const cards = (Array.isArray(project.cardIds) ? project.cardIds : [])
+                .map(cid => payload.docs.find(d => d && d.id === cid)).filter(Boolean);
+            if(cards.length === 0) continue;
+            const importedProject = { id:this.generateProjectId(),
+                title: this.makeUniqueTitle(typeof project.title === 'string' && project.title ? project.title : 'Analysis'),
+                cardIds:[], activeCardId:null,
+                enabledViews:Array.isArray(project.enabledViews) ? project.enabledViews.slice() : [],
+                views:Array.isArray(project.views) ? project.views.slice() : [] };
+            for(const doc of cards) {
+                const raw = typeof doc.raw === 'string' ? doc.raw : '';
+                if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`卡片“${doc.title || ''}”的数据超过 128 MiB 限制`);
+                const card = { id:this.generateDocId(),
+                    title: typeof doc.title === 'string' && doc.title ? doc.title : '数据段',
+                    raw, visible: doc.visible !== false,
+                    sourceRevision:Number.isInteger(doc.sourceRevision) && doc.sourceRevision >= 0 ? doc.sourceRevision : undefined,
+                    lastParse:null,
+                    ui:(doc.ui && typeof doc.ui === 'object') ? doc.ui : {} };
+                newCards.push(card);
+                importedProject.cardIds.push(card.id);
             }
-            doc.title = title;
-            usedTitles.add(title);
-        });
-        if(Array.isArray(payload.globalViews)) this.state.globalViews = payload.globalViews.slice(0, 500);
-        this.state.activeId = imported[0].id;
+            importedProject.activeCardId = importedProject.cardIds[0];
+            newProjects.push(importedProject);
+        }
+        if(newProjects.length === 0) throw new Error('工作区不包含有效卡片');
+        const baseProjects = merge ? this.state.projects.slice() : [];
+        const baseCards = merge ? this.state.docs.slice() : [];
+        const nextProjects = baseProjects.concat(newProjects);
+        const nextCards = baseCards.concat(newCards);
+        if(nextProjects.length > 100 || nextCards.length > 100) throw new Error('工作区超过 100 个工程或卡片预算');
+        if(nextCards.reduce((sum,doc)=>sum+(doc.raw || '').length*2,0) > MAX_WORKSPACE_BYTES) throw new Error('工作区原文超过 256 MiB 保存预算');
+        this.state.projects = nextProjects;
+        this.state.docs = nextCards;
+        this.state.docs.forEach((doc, idx) => this.normalizeDoc(doc, idx));
+        this.state.activeProjectId = newProjects[0].id;
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1);
         this.loadFailed = false;
         this.save();
-        return imported.length;
+        return newCards.length;
     },
     createDefaultUI() {
         return { displayTables:null, enabledViews:null, targetTable:"", rules:{}, columnFilters:{}, collapsedTables:{}, previewModes:{}, tablePages:{}, previewTable:"", pageSize:100, cellEdits:{}, sidebarTab:"data", importFormat:"auto", importHeaderMode:"auto", autoParse:true, exportOnlyChecked:false, exportCols:'all' };
@@ -404,6 +497,13 @@ const Store = {
         } while(this.state.docs.some(d => d.id === id));
         return id;
     },
+    generateProjectId() {
+        let id;
+        do {
+            id = `prj_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+        } while(this.state.projects.some(p => p.id === id));
+        return id;
+    },
     getAnalysisNumber(title='') {
         const m = String(title || '').trim().match(/^Analysis\s+(\d+)$/i);
         return m ? parseInt(m[1], 10) : 0;
@@ -431,66 +531,170 @@ const Store = {
         this.state.nextAnalysisSeq = n + 1;
         return this.makeUniqueTitle(`Analysis ${n}`);
     },
-    addDoc(initial={}) {
+    addProject(initial={}) {
         const title = initial.title ? this.makeUniqueTitle(initial.title) : this.nextDocTitle();
-        const doc = this.normalizeDoc(Object.assign({ id:this.generateDocId(), title, raw:"" }, initial, { title }), this.state.docs.length);
-        this.state.docs.push(doc);
-        this.state.activeId = doc.id;
-        this.save();
-        return doc;
+        const project = { id:this.generateProjectId(), title, cardIds:[], activeCardId:null,
+            enabledViews:Array.isArray(initial.enabledViews) ? initial.enabledViews.slice() : [],
+            views:Array.isArray(initial.views) ? JSON.parse(JSON.stringify(initial.views)) : [] };
+        this.state.projects.push(project);
+        this.state.activeProjectId = project.id;
+        const card = this.addCard(initial, project.id);
+        if(!card) { this.state.projects.pop(); this.state.activeProjectId = this.state.projects[0] && this.state.projects[0].id; return null; }
+        return project;
     },
-    removeDoc(id) {
+    addCard(initial={}, projectId=this.state.activeProjectId) {
+        const project = this.getProject(projectId);
+        if(!project) return null;
+        const base = typeof initial.title === 'string' && initial.title ? initial.title : `数据段 ${project.cardIds.length + 1}`;
+        const title = this.makeUniqueTitle(base);
+        const card = this.normalizeDoc(Object.assign({ id:this.generateDocId(), title, raw:"", visible:true }, initial, { title }), this.state.docs.length);
+        this.state.docs.push(card);
+        project.cardIds.push(card.id);
+        project.activeCardId = card.id;
+        this.state.activeProjectId = project.id;
+        this.save();
+        return card;
+    },
+    removeCard(id) {
+        const project = this.ensureProjects().find(p => p.cardIds.includes(id));
+        if(!project) return false;
+        if(project.cardIds.length<=1) return 'last_card';
         const idx = this.state.docs.findIndex(d=>d.id===id);
         if(idx < 0) return false;
-        if(this.state.docs.length<=1) return 'last_doc';
         this.state.docs.splice(idx,1);
-        if(this.state.activeId===id) this.state.activeId = this.state.docs[Math.max(0,idx-1)].id;
+        project.cardIds = project.cardIds.filter(cid => cid !== id);
+        if(project.activeCardId===id) project.activeCardId = project.cardIds[0];
         this.save();
         return true;
     },
-    duplicateDoc(id) {
-        const source = this.state.docs.find(d => d.id === id);
+    duplicateCard(id) {
+        const source = this.getCard(id);
         if(!source) return null;
+        const project = this.ensureProjects().find(p => p.cardIds.includes(id));
         const copy = JSON.parse(JSON.stringify(source));
         copy.id = this.generateDocId();
-        copy.title = this.makeUniqueTitle(`${source.title || 'Analysis'} (副本)`, copy.id);
+        copy.title = this.makeUniqueTitle(`${source.title || '数据段'} (副本)`, copy.id);
         // Clear cell edits — they reference row indices that may not apply to the new context
         if(copy.ui && copy.ui.cellEdits) copy.ui.cellEdits = {};
         this.state.docs.push(copy);
-        this.state.activeId = copy.id;
+        if(project) { project.cardIds.push(copy.id); project.activeCardId = copy.id; }
         this.save();
         return copy;
     },
-    renameDoc(id, title) {
-        const doc = this.state.docs.find(d => d.id === id);
-        if(!doc) return false;
+    renameCard(id, title) {
+        const card = this.state.docs.find(d => d.id === id);
+        if(!card) return false;
         const next = String(title ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
         if(!next) return false;
-        doc.title = this.makeUniqueTitle(next, id);
+        card.title = this.makeUniqueTitle(next, id);
         this.save();
         return true;
     },
-    moveDoc(sourceId, targetId, place='before') {
+    moveCard(sourceId, targetId, place='before') {
         if(!sourceId || !targetId || sourceId === targetId) return false;
-        const from = this.state.docs.findIndex(d => d.id === sourceId);
-        if(from < 0) return false;
-        const [doc] = this.state.docs.splice(from, 1);
-        let to = this.state.docs.findIndex(d => d.id === targetId);
-        if(to < 0) {
-            this.state.docs.splice(from, 0, doc);
-            return false;
-        }
+        const project = this.state.projects.find(p => p.cardIds.includes(sourceId));
+        if(!project || !project.cardIds.includes(targetId)) return false;
+        const from = project.cardIds.indexOf(sourceId);
+        const [cardId] = project.cardIds.splice(from, 1);
+        let to = project.cardIds.indexOf(targetId);
+        if(to < 0) { project.cardIds.splice(from, 0, cardId); return false; }
         if(place === 'after') to += 1;
-        this.state.docs.splice(to, 0, doc);
+        project.cardIds.splice(to, 0, cardId);
+        this.save();
+        return true;
+    },
+    setCardVisible(id, visible=true) {
+        const card = this.state.docs.find(d => d.id === id);
+        if(!card) return false;
+        card.visible = visible !== false;
+        this.save();
+        return true;
+    },
+    removeProject(id) {
+        id = this.resolveProjectId(id);
+        if(!id) return false;
+        const idx = this.state.projects.findIndex(p=>p.id===id);
+        if(idx < 0) return false;
+        if(this.state.projects.length<=1) return 'last_project';
+        const project = this.state.projects[idx];
+        this.state.projects.splice(idx,1);
+        this.state.docs = this.state.docs.filter(d => !project.cardIds.includes(d.id));
+        if(this.state.activeProjectId===id) this.state.activeProjectId = this.state.projects[Math.max(0,idx-1)].id;
+        this.save();
+        return true;
+    },
+    duplicateProject(id) {
+        id = this.resolveProjectId(id);
+        const source = this.getProject(id);
+        if(!source) return null;
+        const project = { id:this.generateProjectId(), title:this.makeUniqueTitle(`${source.title || 'Analysis'} (副本)`), cardIds:[], activeCardId:null,
+            enabledViews:(source.enabledViews || []).slice(), views:JSON.parse(JSON.stringify(source.views || [])) };
+        this.state.projects.push(project);
+        this.state.activeProjectId = project.id;
+        for(const cardId of source.cardIds) {
+            const sourceCard = this.getCard(cardId);
+            if(!sourceCard) continue;
+            const copy = JSON.parse(JSON.stringify(sourceCard));
+            copy.id = this.generateDocId();
+            copy.title = this.makeUniqueTitle(`${sourceCard.title || '数据段'} (副本)`, copy.id);
+            if(copy.ui && copy.ui.cellEdits) copy.ui.cellEdits = {};
+            this.state.docs.push(copy);
+            project.cardIds.push(copy.id);
+        }
+        if(project.cardIds.length===0) {
+            const card = this.normalizeDoc({ id:this.generateDocId(), title:'数据段 1', raw:'', visible:true, ui:{} }, this.state.docs.length);
+            this.state.docs.push(card);
+            project.cardIds.push(card.id);
+        }
+        project.activeCardId = project.cardIds[0];
+        this.save();
+        return project;
+    },
+    /** 工程 id 或卡片 id → 工程 id（旧调用方传页签/文档 id 的兼容） */
+    resolveProjectId(id) {
+        if(!id) return null;
+        this.ensureProjects();
+        if(this.state.projects.some(p => p.id === id)) return id;
+        const project = this.state.projects.find(p => p.cardIds.includes(id));
+        return project ? project.id : null;
+    },
+    renameProject(id, title) {
+        const projectId = this.resolveProjectId(id);
+        const project = this.state.projects.find(p => p.id === projectId);
+        if(!project) return false;
+        const next = String(title ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
+        if(!next) return false;
+        project.title = this.makeUniqueTitle(next);
+        // 单卡工程：卡片标题与工程同步（1:1 迁移语义；导出文件名等引用卡片标题）
+        if(project.cardIds.length === 1) {
+            const card = this.state.docs.find(d => d.id === project.cardIds[0]);
+            if(card) card.title = this.makeUniqueTitle(next, card.id);
+        }
+        this.save();
+        return true;
+    },
+    moveProject(sourceId, targetId, place='before') {
+        sourceId = this.resolveProjectId(sourceId);
+        targetId = this.resolveProjectId(targetId);
+        if(!sourceId || !targetId || sourceId === targetId) return false;
+        const from = this.state.projects.findIndex(p => p.id === sourceId);
+        if(from < 0) return false;
+        const [project] = this.state.projects.splice(from, 1);
+        let to = this.state.projects.findIndex(p => p.id === targetId);
+        if(to < 0) { this.state.projects.splice(from, 0, project); return false; }
+        if(place === 'after') to += 1;
+        this.state.projects.splice(to, 0, project);
         this.save();
         return true;
     },
     curr() { 
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
-        if(this.state.docs.length === 0) this.addDoc();
-        let d = this.state.docs.find(d=>d.id===this.state.activeId) || this.state.docs[0];
-        if(!d) d = this.addDoc();
-        return this.normalizeDoc(d, this.state.docs.indexOf(d));
+        if(!Array.isArray(this.state.projects)) this.state.projects = [];
+        const project = this.getActiveProject();
+        if(!project) { this.addProject(); return this.curr(); }
+        let card = this.state.docs.find(d=>d.id===project.activeCardId) || this.state.docs.find(d => project.cardIds.includes(d.id));
+        if(!card) { this.addCard({}, project.id); return this.curr(); }
+        return this.normalizeDoc(card, this.state.docs.indexOf(card));
     },
     updateUI(k, v) { this.curr().ui[k]=v; this.scheduleSave(); },
     updateRule(table, field, value) {
@@ -546,7 +750,8 @@ const Store = {
     _notify(event, payload) {
         if(event === 'state:changed') {
             this.revision += 1;
-            payload = Object.assign({ revision:this.revision, activeId:this.state.activeId }, payload || {});
+            const active = this.getActiveProject();
+            payload = Object.assign({ revision:this.revision, activeProjectId:this.state.activeProjectId, activeCardId: active && active.activeCardId }, payload || {});
             const changed = payload.changed || [];
             if(changed.includes('views')) this.viewRevision += 1;
             if(changed.includes('views') || changed.includes('query') || changed.includes('ui') || changed.includes('dataset')) this.queryRevision += 1;
@@ -597,75 +802,141 @@ const Store = {
      */
     transition(action, payload) {
         switch (action) {
-            // ── Tabs ──
-            case 'tab:create': {
-                const previousId = this.state.activeId;
-                const doc = this.addDoc(payload || {});
-                this._notify('tab:created', {
-                    id: doc.id,
-                    previousActiveId: previousId,
-                    activeId: doc.id,
-                    activeChanged: previousId !== doc.id,
-                });
+            // ── 工程（页签升级） ──
+            case 'project:create': case 'tab:create': {
+                const previousId = this.state.activeProjectId;
+                const project = this.addProject(payload || {});
+                if(!project) return null;
+                this._notify('project:created', { id:project.id, previousActiveId:previousId, activeProjectId:project.id, activeChanged:previousId !== project.id });
                 this._notify('state:changed', {});
-                return doc;
+                return project;
             }
-            case 'tab:activate': {
-                const id = payload && payload.id;
+            case 'project:activate': case 'tab:activate': {
+                const rawId = payload && payload.id;
+                if (!rawId) return false;
+                const id = this.resolveProjectId(rawId);
                 if (!id) return false;
-                const prev = this.state.activeId;
+                const prev = this.state.activeProjectId;
                 if (prev === id && !(payload && payload.force)) return false;
-                if (!this.state.docs.some(d => d.id === id)) return false;
-                this.state.activeId = id;
+                this.state.activeProjectId = id;
                 this.save();
-                this._notify('tab:activated', { id, previousId: prev });
+                this._notify('project:activated', { id, previousId: prev });
                 this._notify('state:changed', {});
                 return true;
             }
-            case 'tab:remove': {
-                const previousActiveId = this.state.activeId;
-                const result = this.removeDoc(payload && payload.id);
+            case 'project:remove': case 'tab:remove': {
+                const previousActiveId = this.state.activeProjectId;
+                const result = this.removeProject(payload && payload.id);
                 if (result === true) {
-                    this._notify('tab:removed', {
-                        id: payload.id,
-                        previousActiveId,
-                        activeId: this.state.activeId,
-                        activeChanged: previousActiveId !== this.state.activeId,
-                    });
+                    this._notify('project:removed', { id:payload.id, previousActiveId, activeProjectId:this.state.activeProjectId, activeChanged:previousActiveId !== this.state.activeProjectId });
                     this._notify('state:changed', {});
                 }
                 return result;
             }
-            case 'tab:duplicate': {
+            case 'project:duplicate': case 'tab:duplicate': {
                 const id = payload && payload.id;
                 if (!id) return null;
-                const copy = this.duplicateDoc(id);
+                const copy = this.duplicateProject(id);
                 if (copy) {
-                    this._notify('tab:duplicated', { id: copy.id, sourceId: id });
+                    this._notify('project:duplicated', { id:copy.id, sourceId:id });
                     this._notify('state:changed', {});
                 }
                 return copy;
             }
-            case 'tab:rename': {
+            case 'project:rename': case 'tab:rename': {
                 const id = payload && payload.id;
                 const title = payload && payload.title;
                 if (!id || title === undefined || title === null) return false;
-                const ok = this.renameDoc(id, title);
+                const ok = this.renameProject(id, title);
                 if (ok) {
-                    this._notify('tab:renamed', { id, title: this.state.docs.find(d => d.id === id)?.title || title });
+                    this._notify('project:renamed', { id, title: this.ensureProjects().find(p => p.id === id)?.title || title });
                     this._notify('state:changed', {});
                 }
                 return ok;
             }
-            case 'tab:reorder': {
+            case 'project:reorder': case 'tab:reorder': {
                 const sourceId = payload && payload.sourceId;
                 const targetId = payload && payload.targetId;
                 const place = (payload && payload.place) || 'before';
                 if (!sourceId || !targetId) return false;
-                const ok = this.moveDoc(sourceId, targetId, place);
+                const ok = this.moveProject(sourceId, targetId, place);
                 if (ok) {
-                    this._notify('tab:reordered', { sourceId, targetId, place });
+                    this._notify('project:reordered', { sourceId, targetId, place });
                     this._notify('state:changed', {});
+                }
+                return ok;
+            }
+
+            // ── 卡片（工程内数据段） ──
+            case 'card:create': {
+                const projectId = payload && payload.projectId;
+                const card = this.addCard(payload || {}, projectId || this.state.activeProjectId);
+                if(!card) return null;
+                this._notify('card:created', { id:card.id, projectId:this.getProject(projectId)?.id || this.state.activeProjectId });
+                this._notify('state:changed', {});
+                return card;
+            }
+            case 'card:activate': {
+                const id = payload && payload.id;
+                if (!id) return false;
+                const project = this.ensureProjects().find(p => p.cardIds.includes(id));
+                if (!project) return false;
+                if (project.activeCardId === id) return false;
+                project.activeCardId = id;
+                this.state.activeProjectId = project.id;
+                this.save();
+                this._notify('card:activated', { id, projectId:project.id });
+                this._notify('state:changed', {});
+                return true;
+            }
+            case 'card:remove': {
+                const result = this.removeCard(payload && payload.id);
+                if (result === true) {
+                    this._notify('card:removed', { id:payload.id });
+                    this._notify('state:changed', {});
+                }
+                return result;
+            }
+            case 'card:duplicate': {
+                const id = payload && payload.id;
+                if (!id) return null;
+                const copy = this.duplicateCard(id);
+                if (copy) {
+                    this._notify('card:duplicated', { id:copy.id, sourceId:id });
+                    this._notify('state:changed', {});
+                }
+                return copy;
+            }
+            case 'card:rename': {
+                const id = payload && payload.id;
+                const title = payload && payload.title;
+                if (!id || title === undefined || title === null) return false;
+                const ok = this.renameCard(id, title);
+                if (ok) {
+                    this._notify('card:renamed', { id, title: this.state.docs.find(d => d.id === id)?.title || title });
+                    this._notify('state:changed', {});
+                }
+                return ok;
+            }
+            case 'card:reorder': {
+                const sourceId = payload && payload.sourceId;
+                const targetId = payload && payload.targetId;
+                const place = (payload && payload.place) || 'before';
+                if (!sourceId || !targetId) return false;
+                const ok = this.moveCard(sourceId, targetId, place);
+                if (ok) {
+                    this._notify('card:reordered', { sourceId, targetId, place });
+                    this._notify('state:changed', {});
+                }
+                return ok;
+            }
+            case 'card:visible': {
+                const id = payload && payload.id;
+                if (!id) return false;
+                const ok = this.setCardVisible(id, payload && payload.visible !== false);
+                if (ok) {
+                    this._notify('card:visibilityChanged', { id, visible:this.state.docs.find(d => d.id === id)?.visible !== false });
+                    this._notify('state:changed', { changed:['query'] });
                 }
                 return ok;
             }
@@ -948,38 +1219,54 @@ const Store = {
                 return true;
             }
 
-            // ── JOIN view state ──
+            // ── JOIN view 状态（归属工程） ──
             case 'view:replaceAll': {
                 const views = Array.isArray(payload && payload.views) ? payload.views : [];
-                this.state.globalViews = views.slice(0, 500);
+                const project = this.getActiveProject();
+                if(!project) return [];
+                project.views = views.slice(0, 500);
                 this.save();
-                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('views:changed', { views:project.views.slice() });
                 this._notify('state:changed', { changed:['views'] });
-                return this.state.globalViews;
+                return project.views;
             }
             case 'view:upsert': {
                 const view = payload && payload.view;
                 if(!view || typeof view !== 'object' || !view.view) return false;
+                const project = this.getActiveProject();
+                if(!project) return false;
                 const index = Number.isInteger(payload.index)
                     ? payload.index
-                    : this.state.globalViews.findIndex(item => item.view === view.view);
-                if(index >= 0 && index < this.state.globalViews.length) this.state.globalViews[index] = Object.assign({}, view);
-                else this.state.globalViews.push(Object.assign({}, view));
+                    : project.views.findIndex(item => item.view === view.view);
+                if(index >= 0 && index < project.views.length) project.views[index] = Object.assign({}, view);
+                else project.views.push(Object.assign({}, view));
                 this.save();
-                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('views:changed', { views:project.views.slice() });
                 this._notify('state:changed', { changed:['views'] });
                 return true;
             }
             case 'view:removeMany': {
+                const project = this.getActiveProject();
+                if(!project) return 0;
                 const indexes = Array.isArray(payload && payload.indexes)
                     ? payload.indexes.filter(Number.isInteger).sort((a,b) => b-a) : [];
                 indexes.forEach(index => {
-                    if(index >= 0 && index < this.state.globalViews.length) this.state.globalViews.splice(index, 1);
+                    if(index >= 0 && index < project.views.length) project.views.splice(index, 1);
                 });
                 this.save();
-                this._notify('views:changed', { views:this.state.globalViews.slice() });
+                this._notify('views:changed', { views:project.views.slice() });
                 this._notify('state:changed', { changed:['views'] });
                 return indexes.length;
+            }
+            case 'view:setEnabled': {
+                // 工程级启用列表：启用哪些 view（替代每卡 enabledViews）
+                const project = this.getActiveProject();
+                if(!project) return false;
+                project.enabledViews = Array.isArray(payload && payload.enabledViews) ? payload.enabledViews.slice() : [];
+                this.save();
+                this._notify('views:changed', { views:project.views.slice(), enabledViews:project.enabledViews.slice() });
+                this._notify('state:changed', { changed:['views'] });
+                return true;
             }
 
             // ── Workspace ──

@@ -17,13 +17,17 @@ function resetStore() {
   storage.reset();
   Store.state = {
     docs: [
-      { id: 'a', title: 'Analysis 1', ui: {} },
-      { id: 'b', title: 'Analysis 2', ui: {} },
-      { id: 'c', title: 'Analysis 3', ui: {} },
+      { id: 'a', title: 'Analysis 1', visible: true, ui: {} },
+      { id: 'b', title: 'Analysis 2', visible: true, ui: {} },
+      { id: 'c', title: 'Analysis 3', visible: true, ui: {} },
     ],
-    activeId: 'b',
+    projects: [
+      { id: 'p1', title: 'Analysis 1', cardIds: ['a'], activeCardId: 'a', enabledViews: [], views: [] },
+      { id: 'p2', title: 'Analysis 2', cardIds: ['b'], activeCardId: 'b', enabledViews: [], views: [] },
+      { id: 'p3', title: 'Analysis 3', cardIds: ['c'], activeCardId: 'c', enabledViews: [], views: [] },
+    ],
+    activeProjectId: 'p2',
     theme: 'light',
-    globalViews: [],
     nextAnalysisSeq: 1,
     copyFormat: 'default',
     spreadsheetSafe: true,
@@ -46,26 +50,32 @@ beforeEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-describe('Store — tab renaming', () => {
-  it('trims whitespace and newlines', () => {
-    assert.equal(Store.renameDoc('a', '  Orders\n  Review\t '), true);
-    assert.equal(Store.state.docs[0].title, 'Orders Review');
+describe('Store — 工程/卡片 renaming', () => {
+  it('工程重命名：trims whitespace and newlines', () => {
+    assert.equal(Store.renameProject('p1', '  Orders\n  Review\t '), true);
+    assert.equal(Store.state.projects[0].title, 'Orders Review');
   });
 
-  it('caps title length at 40 characters', () => {
-    Store.renameDoc('a', 'x'.repeat(80));
-    assert.equal(Store.state.docs[0].title.length, 40);
+  it('工程重命名：caps title length at 40 characters', () => {
+    Store.renameProject('p1', 'x'.repeat(80));
+    assert.equal(Store.state.projects[0].title.length, 40);
   });
 
-  it('rejects empty/whitespace-only titles', () => {
-    const prev = Store.state.docs[0].title;
-    assert.equal(Store.renameDoc('a', '   '), false);
-    assert.equal(Store.state.docs[0].title, prev);
+  it('工程重命名：rejects empty/whitespace-only titles', () => {
+    const prev = Store.state.projects[0].title;
+    assert.equal(Store.renameProject('p1', '   '), false);
+    assert.equal(Store.state.projects[0].title, prev);
   });
 
-  it('makes duplicate titles unique with suffix', () => {
-    assert.equal(Store.renameDoc('c', 'Analysis 2'), true);
-    assert.equal(Store.state.docs[2].title, 'Analysis 2 (2)');
+  it('工程重命名：makes duplicate titles unique with suffix', () => {
+    assert.equal(Store.renameProject('p3', 'Analysis 2'), true);
+    assert.equal(Store.state.projects[2].title, 'Analysis 2 (2)');
+  });
+
+  it('卡片重命名：updates card title within its project', () => {
+    assert.equal(Store.renameCard('a', '主数据段'), true);
+    assert.equal(Store.state.docs[0].title, '主数据段');
+    assert.equal(Store.state.projects[0].title, 'Analysis 1', '工程标题不受卡片重命名影响');
   });
 });
 
@@ -78,57 +88,128 @@ describe('Store — auto-parse preference', () => {
 });
 
 // ---------------------------------------------------------------------------
-describe('Store — tab reordering', () => {
-  it('moves tab before target', () => {
-    assert.equal(Store.moveDoc('c', 'a', 'before'), true);
-    assert.equal(Store.state.docs.map(d => d.id).join(''), 'cab');
+describe('Store — 工程 reordering', () => {
+  it('moves project before target', () => {
+    assert.equal(Store.moveProject('p3', 'p1', 'before'), true);
+    assert.equal(Store.state.projects.map(p => p.id).join(''), 'p3p1p2');
   });
 
-  it('does not change active tab on reorder', () => {
-    Store.moveDoc('c', 'a', 'before');
-    assert.equal(Store.state.activeId, 'b');
+  it('does not change active project on reorder', () => {
+    Store.moveProject('p3', 'p1', 'before');
+    assert.equal(Store.state.activeProjectId, 'p2');
   });
 
-  it('moves tab after target', () => {
-    assert.equal(Store.moveDoc('a', 'c', 'after'), true);
-    assert.equal(Store.state.docs.map(d => d.id).join(''), 'bca');
+  it('moves project after target', () => {
+    assert.equal(Store.moveProject('p1', 'p3', 'after'), true);
+    assert.equal(Store.state.projects.map(p => p.id).join(''), 'p2p3p1');
   });
 
   it('returns false for invalid target', () => {
-    assert.equal(Store.moveDoc('b', 'missing', 'before'), false);
-    assert.equal(Store.state.docs.map(d => d.id).join(''), 'abc');
+    assert.equal(Store.moveProject('p2', 'missing', 'before'), false);
+    assert.equal(Store.state.projects.map(p => p.id).join(''), 'p1p2p3');
   });
 });
 
 // ---------------------------------------------------------------------------
-describe('Store — add/remove tabs', () => {
-  it('addDoc appends and activates new tab', () => {
-    const oldIds = new Set(Store.state.docs.map(d => d.id));
-    const newDoc = Store.addDoc();
-    assert.equal(Store.state.docs.length, 4);
-    assert.equal(oldIds.has(newDoc.id), false);
-    assert.equal(Store.state.activeId, newDoc.id);
-    assert.equal(newDoc.raw, '');
-    assert.equal(newDoc.title, 'Analysis 4');
-    assert.equal(newDoc.ui.sidebarTab, 'data');
-    assert.equal(newDoc.ui.importFormat, 'auto');
+describe('Store — 卡片顺序（= 拼接顺序）', () => {
+  it('moves card within its project', () => {
+    Store.transition('card:create', { title: '第二段' });
+    const project = Store.getActiveProject();
+    assert.equal(project.cardIds.length, 2);
+    assert.equal(Store.moveCard(project.cardIds[1], project.cardIds[0], 'before'), true);
+    assert.equal(project.cardIds[0], Store.state.docs[Store.state.docs.length - 1].id);
   });
 
-  it('removeDoc returns false for missing tab', () => {
-    const before = Store.state.docs.map(d => d.id).join(',');
-    assert.equal(Store.removeDoc('missing'), false);
-    assert.equal(Store.state.docs.map(d => d.id).join(','), before);
+  it('refuses to move a card across projects', () => {
+    assert.equal(Store.moveCard('a', 'b', 'before'), false, '跨工程移动不是卡片职责');
+    assert.deepEqual(Store.state.projects[0].cardIds, ['a']);
   });
 
-  it('removeDoc removes tab and updates activeId', () => {
-    assert.equal(Store.removeDoc('b'), true);
-    assert.equal(Store.state.docs.map(d => d.id).join(''), 'ac');
+  it('returns false for missing source', () => {
+    assert.equal(Store.moveCard('missing', 'a', 'before'), false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+describe('Store — 工程/卡片 add/remove', () => {
+  it('addProject appends and activates new project with one default card', () => {
+    const oldProjectIds = new Set(Store.state.projects.map(p => p.id));
+    const oldCardIds = new Set(Store.state.docs.map(d => d.id));
+    const project = Store.addProject();
+    assert.equal(Store.state.projects.length, 4);
+    assert.equal(oldProjectIds.has(project.id), false);
+    assert.equal(Store.state.activeProjectId, project.id);
+    assert.equal(project.title, 'Analysis 4');
+    assert.equal(project.cardIds.length, 1);
+    const card = Store.getCard(project.cardIds[0]);
+    assert.equal(oldCardIds.has(card.id), false);
+    assert.equal(card.raw, '');
+    assert.equal(card.visible, true);
+    assert.equal(card.ui.sidebarTab, 'data');
+    assert.equal(card.ui.importFormat, 'auto');
   });
 
-  it('deleted tab numbers are not reused', () => {
-    Store.removeDoc('b');
-    const doc = Store.addDoc();
-    assert.equal(doc.title, 'Analysis 4');
+  it('addCard appends into the active project and activates it', () => {
+    const project = Store.getActiveProject();
+    const card = Store.addCard({});
+    assert.equal(card.title, '数据段 2');
+    assert.equal(project.cardIds.length, 2);
+    assert.equal(project.activeCardId, card.id);
+    assert.equal(card.visible, true);
+  });
+
+  it('removeProject returns false for missing project', () => {
+    const before = Store.state.projects.map(p => p.id).join(',');
+    assert.equal(Store.removeProject('missing'), false);
+    assert.equal(Store.state.projects.map(p => p.id).join(','), before);
+  });
+
+  it('removeProject removes project with its cards and updates activeProjectId', () => {
+    assert.equal(Store.removeProject('p2'), true);
+    assert.equal(Store.state.projects.map(p => p.id).join(''), 'p1p3');
+    assert.equal(Store.state.docs.some(d => d.id === 'b'), false, '工程内卡片一并删除');
+    assert.equal(Store.state.activeProjectId, 'p1');
+  });
+
+  it('removeCard removes card and reassigns active card', () => {
+    Store.addCard({ title: '第二段' });
+    const project = Store.getActiveProject();
+    const second = project.cardIds[1];
+    assert.equal(Store.removeCard(second), true);
+    assert.equal(project.cardIds.length, 1);
+    assert.equal(project.activeCardId, 'b');
+  });
+
+  it('removeCard returns last_card for the last card of a project', () => {
+    assert.equal(Store.removeCard('a'), 'last_card');
+  });
+
+  it('deleted project numbers are not reused', () => {
+    Store.removeProject('p2');
+    const project = Store.addProject();
+    assert.equal(project.title, 'Analysis 4');
+  });
+
+  it('card:visible toggles visibility and bumps query revision', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+    const before = Store.queryRevision;
+    assert.equal(Store.transition('card:visible', { id:'a', visible:false }), true);
+    assert.equal(Store.getCard('a').visible, false);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(events.some(e => e.evt === 'card:visibilityChanged'), true);
+    assert.ok(Store.queryRevision > before, '显隐修订必须进入查询缓存失效');
+    unsub();
+  });
+
+  it('duplicateProject deep-copies cards and clears cell edits', () => {
+    Store.getCard('a').ui.cellEdits = { '$T1': { 0: { 0: 'x' } } };
+    const copy = Store.duplicateProject('p1');
+    assert.equal(copy.cardIds.length, 1);
+    const copiedCard = Store.getCard(copy.cardIds[0]);
+    assert.notEqual(copiedCard.id, 'a');
+    assert.deepEqual(copiedCard.ui.cellEdits, {});
+    assert.equal(Store.state.activeProjectId, copy.id);
   });
 });
 
@@ -236,7 +317,7 @@ describe('Store — cell edits', () => {
 
 // ---------------------------------------------------------------------------
 describe('Store — workspace import', () => {
-  it('imports a single tab', () => {
+  it('imports a single project (v20 payload migrates to v22)', () => {
     const count = Store.importWorkspace({
       kind: 'ota-workspace', schemaVersion: 20,
       docs: [{ id: 'a', title: 'Analysis 1', raw: 'id,name\n1,Alice', ui: {} }],
@@ -244,7 +325,23 @@ describe('Store — workspace import', () => {
     }, true);
     assert.equal(count, 1);
     assert.equal(new Set(Store.state.docs.map(d => d.id)).size, Store.state.docs.length);
-    assert.equal(new Set(Store.state.docs.map(d => d.title)).size, Store.state.docs.length);
+    assert.equal(Store.state.projects.length, 4, 'merge 模式下并入一个工程');
+  });
+
+  it('imports a v22 workspace with multiple cards per project', () => {
+    const count = Store.importWorkspace({
+      kind: 'ota-workspace', schemaVersion: 22,
+      docs: [
+        { id: 'x1', title: '卡1', raw: 'a\n1', visible: true, ui: {} },
+        { id: 'x2', title: '卡2', raw: 'b\n2', visible: false, ui: {} },
+      ],
+      projects: [{ id: 'px', title: '工程X', cardIds: ['x1', 'x2'], activeCardId: 'x2', enabledViews: [], views: [] }],
+    });
+    assert.equal(count, 2);
+    const project = Store.getProject(Store.state.activeProjectId);
+    assert.equal(project.cardIds.length, 2);
+    const hidden = project.cardIds.map(cid => Store.getCard(cid)).find(card => card.visible === false);
+    assert.ok(hidden, '卡片显隐随导入保留');
   });
 
   it('rejects future schema versions', () => {
@@ -282,10 +379,38 @@ describe('Store — source lifecycle and migration contract', () => {
 
   it('migrates schema-less legacy payloads through the explicit schema pipeline', () => {
     const migrated = migrateWorkspacePayload({ docs:[{ id:'legacy', title:'Legacy', raw:'x', ui:{} }] });
-    assert.equal(migrated.schemaVersion, 21);
+    assert.equal(migrated.schemaVersion, 22);
     assert.equal(migrated.docs.length, 1);
-    assert.deepEqual(migrateWorkspacePayload({ schemaVersion:20, docs:[] }).schemaVersion, 21);
-    assert.throws(() => migrateWorkspacePayload({ schemaVersion:22, docs:[] }));
+    assert.equal(migrated.docs[0].visible, true);
+    assert.deepEqual(migrateWorkspacePayload({ schemaVersion:20, docs:[] }).schemaVersion, 22);
+    assert.throws(() => migrateWorkspacePayload({ schemaVersion:23, docs:[] }));
+  });
+
+  it('v21 → v22：页签 1:1 升级为工程+卡片、保 id、view 上移工程级', () => {
+    const migrated = migrateWorkspacePayload({
+      kind:'ota-workspace', schemaVersion:21,
+      docs: [
+        { id:'d1', title:'Tab One', raw:'a,b\n1,2', ui:{ enabledViews:['v1'] } },
+        { id:'d2', title:'Tab Two', raw:'x', ui:{} },
+      ],
+      activeId: 'd2',
+      globalViews: [{ view:'v1', tables:['T'] }],
+    });
+    assert.equal(migrated.schemaVersion, 22);
+    assert.equal(migrated.projects.length, 2);
+    assert.equal(migrated.projects[0].id, 'd1', '工程保 id');
+    assert.equal(migrated.projects[0].title, 'Tab One');
+    assert.deepEqual(migrated.projects[0].cardIds, ['d1']);
+    assert.equal(migrated.projects[0].activeCardId, 'd1');
+    assert.equal(migrated.projects[0].enabledViews.length, 1);
+    assert.equal(migrated.projects[0].enabledViews[0], 'v1', 'enabledViews 上移工程级');
+    assert.equal(migrated.projects[0].views.length, 1);
+    assert.equal(migrated.projects[1].views[0].view, 'v1', 'globalViews 复制为每工程 views');
+    assert.equal(migrated.projects[1].enabledViews.length, 0);
+    assert.equal(migrated.docs[0].id, 'd1', '卡片保 id');
+    assert.equal(migrated.docs[0].visible, true);
+    assert.equal(migrated.activeProjectId, 'd2');
+    assert.equal('globalViews' in migrated, false, '顶层 globalViews 移除');
   });
 
   it('rejects a parse result whose source revision is no longer current', async () => {
@@ -305,101 +430,121 @@ describe('Store — source lifecycle and migration contract', () => {
 // Store — transition / event protocol (v22 infrastructure)
 // ---------------------------------------------------------------------------
 describe('Store — transition protocol', () => {
-  it('tab:create emits tab:created + state:changed', async () => {
+  it('project:create emits project:created + state:changed', async () => {
     const events = [];
     const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
 
-    const doc = Store.transition('tab:create');
-    assert.equal(typeof doc.id, 'string');
-    assert.ok(doc.title.startsWith('Analysis'));
+    const project = Store.transition('project:create');
+    assert.equal(typeof project.id, 'string');
+    assert.ok(project.title.startsWith('Analysis'));
 
     // _notify is batched with setTimeout(0) — wait
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    const createdEvents = events.filter(e => e.evt === 'tab:created');
+    const createdEvents = events.filter(e => e.evt === 'project:created');
     const changedEvents = events.filter(e => e.evt === 'state:changed');
-    assert.ok(createdEvents.length >= 1, 'tab:created should be emitted');
+    assert.ok(createdEvents.length >= 1, 'project:created should be emitted');
     assert.ok(changedEvents.length >= 1, 'state:changed should be emitted');
-    assert.equal(createdEvents[0].payload.id, doc.id);
-    assert.equal(createdEvents[0].payload.previousActiveId, 'b');
+    assert.equal(createdEvents[0].payload.id, project.id);
+    assert.equal(createdEvents[0].payload.previousActiveId, 'p2');
     assert.equal(createdEvents[0].payload.activeChanged, true);
 
     unsub();
   });
 
-  it('tab:activate switches activeId and emits events', async () => {
+  it('project:activate switches activeProjectId and emits events', async () => {
     const events = [];
     const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
 
-    // Activate first tab
-    const ok = Store.transition('tab:activate', { id: 'a' });
+    // Activate first project
+    const ok = Store.transition('project:activate', { id: 'p1' });
     assert.equal(ok, true);
-    assert.equal(Store.state.activeId, 'a');
+    assert.equal(Store.state.activeProjectId, 'p1');
 
     await new Promise(resolve => setTimeout(resolve, 10));
 
-    const activatedEvents = events.filter(e => e.evt === 'tab:activated');
-    assert.ok(activatedEvents.length >= 1, 'tab:activated should be emitted');
-    assert.equal(activatedEvents[0].payload.id, 'a');
-    assert.equal(activatedEvents[0].payload.previousId, 'b');
+    const activatedEvents = events.filter(e => e.evt === 'project:activated');
+    assert.ok(activatedEvents.length >= 1, 'project:activated should be emitted');
+    assert.equal(activatedEvents[0].payload.id, 'p1');
+    assert.equal(activatedEvents[0].payload.previousId, 'p2');
 
     unsub();
   });
 
-  it('tab:activate with same id is no-op without force', () => {
-    // First switch to 'a'
-    Store.transition('tab:activate', { id: 'a' });
-    assert.equal(Store.state.activeId, 'a');
+  it('project:activate with same id is no-op without force', () => {
+    // First switch to 'p1'
+    Store.transition('project:activate', { id: 'p1' });
+    assert.equal(Store.state.activeProjectId, 'p1');
     // Then try the same id again without force
-    const ok = Store.transition('tab:activate', { id: 'a' });
+    const ok = Store.transition('project:activate', { id: 'p1' });
     assert.equal(ok, false);
   });
 
-  it('tab:activate with force=true re-activates same tab', async () => {
+  it('project:activate with force=true re-activates same project', async () => {
     const events = [];
     const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
 
-    const ok = Store.transition('tab:activate', { id: 'a', force: true });
+    const ok = Store.transition('project:activate', { id: 'p1', force: true });
     assert.equal(ok, true);
 
     await new Promise(resolve => setTimeout(resolve, 10));
-    const activatedEvents = events.filter(e => e.evt === 'tab:activated');
+    const activatedEvents = events.filter(e => e.evt === 'project:activated');
     assert.ok(activatedEvents.length >= 1);
 
     unsub();
   });
 
-  it('tab:remove returns last_doc for single remaining tab', () => {
-    // We have at least 4 tabs now. Remove until one left.
-    while (Store.state.docs.length > 1) {
-      Store.removeDoc(Store.state.docs[Store.state.docs.length - 1].id);
+  it('project:remove returns last_project for single remaining project', () => {
+    // We have several projects now. Remove until one left.
+    while (Store.state.projects.length > 1) {
+      Store.removeProject(Store.state.projects[Store.state.projects.length - 1].id);
     }
-    const lastId = Store.state.docs[0].id;
-    const result = Store.transition('tab:remove', { id: lastId });
-    assert.equal(result, 'last_doc');
+    const lastId = Store.state.projects[0].id;
+    const result = Store.transition('project:remove', { id: lastId });
+    assert.equal(result, 'last_project');
   });
 
-  it('tab:remove reports active-tab changes through the canonical event', async () => {
+  it('project:remove reports active-project changes through the canonical event', async () => {
     const events = [];
     const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
 
-    const result = Store.transition('tab:remove', { id: 'b' });
+    const result = Store.transition('project:remove', { id: 'p2' });
     assert.equal(result, true);
-    assert.equal(Store.state.activeId, 'a');
+    assert.equal(Store.state.activeProjectId, 'p1');
 
     await new Promise(resolve => setTimeout(resolve, 10));
-    const removed = events.find(item => item.evt === 'tab:removed');
-    assert.ok(removed, 'tab:removed should be emitted');
-    assert.equal(removed.payload.previousActiveId, 'b');
-    assert.equal(removed.payload.activeId, 'a');
+    const removed = events.find(item => item.evt === 'project:removed');
+    assert.ok(removed, 'project:removed should be emitted');
+    assert.equal(removed.payload.previousActiveId, 'p2');
+    assert.equal(removed.payload.activeProjectId, 'p1');
     assert.equal(removed.payload.activeChanged, true);
     unsub();
   });
 
-  it('does not report a missing id as last_doc', () => {
-    Store.state.docs = [{ id: 'only', title: 'Only', raw: '', ui: {} }];
-    Store.state.activeId = 'only';
-    assert.equal(Store.removeDoc('missing'), false);
+  it('does not report a missing id as last_project', () => {
+    Store.state.docs = [{ id: 'only', title: 'Only', raw: '', visible: true, ui: {} }];
+    Store.state.projects = [{ id: 'onlyp', title: 'Only', cardIds: ['only'], activeCardId: 'only', enabledViews: [], views: [] }];
+    Store.state.activeProjectId = 'onlyp';
+    assert.equal(Store.removeProject('missing'), false);
+  });
+
+  it('card:create emits card:created and appends into active project', async () => {
+    const events = [];
+    const unsub = Store.onChange((evt, payload) => events.push({ evt, payload }));
+    const card = Store.transition('card:create', { title: '差异部分' });
+    assert.equal(Store.getActiveProject().cardIds.includes(card.id), true);
+    await new Promise(resolve => setTimeout(resolve, 10));
+    assert.ok(events.some(e => e.evt === 'card:created'));
+    unsub();
+  });
+
+  it('card:activate switches the active card within its project', () => {
+    Store.transition('card:create', { title: '差异部分' });
+    const project = Store.getActiveProject();
+    const first = project.cardIds[0];
+    assert.equal(Store.transition('card:activate', { id: first }), true);
+    assert.equal(project.activeCardId, first);
+    assert.equal(Store.curr().id, first);
   });
 
   it('filter:global updates ui.globalFilter and emits filter:changed', async () => {

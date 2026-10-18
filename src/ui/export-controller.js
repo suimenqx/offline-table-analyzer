@@ -123,7 +123,7 @@ const ExportController = {
             appVersion: APP_VERSION,
             exportedAt: new Date().toISOString(),
             docs: Store.state.docs,
-            globalViews: Store.state.globalViews,
+            globalViews: Store.getViews(),
             preferences: {
                 theme: Store.state.theme,
                 copyFormat: Store.state.copyFormat,
@@ -158,7 +158,7 @@ const ExportController = {
         const exportCfgBtn = $('exportConfigBtn');
         if (exportCfgBtn) exportCfgBtn.onclick = () => Exporter.toJson({
             kind: 'table-tool-config',
-            globalViews: Store.state.globalViews,
+            globalViews: Store.getViews(),
             docs: Store.state.docs.map(d => ({ id: d.id, title: d.title, ui: d.ui }))
         }, ExportController._getPrefix('config'));
 
@@ -200,8 +200,8 @@ const ExportController = {
             ? window.OTA.require('joiner').Joiner : null;
         if (!Joiner) return [];
         return ui.enabledViews.map(v => {
-            const cfg = Store.state.globalViews.find(g => g.view === v);
-            return cfg ? Joiner.run(TableRegistry.getRaw(), cfg, Store.state.globalViews) : null;
+            const cfg = Store.getViews().find(g => g.view === v);
+            return cfg ? Joiner.run(TableRegistry.getRaw(), cfg, Store.getViews()) : null;
         }).filter(x => x);
     },
 
@@ -226,7 +226,7 @@ const ExportController = {
         const doc = Store.curr();
         return QueryService.getPreview({
             rawTables:TableRegistry.getRaw(),
-            globalViews:Store.state.globalViews,
+            globalViews:Store.getViews(),
             ui:doc.ui,
             docId:doc.id,
             sourceRevision:doc.sourceRevision,
@@ -265,7 +265,7 @@ const ExportController = {
             const nextViews = d.globalViews.slice(0, 500).filter(
                 view => view && typeof view === 'object' && typeof view.view === 'string'
             );
-            const oldCount = Store.state.globalViews.length;
+            const oldCount = Store.getViews().length;
             dispatch('view:replaceAll', { views:nextViews });
             Toast.show(`全局视图已更新 (${oldCount} → ${nextViews.length} 个)`);
         }
@@ -292,7 +292,7 @@ const ExportController = {
             )) {
                 unmatched.forEach(docName => {
                     const cfg = d.docs.find(dc => (dc.title === docName) || (dc.id === docName));
-                    if (cfg) dispatch('tab:create', { title:cfg.title, raw:'', ui:cfg.ui || {} });
+                    if (cfg) dispatch('project:create', { title:cfg.title, raw:'', ui:cfg.ui || {} });
                 });
             }
         }

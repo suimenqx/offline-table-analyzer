@@ -138,7 +138,7 @@ for(const file of WORKER_MODULES) {
 }
 try {new vm.Script(renderWorker(),{filename:'ota-inline-worker.js'});}catch(error){fail(`Worker package syntax: ${error.message}`);}
 if(packageJson.version !== APP_VERSION) fail(`package version ${packageJson.version} differs from build version ${APP_VERSION}`);
-if(!/const WORKSPACE_SCHEMA_VERSION = 21;/.test(read(path.join(srcRoot, 'state', 'store.js')))) fail('workspace schema version must match the schema 21 recovery contract');
+if(!/const WORKSPACE_SCHEMA_VERSION = 22;/.test(read(path.join(srcRoot, 'state', 'store.js')))) fail('workspace schema version must match the schema 22 card-workspace recovery contract');
 
 const html = read(indexPath).replace(/^\uFEFF/, '');
 const expected = `${renderRelease().trimEnd()}\n`;

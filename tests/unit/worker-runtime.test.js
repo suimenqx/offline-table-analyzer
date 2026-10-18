@@ -7,22 +7,24 @@ describe('background dataset session',()=>{
   it('preserves strings, applies corrections and undo, and shares filtering/JOIN semantics',()=>{
     const {OTA}=loadModules(['worker-runtime']);
     const session=OTA.require('worker-runtime').WorkerRuntime.createSession();
-    const result=session.parse({text:'table-data T\nvalidflag ID Bucket\n1 001 B1\n1 002 B2\ntable-data R\nvalidflag Bucket Label\n1 B1 A\n1 B1 B',key:'a:1'});
+    const result=session.parse({text:'table-data T\nvalidflag ID Bucket\n1 001 B1\n1 002 B2\ntable-data R\nvalidflag Bucket Label\n1 B1 A\n1 B1 B',cardId:'a'});
     assert.equal(result.tables[0].rows[0][1],'001');
     const views=[{view:'V',left:'T',right:'R',type:'inner',on:'Bucket=Bucket',select:'left.ID,right.Label'}];
-    const input={key:'a:1',globalViews:views,ui:{enabledViews:['V'],globalFilter:'ID=001'}};
+    const visible=[{id:'a',name:'卡A'}];
+    const input={visible,cardUis:{a:{cellEdits:{}}},globalViews:views,ui:{enabledViews:['V'],globalFilter:'ID=001'}};
     const first=session.query(input);
     assert.equal(first[0].res.rows.length,1);
     const joined=first.find(item=>item.table.name==='JOIN:V');assert.equal(joined.res.rows.length,2);
     assert.deepEqual(joined.res.rows.map(row=>row.d),[['001','A'],['001','B']]);
-    const edited=session.query({...input,ui:{...input.ui,cellEdits:{$T:{0:{1:'009'}}},globalFilter:'ID=009'}});
+    const edited=session.query({...input,cardUis:{a:{cellEdits:{$T:{0:{1:'009'}}}}},ui:{enabledViews:['V'],globalFilter:'ID=009'}});
     assert.equal(edited[0].res.rows[0].d[1],'009');
     assert.equal(first[0].res.rows[0].d[1],'001');
     const undone=session.query(input);assert.equal(undone[0].res.rows[0].d[1],'001');
-    assert.throws(()=>session.query({...input,key:'another'}),/数据源已变化/);
-    assert.throws(()=>session.stats({...input,key:'another',cfg:views[0]}),/数据源已变化/);
-    assert.throws(()=>session.excel({...input,key:'another',mode:'raw'}),/数据源已变化/);
+    // 未解析的可见卡片：表池跳过，不报错（由 App/BackgroundService 保证先解析）
+    const missing=session.query({visible:[{id:'never',name:'卡B'}],cardUis:{},globalViews:[],ui:{}});
+    assert.equal(missing.length,0);
     assert.ok(session.excel({...input,mode:'preview'}).byteLength>100);
+    assert.ok(session.excel({...input,mode:'raw'}).byteLength>100);
   });
 
   it('limits all selected tables and JOINs together before allocating another result',()=>{
@@ -42,7 +44,7 @@ describe('background dataset session',()=>{
     const receive=()=>messages.length?Promise.resolve(messages.shift()):new Promise(resolve=>waiters.push(resolve));
     WorkerRuntime.start(port);assert.equal((await receive()).ready,1);
     const fixture=createLargeTableData({rows:1201,columns:32});
-    port.onmessage({data:{id:1,kind:'parse',payload:{text:fixture.text,key:'a',publish:true}}});
+    port.onmessage({data:{id:1,kind:'parse',payload:{text:fixture.text,cardId:'a',publish:true}}});
     const start=await receive();assert.equal(start.type,'start');assert.equal(start.value.tables[0].rowCount,1201);
     assert.ok(start.value.tables.every(table=>table.remote && table.rows.length===0));
     const complete=await receive();assert.equal(complete.id,1);assert.equal(complete.type,undefined);

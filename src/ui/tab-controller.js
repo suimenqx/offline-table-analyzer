@@ -1,12 +1,12 @@
 OTA.define('tab-controller', ["runtime", "store", "dispatch", "source-controller"], ({$, escapeHtml, Toast}, {Store}, {dispatch}, {SourceController}) => {
-/* TabController — tab bar rendering, drag-and-drop, rename, keyboard navigation.
+/* TabController — 工程页签栏渲染、拖拽、重命名、键盘导航。
 
    Responsibilities:
-   - Render tab bar DOM
+   - Render 工程 tab bar DOM（页签 = 工程容器）
    - Inline rename (F2 / double-click)
    - Drag-and-drop reorder
    - Keyboard navigation (arrows, Enter, Delete)
-   - Create / activate / remove tabs via dispatch
+   - Create / activate / remove 工程 via dispatch
 */
 
 const TabController = {
@@ -34,7 +34,7 @@ const TabController = {
             const t = e.target.closest('.doc-tab');
             if (!t) return;
             TabController._persistCurrentSource();
-            dispatch('tab:activate', { id: t.dataset.id });
+            dispatch('project:activate', { id: t.dataset.id });
         };
 
         // Double-click: rename
@@ -46,9 +46,9 @@ const TabController = {
             e.preventDefault();
             e.stopPropagation();
             const id = tab.dataset.id;
-            if (Store.state.activeId !== id) {
+            if (Store.state.activeProjectId !== id) {
                 TabController._persistCurrentSource();
-                dispatch('tab:activate', { id: id });
+                dispatch('project:activate', { id: id });
             }
             setTimeout(() => TabController.startRename(id), 0);
         };
@@ -62,7 +62,7 @@ const TabController = {
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 TabController._persistCurrentSource();
-                dispatch('tab:activate', { id: tab.dataset.id });
+                dispatch('project:activate', { id: tab.dataset.id });
             }
             if (e.key === 'F2') {
                 e.preventDefault();
@@ -79,7 +79,7 @@ const TabController = {
                 const next = tabs[(index + offset + tabs.length) % tabs.length];
                 if (next) {
                     TabController._persistCurrentSource();
-                    dispatch('tab:activate', { id: next.dataset.id });
+                    dispatch('project:activate', { id: next.dataset.id });
                 }
             }
         };
@@ -141,7 +141,7 @@ const TabController = {
             e.preventDefault();
             const place = tab.classList.contains('drag-over-after') || e.target === container ? 'after' : 'before';
             const sourceId = TabController.dragSourceId;
-            const moved = dispatch('tab:reorder', { sourceId, targetId: tab.dataset.id, place });
+            const moved = dispatch('project:reorder', { sourceId, targetId: tab.dataset.id, place });
             TabController._clearAllMarkers();
             TabController.dragSourceId = null;
             if (!moved) TabController.render();
@@ -154,17 +154,16 @@ const TabController = {
     },
 
     /**
-     * Render the tab bar from Store.state.docs.
+     * Render the 工程 tab bar from Store.state.projects.
      */
     render() {
         const container = $('tabsContainer');
         if (!container) return;
-        container.innerHTML = Store.state.docs.map((d, idx) => {
-            Store.normalizeDoc(d, idx);
-            const title = d.title || `Analysis ${idx + 1}`;
+        container.innerHTML = (Store.state.projects || []).map((p, idx) => {
+            const title = p.title || `Analysis ${idx + 1}`;
             const safeTitle = escapeHtml(title);
-            const safeId = escapeHtml(d.id);
-            const active = d.id === Store.state.activeId;
+            const safeId = escapeHtml(p.id);
+            const active = p.id === Store.state.activeProjectId;
             return `<div class="doc-tab ${active ? 'active' : ''}" data-id="${safeId}" draggable="true" title="${safeTitle}" role="tab" aria-selected="${active ? 'true' : 'false'}" tabindex="${active ? '0' : '-1'}"><span class="doc-tab-title">${safeTitle}</span><button class="doc-tab-close" type="button" draggable="false" title="关闭" aria-label="关闭 ${safeTitle}">&times;</button></div>`;
         }).join('');
     },
@@ -176,13 +175,13 @@ const TabController = {
         const tab = Array.from(document.querySelectorAll('.doc-tab')).find(el => el.dataset.id === id);
         if (!tab) return;
         const titleEl = tab.querySelector('.doc-tab-title');
-        const doc = Store.state.docs.find(d => d.id === id);
-        if (!titleEl || !doc) return;
+        const project = Store.state.projects.find(p => p.id === id);
+        if (!titleEl || !project) return;
 
         tab.setAttribute('draggable', 'false');
         const input = document.createElement('input');
         input.className = 'doc-tab-title-input';
-        input.value = doc.title || '';
+        input.value = project.title || '';
         input.maxLength = 40;
         titleEl.innerHTML = '';
         titleEl.appendChild(input);
@@ -191,7 +190,7 @@ const TabController = {
         const finish = (save) => {
             if (done) return;
             done = true;
-            if (save) dispatch('tab:rename', { id: id, title: input.value });
+            if (save) dispatch('project:rename', { id: id, title: input.value });
             TabController.render();
         };
         input.onclick = e => e.stopPropagation();
@@ -205,26 +204,26 @@ const TabController = {
         setTimeout(() => { input.focus(); input.select(); }, 0);
     },
 
-    /** Create a new tab via the "add tab" button. */
+    /** Create a new 工程 via the "add tab" button. */
     createNew(e) {
         if (e) { e.preventDefault(); e.stopPropagation(); }
         TabController._persistCurrentSource();
-        dispatch('tab:create');
+        dispatch('project:create');
     },
 
-    /** Remove a tab through the canonical command path. */
+    /** Remove a 工程 through the canonical command path. */
     remove(id) {
-        const doc = Store.state.docs.find(item => item.id === id);
-        if (!doc) return false;
-        if (Store.state.docs.length <= 1) {
-            Toast.show('至少保留一个页签', true);
-            return 'last_doc';
+        const project = Store.state.projects.find(item => item.id === id);
+        if (!project) return false;
+        if (Store.state.projects.length <= 1) {
+            Toast.show('至少保留一个工程', true);
+            return 'last_project';
         }
-        if (typeof confirm === 'function' && !confirm(`确定关闭页签“${doc.title || 'Analysis'}”？\n该页签的数据和分析规则将被删除。`)) return false;
+        if (typeof confirm === 'function' && !confirm(`确定关闭工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除。`)) return false;
 
         TabController._persistCurrentSource();
-        const result = dispatch('tab:remove', { id });
-        if (result === 'last_doc') Toast.show('至少保留一个页签', true);
+        const result = dispatch('project:remove', { id });
+        if (result === 'last_project') Toast.show('至少保留一个工程', true);
         return result;
     },
 

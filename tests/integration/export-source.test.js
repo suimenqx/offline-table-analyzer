@@ -104,8 +104,9 @@ describe('Excel export prepares the current source', () => {
       Store.transition('rule:set',{table:'Items',field:'focus',value:focus});
       Store.transition('ui:set',{key:'exportCols',value:'shown'});
       await clickExport();
-      const session=WorkerRuntime.createSession();session.parse({text:small,key:'projection'});
-      const bytes=session.excel({key:'projection',mode:'full',ui:Store.getDocument().ui});
+      const session=WorkerRuntime.createSession();session.parse({text:small,cardId:'projection'});
+      const ui=Store.getDocument().ui;
+      const bytes=session.excel({visible:[{id:'projection',name:'投影卡'}],cardUis:{projection:ui},ui,mode:'full'});
       const expected=focus.includes('Name')?[['Name','ID'],['Alice','001'],['Bob','002']]
         :[['validflag','ID','Name'],[1,'001','Alice'],[1,'002','Bob']];
       assert.deepEqual(await readSheet(Buffer.from(await downloads[0].blob.arrayBuffer()),'Items'),expected);
@@ -163,8 +164,8 @@ describe('Excel export prepares the current source', () => {
       Store.transition('source:replace',{text:large,preservePaste:true});SourceController.displayText(large);
       Store.transition('import:setFormat',{format});dom.getElementById('formatSelect').value=format;
       const session=WorkerRuntime.createSession();let parses=0,exports=0;
-      BackgroundService.parse=async payload=>{parses++;return structuredClone(session.parse(payload));};
-      BackgroundService.export=async(input,mode)=>{exports++;return new Blob([session.excel({key:input.datasetKey,ui:input.ui,globalViews:input.globalViews,mode})]);};
+      BackgroundService.parse=async payload=>{parses++;BackgroundService.datasetKeys.add(payload.cardId || payload.key);return structuredClone(session.parse({text:payload.text,options:payload.options,cardId:payload.cardId || payload.key}));};
+      BackgroundService.export=async(input,mode)=>{exports++;return new Blob([session.excel({visible:input.visible,cardUis:input.cardUis,ui:input.ui,globalViews:input.globalViews,mode})]);};
       await clickExport();
       assert.equal(TableRegistry.getFormat(),'cli-table-data');assert.equal(TableRegistry.isBackground(),true);
       assert.equal(parses,1);assert.equal(exports,1);assert.equal(downloads.length,1);

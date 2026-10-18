@@ -8,9 +8,10 @@ const snapshotInput=input=>({...input,ui:JSON.parse(JSON.stringify(input.ui || {
 const abortError=()=>Object.assign(new Error('操作已取消，原文仍保留'),{name:'AbortError'});
 const BackgroundService = {
     THRESHOLD:128*1024,
-    datasetKey:null,
+    datasetKeys:new Set(),
     canUse() { return typeof Worker !== 'undefined' && typeof URL.createObjectURL === 'function'; },
     isLarge(text) { return text.length>this.THRESHOLD; },
+    hasDataset(cardId) { return this.datasetKeys.has(cardId); },
     cancelQueries() {
         const lane=lanes.get('compute');if(!lane)return;
         for(const [id,job] of lane.jobs)if(job.kind==='query'){lane.jobs.delete(id);job.reject(abortError());lane.worker.postMessage({cancel:id});}
@@ -20,7 +21,7 @@ const BackgroundService = {
             const lane=lanes.get(name);
             if(lane) {lane.worker.terminate();clearTimeout(lane.timer);for(const job of lane.jobs.values())job.reject(abortError());lane.rejectReady(abortError());lanes.delete(name);}
         }
-        this.datasetKey=null;
+        this.datasetKeys.clear();
     },
     request(kind,payload={},handlers={},name='compute') {
         if(!this.canUse()) return Promise.reject(new Error('浏览器无法启动后台计算；请使用桌面 Chrome 或 Firefox，原文仍保留'));
@@ -32,7 +33,7 @@ const BackgroundService = {
             URL.revokeObjectURL(url);
             lane={worker,jobs:new Map()};
             lane.ready=new Promise((resolve,reject)=>{lane.resolveReady=resolve;lane.rejectReady=reject;});
-            const fail=error=>{worker.terminate();clearTimeout(lane.timer);lane.rejectReady(error);for(const job of lane.jobs.values())job.reject(error);lanes.delete(name);if(name==='compute')this.datasetKey=null;};
+            const fail=error=>{worker.terminate();clearTimeout(lane.timer);lane.rejectReady(error);for(const job of lane.jobs.values())job.reject(error);lanes.delete(name);if(name==='compute')this.datasetKeys.clear();};
             lane.timer=setTimeout(()=>fail(new Error('后台启动超时，原文仍保留')),10000);
             worker.onerror=event=>fail(new Error(event.message || '后台计算失败，原文仍保留'));
             worker.onmessageerror=()=>fail(new Error('后台消息无法读取，原文仍保留'));
@@ -55,26 +56,42 @@ const BackgroundService = {
     },
     async parse({text,options={},key}) {
         let result;
-        await this.request('parse',{text,options,key},{
+        await this.request('parse',{text,options,cardId:key},{
             start:value=>{result=value;result.tables.forEach(table=>table.rows=[]);},
         });
-        this.datasetKey=key;
+        this.datasetKeys.add(key);
         return result;
     },
     async prepare(input) {
-        if(this.datasetKey!==input.datasetKey) await this.parse({text:input.text,options:input.options,key:input.datasetKey},false);
+        // 惰性解析：只解析尚不在会话中的卡片
+        for(const card of input.cards || []) {
+            if(this.datasetKeys.has(card.id)) continue;
+            await this.parse({text:card.raw || '', options:card.options || {}, key:card.id});
+        }
+    },
+    async prepareMany(cards) {
+        for(const card of cards || []) {
+            if(this.datasetKeys.has(card.id)) continue;
+            await this.parse({text:card.raw || '', options:card.options || {}, key:card.id});
+        }
+    },
+    removeCard(cardId) {
+        this.datasetKeys.delete(cardId);
+        const lane=lanes.get('compute');
+        if(!lane) return Promise.resolve();
+        return lane.ready.then(()=>this.request('removeCard',{cardId}));
     },
     async query(input) {
         await this.prepare(input);
-        const tables=await this.request('query',{ui:input.ui,globalViews:input.globalViews,key:input.datasetKey});
+        const tables=await this.request('query',{visible:input.visible,cardUis:input.cardUis,ui:input.ui,globalViews:input.globalViews});
         return {tables};
     },
     async export(input,mode) {
         input=snapshotInput(input);
         await this.prepare(input);
-        return this.request('excel',{ui:input.ui,globalViews:input.globalViews,key:input.datasetKey,mode});
+        return this.request('excel',{visible:input.visible,cardUis:input.cardUis,ui:input.ui,globalViews:input.globalViews,mode});
     },
-    async stats(input,cfg) {input=snapshotInput(input);cfg=JSON.parse(JSON.stringify(cfg));await this.prepare(input);return this.request('stats',{ui:input.ui,globalViews:input.globalViews,key:input.datasetKey,cfg});},
+    async stats(input,cfg) {input=snapshotInput(input);cfg=JSON.parse(JSON.stringify(cfg));await this.prepare(input);return this.request('stats',{visible:input.visible,cardUis:input.cardUis,ui:input.ui,globalViews:input.globalViews,cfg});},
     storage(kind,payload) {return this.request(kind,payload,{},'storage');}
 };
 return {BackgroundService};

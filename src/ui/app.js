@@ -40,11 +40,27 @@ const App = {
     },
     activateTab(id, force=false) {
         if(!id) return false;
-        if(!Store.state.docs.some(d => d.id === id)) return false;
-        if(!force && Store.state.activeId === id) return false;
+        if(!Store.state.projects.some(p => p.id === id)) return false;
+        if(!force && Store.state.activeProjectId === id) return false;
         const input = $('rawInput');
         if(input) dispatch('source:replace', { text:SourceController.readText(input) });
-        return dispatch('tab:activate', { id, force });
+        return dispatch('project:activate', { id, force });
+    },
+    /** 选中卡片（左侧面板显示其内容，解析作用于它） */
+    activateCard(id, force=false) {
+        if(!id) return false;
+        const project = Store.state.projects.find(p => p.cardIds.includes(id));
+        if(!project) return false;
+        if(!force && project.activeCardId === id) return false;
+        const input = $('rawInput');
+        if(input) dispatch('source:replace', { text:SourceController.readText(input) });
+        return dispatch('card:activate', { id });
+    },
+    /** 卡片显隐（范围控制）：表池成员随显隐变化 */
+    toggleCardVisible(id) {
+        const card = Store.getCard(id);
+        if(!card) return false;
+        return dispatch('card:visible', { id, visible: card.visible === false });
     },
     init() {
         document.title = `Offline Table Analyzer v${APP_VERSION}`;
@@ -57,20 +73,33 @@ const App = {
                     this.updateWorkspaceSummary();
                     this.updateStorageStatus();
                     break;
-                case 'tab:created':
-                case 'tab:activated':
+                case 'project:created':
+                case 'project:activated':
                     this.renderTabs();
                     this.loadDoc();
                     break;
-                case 'tab:removed':
+                case 'project:removed':
                     this.renderTabs();
                     if (payload && payload.activeChanged) this.loadDoc();
                     break;
-                case 'tab:reordered':
+                case 'project:reordered':
                     this.renderTabs();
                     break;
+                case 'card:created':
+                case 'card:removed':
+                case 'card:duplicated':
+                case 'card:renamed':
+                case 'card:reordered':
+                case 'card:visibilityChanged':
+                    this.renderCards();
+                    this.requestRender();
+                    break;
+                case 'card:activated':
+                    this.renderCards();
+                    this.loadDoc();
+                    break;
                 case 'source:textChanged':
-                    if (!payload || payload.docId === Store.state.activeId) {
+                    if (!payload || payload.docId === Store.curr().id) {
                         if(payload && payload.sourceRevision!==Store.getDocument().sourceRevision)break;
                         this._regionSelection=null;
                         this._headerModeConfirmation=null;
@@ -304,7 +333,7 @@ const App = {
                 return Array.isArray(value) ? value.length > 0 : Boolean(String(value || '').trim());
             }).length, 0)
             + Object.values(ui.columnFilters || {}).reduce((sum, columns) => sum + Object.values(columns || {}).filter(value => String(value || '').trim()).length, 0);
-        const joins = Array.isArray(ui.enabledViews) ? ui.enabledViews.length : 0;
+        const joins = Array.isArray(Store.getEnabledViews()) ? Store.getEnabledViews().length : 0;
         const edits = Object.values(ui.cellEdits || {}).reduce((sum, rows) => sum + Object.values(rows || {}).reduce((rowSum, cols) => rowSum + Object.keys(cols || {}).length, 0), 0);
         el.textContent = `过滤 ${filterCount} · JOIN ${joins} · 修订 ${edits} · 状态 #${Store.revision}`;
         el.title = '状态 revision 用于识别查询结果是否需要重新计算';
@@ -336,7 +365,7 @@ const App = {
         Object.entries(ui.columnFilters || {}).forEach(([table, columns]) => Object.entries(columns || {}).forEach(([column, value]) => {
             if(String(value || '').trim()) add(`${table}.${column}: ${value}`, () => dispatch('filter:column', { table, column, value:'' }));
         }));
-        (Array.isArray(ui.enabledViews) ? ui.enabledViews : []).forEach(view => add(`JOIN: ${view}`, () => dispatch('ui:set', { key:'enabledViews', value:ui.enabledViews.filter(name => name !== view) })));
+        (Array.isArray(Store.getEnabledViews()) ? Store.getEnabledViews() : []).forEach(view => add(`JOIN: ${view}`, () => dispatch('view:setEnabled', { enabledViews:Store.getEnabledViews().filter(name => name !== view) })));
     },
 
     updateStorageStatus(detail={}) {
@@ -593,7 +622,7 @@ const App = {
         const doc = Store.curr();
         return QueryService.getPreview({
             rawTables: TableRegistry.getRaw(),
-            globalViews: Store.state.globalViews,
+            globalViews: Store.getViews(),
             ui: doc.ui,
             docId: doc.id,
             sourceRevision: doc.sourceRevision,
@@ -905,6 +934,7 @@ validflag Time      Level   Message                 Code
         this.syncCopyFormatControl();
         this.syncCopyHeaderControl();
         this.updatePasteSourceButton();
+        this.renderCards();
         if(Store.restoring) {
             if($('previewArea'))$('previewArea').textContent='正在恢复完整原文…';
             this.updateStorageStatus();return;
@@ -978,11 +1008,11 @@ validflag Time      Level   Message                 Code
     showHelp() {
         this.modal('帮助与快捷键', `<div class="shortcut-grid">
             <span>解析当前数据源</span><kbd>Ctrl/⌘ Enter</kbd>
-            <span>新建分析页签</span><kbd>Ctrl/⌘ N</kbd>
+            <span>新建分析工程</span><kbd>Ctrl/⌘ N</kbd>
             <span>选择本地数据文件</span><kbd>Ctrl/⌘ O</kbd>
             <span>保存当前工作区</span><kbd>Ctrl/⌘ S</kbd>
             <span>撤销 / 重做单元格编辑</span><span><kbd>Ctrl/⌘ Z</kbd> <kbd>Ctrl/⌘ Y</kbd></span>
-            <span>重命名当前页签</span><kbd>F2</kbd>
+            <span>重命名当前工程</span><kbd>F2</kbd>
             <span>全选当前预览表</span><kbd>Ctrl/⌘ A</kbd>
         </div><p class="muted" style="margin:16px 0 0;">支持 JSON、CSV、TSV、HTML、Markdown、ASCII、固定宽度文本与 CLI table-data。数据不会发送到网络。</p>`);
     },
@@ -997,7 +1027,14 @@ validflag Time      Level   Message                 Code
             if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
             parseContext = {...this.getSourceContext(sourceText),started};
             const options=parseContext.options;
-            if(BackgroundService.isLarge(sourceText) && !ImportEngine.requiresDOMParser(sourceText,options)) {
+            // 多可见卡片时同样走后台：表池派生只在 Worker 内实现（单 owner）。
+            const project = Store.getActiveProject();
+            const visibleCardsWithRaw = ((project && project.cardIds) || [])
+                .map(id => Store.getCard(id))
+                .filter(card => card && card.visible !== false && (card.raw || '').length > 0);
+            const useBackground = (BackgroundService.isLarge(sourceText) || visibleCardsWithRaw.length > 1)
+                && !ImportEngine.requiresDOMParser(sourceText,options);
+            if(useBackground) {
                 const pending={context:parseContext};
                 this._pendingParse=pending;
                 pending.promise=this.runBackground(sourceText,options,parseContext,render);
@@ -1016,7 +1053,7 @@ validflag Time      Level   Message                 Code
             this.updateImportSummary();
             const elapsed = Math.round(performance.now() - started);
             dispatch('parse:completed', {
-                docId:Store.state.activeId,
+                docId:Store.curr().id,
                 sourceRevision:Store.curr().sourceRevision,
                 format:result.format,
                 tables: result.tables,
@@ -1074,7 +1111,9 @@ validflag Time      Level   Message                 Code
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','true');
         const key=`${context.docId}:${context.sourceRevision}:${JSON.stringify(options)}`;
         try {
-            const result=await BackgroundService.parse({text,options,key});
+            // 会话键 = 卡片 id（Worker 多数据集会话按 cardId 寻址）；
+            // 复合 key 仅作为 TableRegistry 的 datasetKey 标识。
+            const result=await BackgroundService.parse({text,options,key:context.docId});
             const doc=Store.getDocument();
             if(generation!==this._parseGeneration || !this.matchesSourceContext(context,this.getSourceContext()))return false;
             TableRegistry.setResult({...result,background:true,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision});
@@ -1100,7 +1139,7 @@ validflag Time      Level   Message                 Code
         const s = $('targetTableSelect');
         const old = s.value; s.innerHTML = '';
         TableRegistry.getRaw().forEach(t => s.add(new Option(t.name, t.name)));
-        Store.state.globalViews.forEach(v => s.add(new Option(`JOIN:${v.view}`, `JOIN:${v.view}`)));
+        Store.getViews().forEach(v => s.add(new Option(`JOIN:${v.view}`, `JOIN:${v.view}`)));
         if(old && Array.from(s.options).some(o=>o.value===old)) s.value=old;
         else if(s.options.length>0) s.selectedIndex=0;
         this.syncRules();
@@ -1121,14 +1160,78 @@ validflag Time      Level   Message                 Code
         const tsRaw = ui.displayTables;
         const ts = (tsRaw===null || tsRaw===undefined) ? null : (tsRaw || []).filter(n => tableNames.includes(n));
         $('tablesTrigger').innerHTML = (ts===null) ? `<span class="chip" style="background:var(--bg-hover); color:var(--text-secondary); border-color:transparent;">默认全显</span>` : (ts.length ? ts.map(n=>`<span class="chip">${this.escapeHtml(n)}</span>`).join('') : `<span class="placeholder">无</span>`);
-        const viewNames = Store.state.globalViews.map(v => v.view);
-        const vsRaw = ui.enabledViews || [];
+        const viewNames = Store.getViews().map(v => v.view);
+        const vsRaw = Store.getEnabledViews();
         const vs = vsRaw.filter(v => viewNames.includes(v));
-        if(vs.length !== vsRaw.length) dispatch('ui:set', { key:'enabledViews', value:vs });
-        $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>`<span class="chip">${this.escapeHtml(n)}</span>`).join('') : `<span class="placeholder">未启用</span>`;
+        if(vs.length !== vsRaw.length) dispatch('view:setEnabled', { enabledViews:vs });
+        const poolNames = TableRegistry.getRaw().map(t => t.name);
+        $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>{
+            const cfg = Store.getViews().find(v => v.view === n);
+            const missing = cfg && [cfg.left, cfg.right].filter(Boolean).some(t => !poolNames.includes(t));
+            return `<span class="chip${missing ? ' view-unavailable' : ''}" title="${missing ? '引用的表不在表池（所在卡片已隐藏）' : ''}">${this.escapeHtml(n)}${missing ? ' · 不可用' : ''}</span>`;
+        }).join('') : `<span class="placeholder">未启用</span>`;
     },
 
     renderTabs() { TabController.render(); },
+
+    /** 卡片列表（左侧数据段区）：点击=选中、眼睛=显隐、删除/重命名/新增 */
+    renderCards() {
+        const container = $('cardList');
+        if(!container) return;
+        const project = Store.getActiveProject();
+        if(!project) { container.innerHTML = ''; return; }
+        const cards = project.cardIds.map(id => Store.getCard(id)).filter(Boolean);
+        container.innerHTML = cards.map((card, idx) => {
+            const active = card.id === project.activeCardId;
+            const visible = card.visible !== false;
+            const stats = `${(card.raw || '').length.toLocaleString()} 字符`;
+            const preview = card.raw ? card.raw.slice(0, 200) : '';
+            return `<div class="data-card ${active ? 'active' : ''} ${visible ? '' : 'hidden-card'}" data-card-id="${this.escapeHtml(card.id)}" role="listitem">
+                <div class="data-card-head">
+                    <button type="button" class="card-visibility ${visible ? '' : 'off'}" data-card-act="visible" title="${visible ? '隐藏：数据退出表池' : '显示：数据进入表池'}" aria-pressed="${visible}">${visible ? '👁' : '🚫'}</button>
+                    <span class="data-card-title ${visible ? '' : 'strike'}">${this.escapeHtml(card.title || `数据段 ${idx + 1}`)}</span>
+                    <button type="button" class="sm text-button" data-card-act="remove" title="删除卡片">×</button>
+                </div>
+                <div class="muted" style="font-size:11px;">${stats}${visible ? '' : ' · 已隐藏'}</div>
+                ${preview ? `<pre class="data-card-preview">${this.escapeHtml(preview)}</pre>` : ''}
+            </div>`;
+        }).join('');
+        container.querySelectorAll('.data-card').forEach(el => {
+            const id = el.dataset.cardId;
+            el.onclick = (e) => {
+                if(e.target.closest('[data-card-act]')) return;
+                this.activateCard(id);
+            };
+            el.querySelector('[data-card-act="visible"]').onclick = (e) => {
+                e.stopPropagation();
+                this.toggleCardVisible(id);
+            };
+            el.querySelector('[data-card-act="remove"]').onclick = (e) => {
+                e.stopPropagation();
+                const card = Store.getCard(id);
+                if(card && typeof confirm === 'function' && !confirm(`删除卡片“${card.title}”？其数据与解析设置将移除。`)) return;
+                const result = dispatch('card:remove', { id });
+                if(result === 'last_card') Toast.show('工程至少保留一张卡片', true);
+            };
+            el.ondblclick = (e) => {
+                if(e.target.closest('[data-card-act]')) return;
+                e.preventDefault();
+                const card = Store.getCard(id);
+                const name = card && (typeof prompt === 'function') ? prompt('卡片名称', card.title || '') : null;
+                if(name) dispatch('card:rename', { id, title:name });
+            };
+        });
+        const addBtn = $('addCardBtn');
+        if(addBtn) addBtn.onclick = (e) => {
+            e.preventDefault();
+            dispatch('card:create', {});
+        };
+        const poolCount = $('poolCount');
+        if(poolCount) {
+            const visibleCount = cards.filter(card => card.visible !== false).length;
+            poolCount.textContent = `表池 ${visibleCount} 张卡片`;
+        }
+    },
 
     startTabRename(id) { TabController.startRename(id); },
 
@@ -1319,7 +1422,7 @@ validflag Time      Level   Message                 Code
     modal(title, html) { ModalController.show(title, html); },
 
     modTables() { ModalController.showTableSelector(TableRegistry.getRaw().map(t => t.name), Store.curr().ui.displayTables); },
-    modViews() { ModalController.showViewSelector(Store.state.globalViews, Store.curr().ui.enabledViews || []); },
+    modViews() { ModalController.showViewSelector(Store.getViews(), Store.getEnabledViews()); },
     
     modCols() {
         const tName = $('targetTableSelect').value;
@@ -1329,8 +1432,8 @@ validflag Time      Level   Message                 Code
         if (rawTable) { all = rawTable.headers; }
         else if (tName.startsWith('JOIN:')) {
             const vName = tName.replace('JOIN:', '');
-            const vCfg = Store.state.globalViews.find(v => v.view === vName);
-            if (vCfg) all=Joiner.getHeaders(TableRegistry.getRaw(),vCfg,Store.state.globalViews);
+            const vCfg = Store.getViews().find(v => v.view === vName);
+            if (vCfg) all=Joiner.getHeaders(TableRegistry.getRaw(),vCfg,Store.getViews());
         }
         if (!all || !all.length) { const rt = this.rendered.find(x => x.name === tName); if (rt) all = rt.headers; }
         if (!all || !all.length) { if (typeof alert === 'function') alert('无法获取列信息'); return; }

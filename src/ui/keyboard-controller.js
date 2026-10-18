@@ -23,13 +23,6 @@ const KeyboardController = {
         const app = this._app;
         if (!app) return;
 
-        // ── Fullscreen source editor: Escape closes ──
-        const sourceModal = $('sourceEditorModal');
-        if (sourceModal && !sourceModal.classList.contains('hidden')) {
-            if (e.key === 'Escape') { e.preventDefault(); SourceController.close(); }
-            return;
-        }
-
         // ── Generic modal: Escape closes ──
         const modalOverlay = $('modalOverlay');
         if (modalOverlay && !modalOverlay.classList.contains('hidden')) {
@@ -55,7 +48,7 @@ const KeyboardController = {
         }
         if (mod && !typing && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); CellEditController.undo(); return; }
         if (mod && !typing && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) { e.preventDefault(); CellEditController.redo(); return; }
-        if (e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeId); return; }
+        if (e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeProjectId); return; }
         if (e.key === '?' && !typing)  { e.preventDefault(); app.showHelp(); return; }
 
         // ── JOIN editor shortcuts (only when JOIN modal is open) ──

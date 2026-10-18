@@ -52,7 +52,6 @@ const SourceController = {
         clearTimeout(this._persistTimer);
         dispatch('source:replace', { text:snapshot.plain, preservePaste:true });
         this.displayText(snapshot.plain);
-        if (editor.id === 'rawInputLarge') this.displayText(snapshot.plain, editor);
         this.scheduleAutoParse({text:snapshot.plain});
     },
     resetPendingInput() {
@@ -127,7 +126,7 @@ const SourceController = {
      * Only bounded previews of non-parser formats are retained; text/plain
      * and text/html remain available in full for the existing parse path.
      */
-    captureClipboard(data, docId=Store.state.activeId) {
+    captureClipboard(data, docId=Store.curr().id) {
         if (!data) return this.setPasteSnapshot(null);
         const declaredTypes = Array.from(data.types || []).map(type => String(type || '')).filter(Boolean);
         const candidateTypes = new Set([...declaredTypes, ...this.CLIPBOARD_KNOWN_TYPES]);
@@ -160,7 +159,7 @@ const SourceController = {
 
     /** Return the current source snapshot only when it still matches the editor. */
     getCurrentPaste(text='') {
-        return SourceSnapshot.getCurrentPaste({ docId: Store.state.activeId, text });
+        return SourceSnapshot.getCurrentPaste({ docId: Store.curr().id, text });
     },
 
     scheduleAutoParse({ text='', syncToMain=false } = {}) {
@@ -171,7 +170,6 @@ const SourceController = {
 
         this._autoParseTimer = setTimeout(() => {
             this._autoParseTimer = null;
-            if (syncToMain) this._syncToMain();
             if (typeof document !== 'undefined' && document.dispatchEvent) {
                 document.dispatchEvent(new CustomEvent('ota:sourceAutoParse'));
             }
@@ -187,7 +185,6 @@ const SourceController = {
      */
     init() {
         this._bindMainEditor();
-        this._bindFullscreenEditor();
         this._bindDragDrop();
         this._bindInputResizer();
         this._bindFilePicker();
@@ -285,7 +282,7 @@ const SourceController = {
 
         // Update lastPaste for HTML files
         const detected = SourceController.detectFormat(file.name);
-        const targetDocId = Store.state.activeId;
+        const targetDocId = Store.curr().id;
 
         const reader = new FileReader();
         reader.onerror = () => Toast.show('无法读取该文件', true);
@@ -297,12 +294,12 @@ const SourceController = {
                 return;
             }
 
-            if (Store.state.activeId === targetDocId) {
+            if (Store.curr().id === targetDocId) {
                 SourceSnapshot.captureFile({ docId: targetDocId, fileName: file.name, text, format: detected });
                 SourceController.notifyPasteSourceChanged();
             }
 
-            if (Store.state.activeId === targetDocId) {
+            if (Store.curr().id === targetDocId) {
                 // Update main editor only when the initiating tab is still active.
                 const rawInput = $('rawInput');
                 if (rawInput) SourceController.displayText(text, rawInput);
@@ -324,187 +321,6 @@ const SourceController = {
             }
         };
         reader.readAsText(file);
-    },
-
-    // ── Fullscreen editor ──
-
-    _bindFullscreenEditor() {
-        const expandBtn = $('expandSourceBtn');
-        const closeBtn = $('sourceEditorCloseBtn');
-        const doneBtn = $('sourceEditorDoneBtn');
-        const parseBtn = $('sourceEditorParseBtn');
-
-        if (expandBtn) expandBtn.onclick = () => SourceController.open();
-        if (closeBtn) closeBtn.onclick = () => SourceController.close();
-        if (doneBtn) doneBtn.onclick = () => SourceController.close();
-
-        const modal = $('sourceEditorModal');
-        if (modal) {
-            modal.addEventListener('click', (e) => {
-                // Prevent closing when clicking inside the modal content
-                if (e.target === modal) e.stopPropagation();
-            });
-        }
-
-        // Wire parse button — emits a custom event that App listens to
-        if (parseBtn) {
-            parseBtn.onclick = () => {
-                SourceController.clearAutoParse();
-                SourceController._syncToMain();
-                if (typeof document !== 'undefined' && document.dispatchEvent) {
-                    document.dispatchEvent(new CustomEvent('ota:sourceParseRequested', {}));
-                }
-            };
-        }
-
-        const rawLarge = $('rawInputLarge');
-        if (rawLarge) {
-            rawLarge.oninput = () => {
-                SourceController._syncStats();
-                SourceController._syncPersist();
-                SourceController.scheduleAutoParse({ text: rawLarge.value, syncToMain: true });
-            };
-            rawLarge.addEventListener('paste', (e) => {
-                const data = e.clipboardData;
-                if (!data) return;
-                SourceController.handlePaste(e);
-            });
-            rawLarge.onkeydown = (e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-                    e.preventDefault();
-                    if (parseBtn) parseBtn.click();
-                }
-                if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                    e.preventDefault();
-                    SourceController._syncToMain();
-                    Promise.resolve(dispatch('workspace:save')).then(ok=>Toast.show(ok?'工作区已保存':'保存未完成，请查看存储状态',!ok));
-                }
-            };
-        }
-
-        // Sync format/header controls between main and fullscreen editors
-        const formatLarge = $('formatSelectLarge');
-        if (formatLarge) {
-            formatLarge.onchange = (e) => {
-                SourceController.clearAutoParse();
-                SourceController._syncToMain();
-                const main = $('formatSelect');
-                if (main) main.value = e.target.value;
-                // Notify App to update import format
-                if (typeof document !== 'undefined' && document.dispatchEvent) {
-                    document.dispatchEvent(new CustomEvent('ota:formatChanged', { detail: { format: e.target.value } }));
-                }
-            };
-        }
-
-        const headerLarge = $('headerModeSelectLarge');
-        if (headerLarge) {
-            headerLarge.onchange = (e) => {
-                SourceController.clearAutoParse();
-                SourceController._syncToMain();
-                const main = $('headerModeSelect');
-                if (main) main.value = e.target.value;
-                if (typeof document !== 'undefined' && document.dispatchEvent) {
-                    document.dispatchEvent(new CustomEvent('ota:headerModeChanged', { detail: { mode: e.target.value } }));
-                }
-            };
-        }
-    },
-
-    open() {
-        const mainInput = $('rawInput');
-        const largeInput = $('rawInputLarge');
-        if (!largeInput) return;
-
-        this.displayText(this.readText(mainInput), largeInput);
-
-        // Sync controls from main editor
-        SourceController._syncControls();
-
-        const modal = $('sourceEditorModal');
-        if (modal) {
-            modal.classList.remove('hidden');
-            modal.classList.add('active');
-            modal.setAttribute('aria-hidden', 'false');
-            ModalController.activate(modal, largeInput);
-        }
-        document.body.classList.add('source-editor-open');
-
-        SourceController._refreshStats();
-        setTimeout(() => largeInput.focus(), 100);
-    },
-
-    close() {
-        const mainInput = $('rawInput');
-        const largeInput = $('rawInputLarge');
-        const textChanged = Boolean(mainInput && largeInput && this.readText(mainInput) !== this.readText(largeInput));
-        const hadPendingAutoParse = Boolean(this._autoParseTimer);
-        const nextText = this.readText(largeInput);
-        this.clearAutoParse();
-        const modal = $('sourceEditorModal');
-        if (modal) {
-            modal.classList.remove('active');
-            modal.classList.add('hidden');
-            modal.setAttribute('aria-hidden', 'true');
-            ModalController.deactivate(modal);
-        }
-        document.body.classList.remove('source-editor-open');
-
-        SourceController._syncToMain();
-        if (textChanged || hadPendingAutoParse) this.scheduleAutoParse({ text: nextText });
-
-    },
-
-    /** Copy fullscreen editor text back to main editor + Store. */
-    _syncToMain() {
-        const mainInput = $('rawInput');
-        const largeInput = $('rawInputLarge');
-        if (!mainInput || !largeInput) return;
-
-        const text = this.readText(largeInput);
-        this.displayText(text, mainInput);
-        dispatch('source:changed', { text: text, preservePaste:Boolean(SourceController.getCurrentPaste(text)) });
-    },
-
-    /** Reflect format/header controls from main → fullscreen. */
-    _syncControls() {
-        const mainFormat = $('formatSelect');
-        const largeFormat = $('formatSelectLarge');
-        if (mainFormat && largeFormat) largeFormat.value = mainFormat.value;
-
-        const mainHeader = $('headerModeSelect');
-        const largeHeader = $('headerModeSelectLarge');
-        if (mainHeader && largeHeader) largeHeader.value = mainHeader.value;
-    },
-
-    /** Update character/line count in the fullscreen editor. */
-    _refreshStats() {
-        const largeInput = $('rawInputLarge');
-        const statEl = $('sourceEditorStats');
-        if (!largeInput || !statEl) return;
-
-        const text = this.readText(largeInput);
-        const chars = text.length;
-        const lines = text.length <= this.EDITOR_LIMIT ? (text ? text.split(/\n/).length : 0) : null;
-        statEl.textContent = `${chars.toLocaleString()} 字符 · ${lines === null ? '有限预览' : `${lines} 行`} · ${formatBytes(chars * 2)}`;
-    },
-
-    /** Debounced stats refresh on input. */
-    _syncStats() {
-        clearTimeout(SourceController._statsTimer);
-        SourceController._statsTimer = setTimeout(() => SourceController._refreshStats(), 300);
-    },
-
-    /** Debounced persist from fullscreen editor. */
-    _syncPersist() {
-        clearTimeout(SourceController._persistTimer);
-        const docId=Store.getDocument().id;
-        SourceController._persistTimer = setTimeout(() => {
-            SourceController._persistTimer=null;
-            if(Store.getDocument().id!==docId)return;
-            const largeInput = $('rawInputLarge');
-            if (largeInput) dispatch('source:replace', { text:SourceController.readText(largeInput) });
-        }, 650);
     },
 
     // ── Input resizer (drag handle) ──

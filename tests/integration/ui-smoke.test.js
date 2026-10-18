@@ -419,7 +419,7 @@ describe('Runtime API surface', () => {
       assert.equal(typeof App[method], 'function', `App.${method} should be callable`);
     }
 
-    for (const method of ['addDoc', 'removeDoc', 'renameDoc', 'moveDoc', 'curr', 'save', 'init']) {
+    for (const method of ['addProject', 'removeProject', 'renameProject', 'moveProject', 'addCard', 'removeCard', 'setCardVisible', 'curr', 'save', 'init', 'getViews', 'getEnabledViews']) {
       assert.equal(typeof Store[method], 'function', `Store.${method} should be callable`);
     }
   });
@@ -428,15 +428,17 @@ describe('Runtime API surface', () => {
 describe('Paste source diagnostics', () => {
   it('keeps paste metadata for unchanged text and clears it when text diverges', async () => {
     setupDOM();
+    OTA.start('app'); // 注册 App 监听（粘贴元数据清理在 source:textChanged 处理器中）
     const { Store } = OTA.require('store');
     const { SourceController } = OTA.require('source-controller');
     const { SourceSnapshot } = OTA.require('source-snapshot');
     const plain = 'id\tnote\n1\thello\nworld';
     const html = '<table><tr><th>id</th><th>note</th></tr><tr><td>1</td><td>hello<br>world</td></tr></table>';
-    Store.state.docs = [{ id: 'a', title: 'First', raw: plain, ui: {} }];
-    Store.state.activeId = 'a';
+    Store.state.docs = [{ id: 'a', title: 'First', raw: plain, visible: true, ui: {} }];
+    Store.state.projects = [{ id: 'a', title: 'First', cardIds: ['a'], activeCardId: 'a', enabledViews: [], views: [] }];
+    Store.state.activeProjectId = 'a';
     SourceController.setPasteSnapshot(SourceSnapshot.createSourceSnapshot({
-      docId: Store.state.activeId,
+      docId: Store.curr().id,
       plain,
       html,
       types: ['text/plain', 'text/html'],
@@ -461,8 +463,11 @@ describe('Paste source diagnostics', () => {
     const plain = 'id\tname\n1\tAlice';
     const html = '<table><tr><td>Alice</td></tr></table><script>alert(1)</script>';
     document.getElementById('rawInput').value = plain;
+    Store.state.docs = [{ id: 'a', title: 'First', raw: plain, visible: true, ui: {} }];
+    Store.state.projects = [{ id: 'a', title: 'First', cardIds: ['a'], activeCardId: 'a', enabledViews: [], views: [] }];
+    Store.state.activeProjectId = 'a';
     SourceController.setPasteSnapshot(SourceSnapshot.createSourceSnapshot({
-      docId: Store.state.activeId,
+      docId: Store.curr().id,
       plain,
       html,
       types: ['text/plain', 'text/html'],

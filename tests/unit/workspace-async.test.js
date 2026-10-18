@@ -173,6 +173,6 @@ describe('Store asynchronous snapshot lifecycle',()=>{
   it('migrates schema 20 raw and correction overlays without changing cells',()=>{
     const {Store,STORE_KEY,storage}=fixture();
     storage.removeItem(STORE_KEY);storage.setItem('ota_v20_workspace',JSON.stringify({schemaVersion:20,docs:[{id:'old',title:'Old',raw:'id\r\n001',sourceRevision:1,ui:{cellEdits:{$T:{0:{0:'002'}}}}}],activeId:'old',persistRaw:true}));
-    Store.init();assert.equal(Store.state.schemaVersion,21);assert.equal(Store.curr().raw,'id\r\n001');assert.equal(Store.curr().ui.cellEdits.$T[0][0],'002');assert.equal(storage.getItem('ota_v20_workspace'),null);assert.ok(storage.getItem(STORE_KEY));
+    Store.init();assert.equal(Store.state.schemaVersion,22);assert.equal(Store.curr().raw,'id\r\n001');assert.equal(Store.curr().ui.cellEdits.$T[0][0],'002');assert.equal(storage.getItem('ota_v20_workspace'),null);assert.ok(storage.getItem(STORE_KEY));
   });
 });

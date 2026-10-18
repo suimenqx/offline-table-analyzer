@@ -134,7 +134,7 @@ const ModalController = {
         ModalController.show('启用视图', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         ModalController._bindSaveBtn(() => {
             const sel = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
-            dispatch('ui:set', { key:'enabledViews', value:sel });
+            dispatch('view:setEnabled', { enabledViews:sel });
             ModalController.close();
             dispatch('preview:renderRequested', {});
         });

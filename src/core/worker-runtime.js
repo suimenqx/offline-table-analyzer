@@ -1,56 +1,102 @@
 OTA.define('worker-runtime', ['import-engine','query-service','joiner','exporter','workspace-storage','table-utils'], ({ImportEngine},{QueryService},{Joiner},{Exporter},{WorkspaceStorage},{TableUtils}) => {
 /* Complete normalized tables stay in the Worker. Window receives descriptors
-   and current-page records; full-query/export results never cross this boundary. */
+   and current-page records; full-query/export results never cross this boundary.
+
+   多卡片工作区：会话持有 Map<cardId, 数据集>；表池由可见清单在 Worker 内派生
+   （同名同结构拼接、异结构并列）；修正仅应用于单来源池内表。 */
 const WorkerRuntime = {
     createSession() {
-        let rawTables=[],key=null,previousEdits=[];
-        const applyEdits=ui=>{
-            for(const [row,col,value] of previousEdits)row[col]=value;
-            previousEdits=[];
-            for(const table of rawTables) {
-                const edits=ui.cellEdits?.[`$${table.name}`] || {};
+        let datasets=new Map(); // cardId -> { tables, previousEdits }
+        let poolCache={ sig:null, pool:null, tables:null };
+        const sigOf = visible => (visible || []).map(v => v.id).join('\u0001');
+        const poolToTables = pool => pool.map(entry => ({ name:entry.displayName, headers:entry.columns.slice(), rows:entry.rows, isView:false }));
+        const buildPool = visible => {
+            const sig = sigOf(visible);
+            if(poolCache.sig === sig) return poolCache;
+            const entries=[];
+            for(const v of visible || []) {
+                const ds=datasets.get(v.id);
+                if(!ds) continue;
+                for(const table of ds.tables) entries.push({ cardId:v.id, cardName:v.name || v.id, table });
+            }
+            const pool = QueryService.computePool(entries);
+            poolCache = { sig, pool, tables:poolToTables(pool) };
+            return poolCache;
+        };
+        const applyEdits = payload => {
+            for(const ds of datasets.values()) {
+                for(const [row,col,value] of ds.previousEdits) row[col]=value;
+                ds.previousEdits=[];
+            }
+            const { pool } = buildPool(payload.visible);
+            for(const entry of pool) {
+                if(entry.kind !== 'single') continue;
+                const ui = payload.cardUis && payload.cardUis[entry.sourceCardId];
+                const edits = (ui && ui.cellEdits && ui.cellEdits[`$${entry.displayName}`]) || {};
+                const ds = datasets.get(entry.sourceCardId);
+                if(!ds) continue;
                 for(const [rowIndex,cols] of Object.entries(edits)) {
-                    const row=table.rows[Number(rowIndex)];if(!row)continue;
+                    const row=entry.rows[Number(rowIndex)];if(!row)continue;
                     for(const [colIndex,value] of Object.entries(cols)) {
-                        const col=Number(colIndex);if(!Number.isInteger(col)||col<0||col>=table.headers.length)continue;
-                        previousEdits.push([row,col,row[col]]);row[col]=String(value ?? '');
+                        const col=Number(colIndex);if(!Number.isInteger(col)||col<0||col>=entry.columns.length)continue;
+                        ds.previousEdits.push([row,col,row[col]]);row[col]=String(value ?? '');
                     }
                 }
             }
         };
-        const assertCurrent=payload=>{if(payload.key && payload.key!==key)throw new Error('数据源已变化，请重新解析');};
-        const query=payload=>{
-            assertCurrent(payload);
-            applyEdits(payload.ui || {});
-            return QueryService.getPreview({rawTables,globalViews:payload.globalViews || [],ui:payload.ui || {},docId:key,sourceRevision:1}).tables;
+        const queryInput = payload => {
+            const { tables } = buildPool(payload.visible);
+            return { rawTables:tables, globalViews:payload.globalViews || [], ui:payload.ui || {}, docId:sigOf(payload.visible), sourceRevision:1 };
+        };
+        const query = payload => {
+            applyEdits(payload);
+            return QueryService.getPreview(queryInput(payload)).tables;
+        };
+        const preview = payload => {
+            applyEdits(payload);
+            return QueryService.getPagePreview(queryInput(payload)).tables;
         };
         return {
             parse(payload) {
+                // payload: { cardId, text, options }
                 const result=ImportEngine.parse(payload.text,payload.options || {});
                 if(result.format==='error')throw new Error(result.diagnostics?.[0]?.message || result.label || '解析失败');
                 const cells=result.tables.reduce((sum,table)=>sum+table.rows.length*table.headers.length,0);
-                if(cells>8000000)throw new Error('解析结果超过 800 万单元格预算，请拆分数据；原文仍保留');
-                rawTables=result.tables;key=payload.key;previousEdits=[];QueryService.clearCache();return result;
+                if(cells>QueryService.MAX_CELLS)throw new Error('解析结果超过 800 万单元格预算，请拆分数据；原文仍保留');
+                let total=cells;
+                for(const ds of datasets.values()) total += ds.tables.reduce((s,t)=>s+t.rows.length*t.headers.length,0);
+                if(total>QueryService.MAX_CELLS)throw new Error('会话内多卡片数据集合计超过 800 万单元格预算，请隐藏或删除部分卡片；原文仍保留');
+                datasets.set(payload.cardId,{ tables:result.tables, previousEdits:[] });
+                poolCache={ sig:null, pool:null, tables:null };
+                QueryService.clearCache();
+                return result;
+            },
+            removeCard(payload) {
+                datasets.delete(payload.cardId);
+                poolCache={ sig:null, pool:null, tables:null };
+                QueryService.clearCache();
             },
             query,
-            preview(payload) {
-                assertCurrent(payload);applyEdits(payload.ui || {});
-                return QueryService.getPagePreview({rawTables,globalViews:payload.globalViews || [],ui:payload.ui || {},docId:key,sourceRevision:1}).tables;
+            preview,
+            stats(payload) {
+                applyEdits(payload);
+                const { tables } = buildPool(payload.visible);
+                return Joiner.stats(tables,payload.cfg,payload.globalViews || []);
             },
-            stats(payload) {assertCurrent(payload);applyEdits(payload.ui || {});return Joiner.stats(rawTables,payload.cfg,payload.globalViews || []);},
             excel(payload) {
-                assertCurrent(payload);
-                const ui=payload.ui || {};applyEdits(ui);
-                let tables;
-                if(payload.mode==='preview')tables=query(payload).map(({table,res})=>({name:table.name,headers:res.headers,rows:res.rows.map(row=>row.d)}));
+                applyEdits(payload);
+                const ui=payload.ui || {};
+                const { tables } = buildPool(payload.visible);
+                let out;
+                if(payload.mode==='preview')out=query(payload).map(({table,res})=>({name:table.name,headers:res.headers,rows:res.rows.map(row=>row.d)}));
                 else {
-                    tables=rawTables;
+                    out=tables;
                     if(payload.mode!=='raw') {
-                        tables=QueryService.collectTables(rawTables,payload.globalViews || [],ui,!!ui.exportOnlyChecked);
-                        if(ui.exportCols==='shown')tables=tables.map(table=>TableUtils.projectColumns(table,ui.rules?.[table.name]?.focus));
+                        out=QueryService.collectTables(tables,payload.globalViews || [],ui,!!ui.exportOnlyChecked);
+                        if(ui.exportCols==='shown')out=out.map(table=>TableUtils.projectColumns(table,ui.rules?.[table.name]?.focus));
                     }
                 }
-                return Exporter.createExcelBytes(tables);
+                return Exporter.createExcelBytes(out);
             }
         };
     },
@@ -72,6 +118,9 @@ const WorkerRuntime = {
                             tables:result.tables.map(table=>TableUtils.describeTable(table,{samples:true}))}});
                     } else if(kind==='query') {
                         value=session.preview(payload);
+                    } else if(kind==='removeCard') {
+                        session.removeCard(payload);
+                        port.postMessage({id,value:true});return;
                     } else if(kind==='excel') {
                         const bytes=session.excel(payload);port.postMessage({id,value:new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})});return;
                     } else if(kind==='stats')value=session.stats(payload);

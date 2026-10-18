@@ -80,7 +80,27 @@ const TableRegistry = {
     getBackgroundInput() {
         const doc=Store.getDocument();
         if(doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
-        return {rawTables:this._raw,ui:doc.ui,globalViews:Store.getState().globalViews,text:doc.raw,options:this._parseOptions,datasetKey:this._datasetKey,docId:doc.id,sourceRevision:doc.sourceRevision};
+        const project=Store.getActiveProject() || {};
+        const visible=(project.cardIds || [])
+            .map(id => Store.getCard(id))
+            .filter(card => card && card.visible !== false)
+            .map(card => ({ id:card.id, name:card.title || card.id }));
+        const cards=[];
+        for(const v of visible) {
+            const card=Store.getCard(v.id);
+            if(!card || !card.raw) continue;
+            cards.push({ id:card.id, raw:card.raw,
+                options:{ format:card.ui.importFormat || 'auto', headerMode:card.ui.importHeaderMode || 'auto',
+                    html: card.id===doc.id ? (this._parseOptions && this._parseOptions.html) || '' : '' } });
+        }
+        const cardUis={};
+        for(const v of visible) {
+            const card=Store.getCard(v.id);
+            if(card) cardUis[v.id]=Object.assign({}, card.ui, { enabledViews:project.enabledViews || [] });
+        }
+        const ui=Object.assign({}, doc.ui, { enabledViews:project.enabledViews || [] });
+        return { rawTables:this._raw, ui, globalViews:project.views || [], visible, cardUis, cards,
+            text:doc.raw, options:this._parseOptions, datasetKey:this._datasetKey, docId:doc.id, sourceRevision:doc.sourceRevision };
     },
     getJoinStats(cfg) {return BackgroundService.stats(this.getBackgroundInput(),cfg);},
 
@@ -116,7 +136,7 @@ const TableRegistry = {
     /** @returns {string[]} all table and view names (raw + global JOIN views) */
     getAvailableTables() {
         const raws = this._raw.map(t => t.name);
-        const views = (Store.state.globalViews || []).map(v => v.view);
+        const views = (Store.getViews() || []).map(v => v.view);
         return [...raws, ...views];
     },
 
@@ -125,7 +145,7 @@ const TableRegistry = {
         if (!tableName) return [];
         const raw = this._raw.find(t => t.name === tableName);
         if (raw) return raw.headers.slice();
-        const views = Store.state.globalViews || [];
+        const views = Store.getViews() || [];
         const view = views.find(v => v.view === tableName);
         if (view) {
             return Joiner.getHeaders(this._raw,view,views);

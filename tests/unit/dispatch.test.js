@@ -30,12 +30,15 @@ beforeEach(() => {
   // Reset Store
   Store.state = {
     docs: [
-      { id: 'a', title: 'Test 1', raw: '', ui: {} },
-      { id: 'b', title: 'Test 2', raw: '', ui: {} },
+      { id: 'a', title: 'Test 1', raw: '', visible: true, ui: {} },
+      { id: 'b', title: 'Test 2', raw: '', visible: true, ui: {} },
     ],
-    activeId: 'a',
+    projects: [
+      { id: 'p1', title: 'Test 1', cardIds: ['a'], activeCardId: 'a', enabledViews: [], views: [] },
+      { id: 'p2', title: 'Test 2', cardIds: ['b'], activeCardId: 'b', enabledViews: [], views: [] },
+    ],
+    activeProjectId: 'p1',
     theme: 'light',
-    globalViews: [],
     nextAnalysisSeq: 1,
     copyFormat: 'default',
     spreadsheetSafe: true,
@@ -48,17 +51,24 @@ beforeEach(() => {
 
 // ---------------------------------------------------------------------------
 describe('dispatch — command routing', () => {
-  it('dispatch("tab:create") adds a doc and returns it', () => {
-    const doc = dispatch('tab:create');
-    assert.equal(typeof doc.id, 'string');
-    assert.equal(Store.state.docs.length, 3);
-    assert.equal(Store.state.activeId, doc.id);
+  it('dispatch("project:create") adds a project with a card and returns it', () => {
+    const project = dispatch('project:create');
+    assert.equal(typeof project.id, 'string');
+    assert.equal(Store.state.projects.length, 3);
+    assert.equal(Store.state.activeProjectId, project.id);
+    assert.equal(project.cardIds.length, 1);
   });
 
-  it('dispatch("tab:activate") switches active tab', () => {
-    const ok = dispatch('tab:activate', { id: 'b' });
+  it('dispatch("project:activate") switches active project', () => {
+    const ok = dispatch('project:activate', { id: 'p2' });
     assert.equal(ok, true);
-    assert.equal(Store.state.activeId, 'b');
+    assert.equal(Store.state.activeProjectId, 'p2');
+  });
+
+  it('dispatch("card:create") appends a card into the active project', () => {
+    const card = dispatch('card:create', { title: '第二段' });
+    assert.equal(Store.getActiveProject().cardIds.includes(card.id), true);
+    assert.equal(Store.curr().id, card.id);
   });
 
   it('dispatch("source:changed") updates raw text', () => {
@@ -110,7 +120,7 @@ describe('dispatch — event emission', () => {
     const events = [];
     const unsub = Store.onChange((evt, payload) => events.push(evt));
 
-    dispatch('tab:create');
+    dispatch('project:create');
     dispatch('filter:global', { value: 'test' });
     dispatch('ui:theme', {});
 

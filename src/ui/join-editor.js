@@ -59,9 +59,9 @@ const JoinEditor = {
     getTableData(name) {
         const raw = TableRegistry.getRaw().find(t => t.name === name);
         if(raw) return raw;
-        const view = Store.state.globalViews.find(v => v.view === name);
+        const view = Store.getViews().find(v => v.view === name);
         if(view && TableRegistry.isBackground())return {headers:TableRegistry.getCols(name),rows:[],isView:true};
-        if(view) return Joiner.run(TableRegistry.getRaw(), view, Store.state.globalViews);
+        if(view) return Joiner.run(TableRegistry.getRaw(), view, Store.getViews());
         return null;
     },
 
@@ -621,7 +621,7 @@ const JoinEditor = {
         if(this.state.order.length === 0) errors.push('❌ 至少选择一个输出列');
 
         const cfg = this.getCurrentConfig();
-        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.state.globalViews, TableRegistry.getRaw().map(t => t.name))) {
+        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.getViews(), TableRegistry.getRaw().map(t => t.name))) {
             errors.push('❌ 视图依赖会形成循环引用');
         }
 
@@ -672,7 +672,7 @@ const JoinEditor = {
         if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
         // Cache stats by config fingerprint to avoid redundant recalc
         const doc=Store.getDocument();
-        const cacheKey=JSON.stringify([doc.id,doc.sourceRevision,doc.ui.cellEdits,Store.getState().globalViews,cfg]);
+        const cacheKey=JSON.stringify([doc.id,doc.sourceRevision,doc.ui.cellEdits,Store.getViews(),cfg]);
         if (!this._statsCache) this._statsCache = { key: null, value: null };
         if (this._statsCache.key !== cacheKey) {
             this._statsCache.key = cacheKey;
@@ -682,7 +682,7 @@ const JoinEditor = {
                     if(this._statsCache?.key!==cacheKey)return;
                     this._statsCache.value=stats;this._statsCache.pending=false;this.updatePreview();
                 }).catch(error=>{if(this._statsCache?.key===cacheKey){this._statsCache.pending=false;el.textContent=`预览失败：${error.message}`;}});
-            } else this._statsCache.value = Joiner.stats(TableRegistry.getRaw(), cfg, Store.state.globalViews);
+            } else this._statsCache.value = Joiner.stats(TableRegistry.getRaw(), cfg, Store.getViews());
         }
         if(this._statsCache.pending){el.textContent='预览: 正在后台计算…';return;}
         const stats = this._statsCache.value;
@@ -694,8 +694,8 @@ const JoinEditor = {
         const rName = $('jeRightTable').value;
         const el = $('jeDependency');
         if(!el) return;
-        const lView = Store.state.globalViews.find(x => x.view === lName);
-        const rView = Store.state.globalViews.find(x => x.view === rName);
+        const lView = Store.getViews().find(x => x.view === lName);
+        const rView = Store.getViews().find(x => x.view === rName);
         const parts = [];
         if(lView) {
             const stamp = this.formatTime(lView.updatedAt || lView.createdAt);
@@ -714,7 +714,7 @@ const JoinEditor = {
         el.innerHTML = parts.length ? parts.join('') : '<span class="muted">选择左右表查看结构</span>';
     },
     buildDependencyChain(name, seen=new Set(), depth=0) {
-        const v = Store.state.globalViews.find(x => x.view === name);
+        const v = Store.getViews().find(x => x.view === name);
         if(!v) return `<span style="color:var(--success)">${this.escapeHtml(name)}</span>`;
         if(seen.has(name)) return `<span style="color:var(--danger)">${this.escapeHtml(name)} (循环)</span>`;
         const next = new Set(seen); next.add(name);
@@ -797,7 +797,7 @@ const JoinEditor = {
     /* ── Name conflict ── */
     isNameConflict(name, excludeIdx=-1) {
         const rawNames = TableRegistry.getRaw().map(t => t.name);
-        const viewNames = Store.state.globalViews.filter((_,i)=>i!==excludeIdx).map(v => v.view);
+        const viewNames = Store.getViews().filter((_,i)=>i!==excludeIdx).map(v => v.view);
         return rawNames.includes(name) || viewNames.includes(name);
     },
     makeUniqueName(base, excludeIdx=-1) {
@@ -817,7 +817,7 @@ const JoinEditor = {
         this.state.editIdx = editIdx;
         this.metaCache = {};
         this.state.selectedOrderIdx = -1;
-        const v = editIdx > -1 ? Store.state.globalViews[editIdx] : { view:'', left:'', right:'', type:'inner', on:'', select:'' };
+        const v = editIdx > -1 ? Store.getViews()[editIdx] : { view:'', left:'', right:'', type:'inner', on:'', select:'' };
 
         this.state.titleBase = editIdx > -1 ? '编辑全局视图' : '新增全局视图';
         $('jeTitle').textContent = this.state.titleBase;
@@ -902,7 +902,7 @@ const JoinEditor = {
         const onStr = this.buildOnString(this.state.rels);
         const selStr = this.buildSelectString();
 
-        const base = this.state.editIdx > -1 ? Store.state.globalViews[this.state.editIdx] : {};
+        const base = this.state.editIdx > -1 ? Store.getViews()[this.state.editIdx] : {};
         const nv = {
             view: name,
             left: $('jeLeftTable').value,

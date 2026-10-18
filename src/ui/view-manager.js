@@ -1,7 +1,7 @@
 OTA.define('view-manager', ["runtime", "store", "exporter", "modal-controller", "dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Exporter}, {ModalController}, {dispatch}) => {
 /* ViewManager — JOIN view CRUD and management modal.
 
-   Extracted from join-editor.js. All interactions go through Store.state.globalViews.
+   Extracted from join-editor.js. All interactions go through Store.getViews().
    The host (join-editor) provides an onEdit(idx) callback for opening the editor.
 */
 
@@ -27,7 +27,7 @@ const ViewManager = {
 
     /** Generate a unique view name */
     makeUniqueName(base) {
-        const used = new Set(Store.state.globalViews.map(v => v.view));
+        const used = new Set(Store.getViews().map(v => v.view));
         let name = (base || 'NewView').trim() || 'NewView';
         if (!used.has(name)) return name;
         let i = 2;
@@ -68,10 +68,10 @@ const ViewManager = {
         views.forEach(v => {
             const nv = this.normalizeView(v);
             if (!nv) return;
-            const idx = Store.state.globalViews.findIndex(x => x.view === nv.view);
+            const idx = Store.getViews().findIndex(x => x.view === nv.view);
             if (idx > -1) {
                 if (confirm(`视图 "${nv.view}" 已存在，是否覆盖？\n确定=覆盖 | 取消=自动改名`)) {
-                    nv.createdAt = Store.state.globalViews[idx].createdAt || nv.createdAt;
+                    nv.createdAt = Store.getViews()[idx].createdAt || nv.createdAt;
                     dispatch('view:upsert', { index:idx, view:nv });
                 } else {
                     nv.view = this.makeUniqueName(nv.view);
@@ -101,7 +101,7 @@ const ViewManager = {
     // ── Main management modal ──
 
     modManageViews() {
-        const vs = Store.state.globalViews;
+        const vs = Store.getViews();
         const joinTypeLabel = { inner: 'Inner', left: 'Left', right: 'Right', full: 'Full', semi: 'Semi', anti: 'Anti' };
         let sortBy = 'name';
         const self = this;
@@ -244,7 +244,7 @@ const ViewManager = {
             batchExportBtn.onclick = () => {
                 const selectedCbs = document.querySelectorAll('.view-checkbox:checked');
                 if (selectedCbs.length === 0) return;
-                const selectedViews = Array.from(selectedCbs).map(cb => Store.state.globalViews[parseInt(cb.dataset.index)]);
+                const selectedViews = Array.from(selectedCbs).map(cb => Store.getViews()[parseInt(cb.dataset.index)]);
                 Exporter.toJson({ kind: 'join-views', views: selectedViews }, `join_views_${Date.now()}`);
                 Toast.show(`已导出 ${selectedViews.length} 个视图`);
             };

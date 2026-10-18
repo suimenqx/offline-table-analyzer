@@ -91,15 +91,14 @@ The parse status bar shows warnings for malformed quotes, rows with mismatched c
 
 Drag the horizontal handle below the source textarea to resize it. The height range is **120–600 px**. Your preferred height is saved automatically to `localStorage` and restored on subsequent visits.
 
-### 2.2 Full-screen editor
+### 2.2 Data cards (卡片式数据源)
 
-Click **Fullscreen edit** (or the expand button beside the card heading) to open a dedicated editor in a modal or full-screen overlay. It provides:
+The source area holds a **card list**: each card is one data segment with its own raw text, parse options (format / header mode), and a visibility toggle.
 
-- **Synchronized controls** — format and header-mode selects mirror the sidebar controls. Changes sync in both directions.
-- **Live statistics** — character and line counts update in real time in the footer.
-- **Convenient parsing** — `Ctrl/Cmd+Enter` parses without closing the editor.
-- **Quick save** — `Ctrl/Cmd+S` saves the current source to the workspace.
-- **Escape / Close / Done** — all three actions sync the edited text back to the main source area before closing.
+- **Click a card** to select it — the left panel then shows its content and parse options, and parsing applies to it.
+- **Paste** replaces the selected card's content. The **＋ 新增卡片** button adds an empty card (default visible, auto-selected).
+- **Visibility (👁)** controls whether the card's tables enter the **table pool** — the set of tables shown in the preview, filtering, JOIN and export context. Hidden cards are greyed out and their tables leave the pool immediately.
+- The workspace tab bar now manages **projects (工程)**: each project is a container holding a group of cards and its own JOIN views.
 
 ---
 
@@ -330,7 +329,7 @@ Each table offers two display orientations via toggle buttons in its toolbar:
 
 ### 9.2 Pagination
 
-Large text datasets keep their complete parsed tables in a local Worker. The page receives table metadata and only the current visible records; editing, undo/redo and copying use those records, while Excel exports still read complete Worker results.
+Large text datasets keep their complete parsed tables in a local Worker. The page receives table metadata and only the current visible records; editing, undo/redo and copying use those records, while Excel exports still read complete Worker results. With multiple visible cards, the Worker holds one dataset per card and derives the table pool (same-name, same-structure tables are concatenated without deduplication; differently-shaped same-name tables are shown side by side with the card name as a qualifier).
 
 Choose **50, 100, 250, or 500** rows per page from the sub-bar selector. Pagination shows current page / total pages with **Previous** and **Next** buttons.
 
@@ -338,7 +337,7 @@ Choose **50, 100, 250, or 500** rows per page from the sub-bar selector. Paginat
 
 ### 9.3 Large datasets and many tables
 
-When an input contains many tables or a large number of cells, the preview automatically switches to **single-table mode**. The sub-bar shows a table selector with each table's row and column counts; only the selected table is materialized in the page, while filtering and preview export still cover all matching rows in the current tab. Each table uses its own horizontal/vertical scroll area, and long cells are shown on one line with the full value available on hover.
+When an input contains many tables or a large number of cells, the preview automatically switches to **single-table mode**. The sub-bar shows a table selector with each table's row and column counts; only the selected table is materialized in the page, while filtering and preview export still cover all matching rows across the visible cards of the current project. Each table uses its own horizontal/vertical scroll area, and long cells are shown on one line with the full value available on hover.
 
 ---
 
@@ -535,18 +534,10 @@ All processing (parsing, filtering, JOIN execution, Excel generation) runs in th
 | Undo cell correction | `Ctrl/Cmd+Z` |
 | Redo cell correction | `Ctrl/Cmd+Y` (or `Ctrl/Cmd+Shift+Z`) |
 | Select all in active preview table | `Ctrl/Cmd+A` |
-| Rename active tab | `F2` |
+| Rename active project | `F2` |
 | Show help | `?` |
 
-### 15.2 Source editor (full-screen)
-
-| Action | Shortcut |
-| --- | --- |
-| Parse without closing | `Ctrl/Cmd+Enter` |
-| Save source to workspace | `Ctrl/Cmd+S` |
-| Close (syncs text) | `Escape` or click **Close** / **Done** |
-
-### 15.3 JOIN designer
+### 15.2 JOIN designer
 
 | Action | Shortcut |
 | --- | --- |

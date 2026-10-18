@@ -56,6 +56,40 @@ function cloneForResult(table) {
 
 const QueryService = {
     MAX_CELLS:8000000,
+    /**
+     * 表池派生（纯函数，无 DOM）：entries = [{cardId, table}] 按可见卡片顺序。
+     * 规则（多卡片工作区 ADR）：与首张卡结构（列名+顺序）一致的同名表直接拼接
+     * （不去重、重复保留）；结构不同的同名表并列，显示名加卡片限定；单来源直通。
+     * @returns {Array<{displayName:string, kind:'single'|'concat'|'side', sourceCardId:string, sourceCardIds:string[], columns:string[], rows:Array<Array<string>>}>}
+     */
+    computePool(entries) {
+        const byName = new Map();
+        for(const entry of entries || []) {
+            if(!entry || !entry.table) continue;
+            const name = entry.table.name;
+            if(!byName.has(name)) byName.set(name, []);
+            byName.get(name).push({ cardId:entry.cardId, cardName:entry.cardName || entry.cardId, table:entry.table });
+        }
+        const pool = [];
+        for(const [name, group] of byName) {
+            const first = group[0].table;
+            const sameStructure = (a, b) => a.headers.length === b.headers.length && a.headers.every((h, i) => h === b.headers[i]);
+            const same = group.filter(e => sameStructure(first, e.table));
+            const others = group.filter(e => !sameStructure(first, e.table));
+            if(same.length > 1) {
+                pool.push({ displayName:name, kind:'concat', sourceCardId:null, sourceCardIds:same.map(e => e.cardId),
+                    columns:first.headers, rows:[].concat(...same.map(e => e.table.rows)) });
+            } else {
+                pool.push({ displayName:name, kind:'single', sourceCardId:same[0].cardId, sourceCardIds:[same[0].cardId],
+                    columns:first.headers, rows:first.rows });
+            }
+            for(const e of others) {
+                pool.push({ displayName:`${name} (${e.cardName})`, kind:'side', sourceCardId:e.cardId, sourceCardIds:[e.cardId],
+                    columns:e.table.headers, rows:e.table.rows });
+            }
+        }
+        return pool;
+    },
     collectTables(rawTables, globalViews, ui, selectTables=true) {
         let tables=rawTables.slice();
         if(selectTables && Array.isArray(ui.displayTables))tables=tables.filter(table=>ui.displayTables.includes(table.name));

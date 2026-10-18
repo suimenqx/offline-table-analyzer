@@ -569,3 +569,16 @@
             button, input, select, textarea, .card, .table-container { border: 1px solid CanvasText; }
             .selected-cell { outline: 2px solid Highlight !important; }
         }
+
+/* ── 数据卡片（卡片式数据源工作区） ── */
+.data-card-list { display:flex; flex-direction:column; gap:6px; margin-bottom:4px; }
+.data-card { border:1px solid var(--border); border-radius:8px; padding:6px 8px; background:var(--bg-card, #fff); cursor:pointer; }
+.data-card.active { border-color:var(--accent); box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent); }
+.data-card.hidden-card { opacity:.6; }
+.data-card-head { display:flex; align-items:center; gap:6px; }
+.data-card-title { font-weight:600; font-size:13px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.data-card-title.strike { text-decoration:line-through; }
+.data-card-preview { background:var(--bg-hover, #f3f4f6); border-radius:4px; padding:4px 6px; font-size:11px; overflow:auto; max-height:64px; margin:4px 0 0; white-space:pre; }
+.card-visibility { border:none; background:transparent; cursor:pointer; font-size:13px; padding:2px; }
+.card-visibility.off { opacity:.5; }
+.view-unavailable { background:#fee2e2; border-color:#fca5a5; color:var(--danger,#b91c1c); }
