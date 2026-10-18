@@ -12,7 +12,7 @@ const paste = async (page, text) => {
   await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
 };
 const cardList = page => page.locator('.data-card');
-const parse = async page => { await page.locator('#parseBtn').click(); await expect(page.locator('#parseStatusText')).toContainText('解析完成',{timeout:60000}); };
+const parse = async page => { await page.locator('#parseBtn').click(); await expect(page.locator('#parseStatusText')).toContainText(/\d[\d,]* 行/, {timeout:60000}); };
 
 test('场景1+2：两卡同名同结构 10 万行 CSV 拼接 20 万行、显隐回落、导出读回',async({page,context})=>{
   test.setTimeout(300000);

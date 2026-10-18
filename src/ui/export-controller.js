@@ -193,7 +193,7 @@ const ExportController = {
     },
 
     _getEnabledJoinTables(full) {
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         if (!ui.enabledViews || !ui.enabledViews.length) return [];
         // Joiner is required at runtime; accessed via OTA to avoid circular dep
         const Joiner = (typeof window !== 'undefined' && window.OTA)
@@ -211,7 +211,7 @@ const ExportController = {
     },
 
     _getFullExportTables() {
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         let tables = TableRegistry.getRaw();
         if (ui.exportOnlyChecked && Array.isArray(ui.displayTables)) {
             const selected = new Set(ui.displayTables);
@@ -227,7 +227,7 @@ const ExportController = {
         return QueryService.getPreview({
             rawTables:TableRegistry.getRaw(),
             globalViews:Store.getViews(),
-            ui:doc.ui,
+            ui:Store.getActiveUI(),
             docId:doc.id,
             sourceRevision:doc.sourceRevision,
             stateRevision:Store.revision,

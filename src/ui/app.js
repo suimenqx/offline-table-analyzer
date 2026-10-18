@@ -631,7 +631,7 @@ const App = {
         return QueryService.getPreview({
             rawTables: TableRegistry.getRaw(),
             globalViews: Store.getViews(),
-            ui: doc.ui,
+            ui: Store.getActiveUI(),
             docId: doc.id,
             sourceRevision: doc.sourceRevision,
             stateRevision: Store.revision,

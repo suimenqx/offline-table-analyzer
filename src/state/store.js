@@ -154,6 +154,12 @@ const Store = {
         const project = this.getActiveProject();
         return (project && project.enabledViews) || [];
     },
+    /** 组合后的活动卡片 UI：卡片自身 ui + 工程级 enabledViews（窗口路径与后台路径共用的组合点） */
+    getActiveUI() {
+        const card = this.curr();
+        const project = this.getActiveProject();
+        return Object.assign({}, card.ui, { enabledViews:(project && project.enabledViews) || [] });
+    },
     init() {
         this._rawSnapshot=null;
         let loaded = null;
@@ -545,7 +551,12 @@ const Store = {
     addCard(initial={}, projectId=this.state.activeProjectId) {
         const project = this.getProject(projectId);
         if(!project) return null;
-        const base = typeof initial.title === 'string' && initial.title ? initial.title : `数据段 ${project.cardIds.length + 1}`;
+        // 首张卡片继承工程标题（保持 v22 前「页签标题 → 原文导出文件名」的公开行为）；
+        // 后续卡片用「数据段 N」。
+        const isFirst = project.cardIds.length === 0;
+        const base = typeof initial.title === 'string' && initial.title ? initial.title
+            : isFirst ? (project.title || 'Analysis')
+            : `数据段 ${project.cardIds.length + 1}`;
         const title = this.makeUniqueTitle(base);
         const card = this.normalizeDoc(Object.assign({ id:this.generateDocId(), title, raw:"", visible:true }, initial, { title }), this.state.docs.length);
         this.state.docs.push(card);
