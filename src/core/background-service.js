@@ -12,10 +12,17 @@ const BackgroundService = {
     canUse() { return typeof Worker !== 'undefined' && typeof URL.createObjectURL === 'function'; },
     isLarge(text) { return text.length>this.THRESHOLD; },
     hasDataset(cardId) { return this.datasetKeys.has(cardId); },
-    cancelQueries() {
-        const lane=lanes.get('compute');if(!lane)return;
-        for(const [id,job] of lane.jobs)if(job.kind==='query'){lane.jobs.delete(id);job.reject(abortError());lane.worker.postMessage({cancel:id});}
+    /** 统一的多卡会话消息载荷（visible/cardUis/ui/globalViews 只在这里组装） */
+    workerPayload(input) {
+        return { visible:input.visible || [], cardUis:input.cardUis || {}, ui:input.ui || {}, globalViews:input.globalViews || [] };
     },
+    /** 作业级取消：只拒绝指定类型的在途/排队作业，不终止 Worker、不丢其他卡的数据集 */
+    cancelJobs(kinds) {
+        const lane=lanes.get('compute');if(!lane)return;
+        for(const [id,job] of lane.jobs)if(kinds.has(job.kind)){lane.jobs.delete(id);job.reject(abortError());lane.worker.postMessage({cancel:id});}
+    },
+    cancelQueries() { this.cancelJobs(new Set(['query'])); },
+    cancelParses() { this.cancelJobs(new Set(['parse'])); },
     cancel() {
         for(const name of ['compute','export']) {
             const lane=lanes.get(name);
@@ -83,15 +90,15 @@ const BackgroundService = {
     },
     async query(input) {
         await this.prepare(input);
-        const tables=await this.request('query',{visible:input.visible,cardUis:input.cardUis,ui:input.ui,globalViews:input.globalViews});
+        const tables=await this.request('query',this.workerPayload(input));
         return {tables};
     },
     async export(input,mode) {
         input=snapshotInput(input);
         await this.prepare(input);
-        return this.request('excel',{visible:input.visible,cardUis:input.cardUis,ui:input.ui,globalViews:input.globalViews,mode});
+        return this.request('excel',Object.assign(this.workerPayload(input),{mode}));
     },
-    async stats(input,cfg) {input=snapshotInput(input);cfg=JSON.parse(JSON.stringify(cfg));await this.prepare(input);return this.request('stats',{visible:input.visible,cardUis:input.cardUis,ui:input.ui,globalViews:input.globalViews,cfg});},
+    async stats(input,cfg) {input=snapshotInput(input);cfg=JSON.parse(JSON.stringify(cfg));await this.prepare(input);return this.request('stats',Object.assign(this.workerPayload(input),{cfg}));},
     storage(kind,payload) {return this.request(kind,payload,{},'storage');}
 };
 return {BackgroundService};

@@ -750,7 +750,9 @@ const Store = {
     _notify(event, payload) {
         if(event === 'state:changed') {
             this.revision += 1;
-            const active = this.getActiveProject();
+            // 只读查表，不触发 ensureProjects 的惰性构建（事件派发期间不改状态）
+            const projects = this.state.projects || [];
+            const active = projects.find(p => p.id === this.state.activeProjectId) || projects[0];
             payload = Object.assign({ revision:this.revision, activeProjectId:this.state.activeProjectId, activeCardId: active && active.activeCardId }, payload || {});
             const changed = payload.changed || [];
             if(changed.includes('views')) this.viewRevision += 1;

@@ -199,6 +199,109 @@ const SourceController = {
 
     // ── Main editor ──
 
+    // ── 卡片列表（数据段区由 SourceController 拥有：选中/显隐/删除/重命名/新增） ──
+
+    /** 选中卡片（左侧面板显示其内容，解析作用于它） */
+    activateCard(id, force=false) {
+        if(!id) return false;
+        const project = Store.state.projects.find(p => p.cardIds.includes(id));
+        if(!project) return false;
+        if(!force && project.activeCardId === id) return false;
+        const input = $('rawInput');
+        if(input) dispatch('source:replace', { text:SourceController.readText(input) });
+        return dispatch('card:activate', { id });
+    },
+
+    /** 卡片显隐（范围控制）：表池成员随显隐变化 */
+    toggleCardVisible(id) {
+        const card = Store.getCard(id);
+        if(!card) return false;
+        return dispatch('card:visible', { id, visible: card.visible === false });
+    },
+
+    /** 卡片删除（经确认） */
+    removeCard(id) {
+        const card = Store.getCard(id);
+        if(!card) return false;
+        if(typeof confirm === 'function' && !confirm(`删除卡片“${card.title}”？其数据与解析设置将移除。`)) return false;
+        const result = dispatch('card:remove', { id });
+        if(result === 'last_card') Toast.show('工程至少保留一张卡片', true);
+        return result === true;
+    },
+
+    /** 卡片重命名（F2 / 双击） */
+    renameCard(id) {
+        const card = Store.getCard(id);
+        if(!card) return false;
+        const name = typeof prompt === 'function' ? prompt('卡片名称', card.title || '') : null;
+        if(name) dispatch('card:rename', { id, title:name });
+        return Boolean(name);
+    },
+
+    /**
+     * 渲染卡片列表：点击=选中、👁=显隐、双击/F2=重命名、Delete=删除、
+     * 键盘可聚焦（tabindex=0 + Enter/Space 激活）。
+     */
+    renderCards() {
+        const container = $('cardList');
+        if(!container) return;
+        const project = Store.getActiveProject();
+        if(!project) { container.innerHTML = ''; return; }
+        const cards = project.cardIds.map(id => Store.getCard(id)).filter(Boolean);
+        container.innerHTML = cards.map((card, idx) => {
+            const active = card.id === project.activeCardId;
+            const visible = card.visible !== false;
+            const stats = `${(card.raw || '').length.toLocaleString()} 字符`;
+            const preview = card.raw ? card.raw.slice(0, 200) : '';
+            const label = `${escapeHtml(card.title || `数据段 ${idx + 1}`)}${active ? '（选中）' : ''}${visible ? '' : '（已隐藏）'}`;
+            return `<div class="data-card ${active ? 'active' : ''} ${visible ? '' : 'hidden-card'}" data-card-id="${escapeHtml(card.id)}" role="listitem" tabindex="0" aria-label="${label}">
+                <div class="data-card-head">
+                    <button type="button" class="card-visibility ${visible ? '' : 'off'}" data-card-act="visible" title="${visible ? '隐藏：数据退出表池' : '显示：数据进入表池'}" aria-pressed="${visible}">${visible ? '👁' : '🚫'}</button>
+                    <span class="data-card-title ${visible ? '' : 'strike'}">${escapeHtml(card.title || `数据段 ${idx + 1}`)}</span>
+                    <button type="button" class="sm text-button" data-card-act="remove" title="删除卡片" aria-label="删除卡片 ${escapeHtml(card.title || '')}">×</button>
+                </div>
+                <div class="muted" style="font-size:11px;">${stats}${visible ? '' : ' · 已隐藏'}</div>
+                ${preview ? `<pre class="data-card-preview">${escapeHtml(preview)}</pre>` : ''}
+            </div>`;
+        }).join('');
+        container.querySelectorAll('.data-card').forEach(el => {
+            const id = el.dataset.cardId;
+            el.onclick = (e) => {
+                if(e.target.closest('[data-card-act]')) return;
+                SourceController.activateCard(id);
+            };
+            el.onkeydown = (e) => {
+                if(e.target.closest('[data-card-act]')) return;
+                if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); SourceController.activateCard(id); }
+                if(e.key === 'F2') { e.preventDefault(); e.stopPropagation(); SourceController.renameCard(id); }
+                if(e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); SourceController.removeCard(id); }
+            };
+            el.querySelector('[data-card-act="visible"]').onclick = (e) => {
+                e.stopPropagation();
+                SourceController.toggleCardVisible(id);
+            };
+            el.querySelector('[data-card-act="remove"]').onclick = (e) => {
+                e.stopPropagation();
+                SourceController.removeCard(id);
+            };
+            el.ondblclick = (e) => {
+                if(e.target.closest('[data-card-act]')) return;
+                e.preventDefault();
+                SourceController.renameCard(id);
+            };
+        });
+        const addBtn = $('addCardBtn');
+        if(addBtn) addBtn.onclick = (e) => {
+            e.preventDefault();
+            dispatch('card:create', {});
+        };
+        const poolCount = $('poolCount');
+        if(poolCount) {
+            const visibleCount = cards.filter(card => card.visible !== false).length;
+            poolCount.textContent = `表池 ${visibleCount} 张卡片`;
+        }
+    },
+
     _bindMainEditor() {
         const rawInput = $('rawInput');
         if (!rawInput) return;

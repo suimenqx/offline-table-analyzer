@@ -26,3 +26,8 @@
 - `QueryService`：表池派生入口（可见清单 → 池）、缓存键含显隐修订；JOIN/导出作用于池。
 - `Store`/schema：21→22，`docs` → `projects`/`cards` 1:1 保 id；`activeId` → 工程+卡片两级；`globalViews` 复用，`enabledViews` 合并上移工程级；迁移、备份导入同路径、旧 fixture 回归。
 - `refactor.md` 模块边界随实施更新；架构校验继续拒绝越过 Store 的 UI 写入与不完整 manifest。
+
+## 兼容性附注
+
+- 单卡工程重命名时同步其唯一卡片的标题：保留 v22 前「页签重命名 → 原文导出文件名随之变化」的公开行为（导出前缀取卡片标题）；多卡工程只改工程名。
+- `tab:*` 命令保留为 `project:*` 的别名、旧形状工作区状态（docs/activeId 无 projects）由 `ensureProjects` 按 1:1 惰性归一化——均为迁移兼容路径，不构成新能力。

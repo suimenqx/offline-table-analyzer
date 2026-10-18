@@ -4,6 +4,15 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## Unreleased
 
+### 卡片式数据源工作区
+
+- Workspace tabs become **projects (工程)**: each project holds a group of **data cards (卡片)**, and its own JOIN views and enabled-view list.
+- Each card is a data segment with independent parse options (format / header mode) and a visibility toggle; the **table pool (表池)** is the set of tables from visible cards — same-name same-structure tables are concatenated without deduplication, differently-shaped same-name tables are shown side by side with the card name as a qualifier, and card order is the concatenation order.
+- The Worker session now holds one dataset per card and derives the table pool from the visible list; corrections apply per source card, concatenated tables are read-only, and deleting a card releases its dataset. Session budget is enforced with an explicit error.
+- The source area shows a card list (click to select, 👁 to toggle visibility, double-click to rename, keyboard accessible); the tab bar manages projects.
+- The full-screen source editor is removed; large-source previews keep guiding users to edit data in their own local editor before pasting.
+- Workspace schema 22: tabs migrate 1:1 to projects + cards with preserved ids; per-document enabled views move up to the project; backups and old snapshots import through the same migration.
+
 - Keep expanding the bounded detection sample when a truncated sample's confident winner is the plain-text fallback, so a table region after a long prose prefix is still found with original source offsets.
 - Extract the shared region-run collector used by delimited and fixed-width region scans and name the detection scoring weights; no behavior change beyond the sampling expansion.
 - Add a synthetic region-extraction evaluation tool (`npm run eval:regions`) reporting region recall, boundary accuracy, cell precision, silent mis-split, confirmation rate, and runtime budget; it fails on regressions against the designed behavior encoded in its fixtures.

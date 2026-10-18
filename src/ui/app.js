@@ -91,14 +91,14 @@ const App = {
                 case 'card:renamed':
                 case 'card:reordered':
                 case 'card:visibilityChanged':
-                    this.renderCards();
+                    SourceController.renderCards();
                     this.requestRender();
                     break;
                 case 'card:removed':
                     if(payload && payload.id) BackgroundService.removeCard(payload.id);
                     break;
                 case 'card:activated':
-                    this.renderCards();
+                    SourceController.renderCards();
                     this.loadDoc();
                     break;
                 case 'source:textChanged':
@@ -106,7 +106,12 @@ const App = {
                         if(payload && payload.sourceRevision!==Store.getDocument().sourceRevision)break;
                         this._regionSelection=null;
                         this._headerModeConfirmation=null;
-                        if(this._parseToken && this._parseToken.sourceRevision!==payload.sourceRevision) {BackgroundService.cancel();this._parseGeneration++;TableRegistry.setResult(null);this.requestRender();}
+                        if(this._parseToken && this._parseToken.sourceRevision!==payload.sourceRevision) {
+                            // 作业级取消 + 只作废该卡的数据集（其他卡的数据不受影响）
+                            BackgroundService.cancelQueries();BackgroundService.cancelParses();
+                            if(payload && payload.docId) BackgroundService.removeCard(payload.docId);
+                            this._parseGeneration++;TableRegistry.setResult(null);this.requestRender();
+                        }
                         CellEditController.reset();
                         // Paste lifetime follows the source text, not the transition that
                         // happened to deliver it. Option toggles do not emit this event;
@@ -937,7 +942,7 @@ validflag Time      Level   Message                 Code
         this.syncCopyFormatControl();
         this.syncCopyHeaderControl();
         this.updatePasteSourceButton();
-        this.renderCards();
+        SourceController.renderCards();
         if(Store.restoring) {
             if($('previewArea'))$('previewArea').textContent='正在恢复完整原文…';
             this.updateStorageStatus();return;
@@ -1107,7 +1112,9 @@ validflag Time      Level   Message                 Code
     },
 
     async runBackground(text,options,context,render) {
-        BackgroundService.cancel();QueryService.clearCache();
+        // 作业级取消：拒绝在途/排队的解析与查询，但保留其他卡片的数据集
+        BackgroundService.cancelQueries();BackgroundService.cancelParses();
+        QueryService.clearCache();
         const generation=++this._parseGeneration;this._parseToken=context;
         const job=this.showJob('正在后台解析完整原文…');
         TableRegistry.setResult(null);
@@ -1176,65 +1183,6 @@ validflag Time      Level   Message                 Code
     },
 
     renderTabs() { TabController.render(); },
-
-    /** 卡片列表（左侧数据段区）：点击=选中、眼睛=显隐、删除/重命名/新增 */
-    renderCards() {
-        const container = $('cardList');
-        if(!container) return;
-        const project = Store.getActiveProject();
-        if(!project) { container.innerHTML = ''; return; }
-        const cards = project.cardIds.map(id => Store.getCard(id)).filter(Boolean);
-        container.innerHTML = cards.map((card, idx) => {
-            const active = card.id === project.activeCardId;
-            const visible = card.visible !== false;
-            const stats = `${(card.raw || '').length.toLocaleString()} 字符`;
-            const preview = card.raw ? card.raw.slice(0, 200) : '';
-            return `<div class="data-card ${active ? 'active' : ''} ${visible ? '' : 'hidden-card'}" data-card-id="${this.escapeHtml(card.id)}" role="listitem">
-                <div class="data-card-head">
-                    <button type="button" class="card-visibility ${visible ? '' : 'off'}" data-card-act="visible" title="${visible ? '隐藏：数据退出表池' : '显示：数据进入表池'}" aria-pressed="${visible}">${visible ? '👁' : '🚫'}</button>
-                    <span class="data-card-title ${visible ? '' : 'strike'}">${this.escapeHtml(card.title || `数据段 ${idx + 1}`)}</span>
-                    <button type="button" class="sm text-button" data-card-act="remove" title="删除卡片">×</button>
-                </div>
-                <div class="muted" style="font-size:11px;">${stats}${visible ? '' : ' · 已隐藏'}</div>
-                ${preview ? `<pre class="data-card-preview">${this.escapeHtml(preview)}</pre>` : ''}
-            </div>`;
-        }).join('');
-        container.querySelectorAll('.data-card').forEach(el => {
-            const id = el.dataset.cardId;
-            el.onclick = (e) => {
-                if(e.target.closest('[data-card-act]')) return;
-                this.activateCard(id);
-            };
-            el.querySelector('[data-card-act="visible"]').onclick = (e) => {
-                e.stopPropagation();
-                this.toggleCardVisible(id);
-            };
-            el.querySelector('[data-card-act="remove"]').onclick = (e) => {
-                e.stopPropagation();
-                const card = Store.getCard(id);
-                if(card && typeof confirm === 'function' && !confirm(`删除卡片“${card.title}”？其数据与解析设置将移除。`)) return;
-                const result = dispatch('card:remove', { id });
-                if(result === 'last_card') Toast.show('工程至少保留一张卡片', true);
-            };
-            el.ondblclick = (e) => {
-                if(e.target.closest('[data-card-act]')) return;
-                e.preventDefault();
-                const card = Store.getCard(id);
-                const name = card && (typeof prompt === 'function') ? prompt('卡片名称', card.title || '') : null;
-                if(name) dispatch('card:rename', { id, title:name });
-            };
-        });
-        const addBtn = $('addCardBtn');
-        if(addBtn) addBtn.onclick = (e) => {
-            e.preventDefault();
-            dispatch('card:create', {});
-        };
-        const poolCount = $('poolCount');
-        if(poolCount) {
-            const visibleCount = cards.filter(card => card.visible !== false).length;
-            poolCount.textContent = `表池 ${visibleCount} 张卡片`;
-        }
-    },
 
     startTabRename(id) { TabController.startRename(id); },
 
