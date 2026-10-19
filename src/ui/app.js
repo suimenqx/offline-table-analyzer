@@ -1185,7 +1185,7 @@ validflag Time      Level   Message                 Code
         const vsRaw = Store.getEnabledViews();
         const vs = vsRaw.filter(v => viewNames.includes(v));
         if(vs.length !== vsRaw.length) dispatch('view:setEnabled', { enabledViews:vs });
-        const poolNames = TableRegistry.getRaw().map(t => t.name);
+        const poolNames = TableRegistry.getPoolNames().length ? TableRegistry.getPoolNames() : TableRegistry.getRaw().map(t => t.name);
         $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>{
             const cfg = Store.getViews().find(v => v.view === n);
             const missing = cfg && [cfg.left, cfg.right].filter(Boolean).some(t => !poolNames.includes(t));
@@ -1227,7 +1227,9 @@ validflag Time      Level   Message                 Code
             QueryService.getPreviewAsync(input,BackgroundService).then(result=>{
                 if(generation!==this._renderGeneration || Store.getDocument().id!==doc.id || Store.getDocument().sourceRevision!==input.sourceRevision)return;
                 if(revision!==Store.revision){this.requestRender();return;}
+                TableRegistry.setPoolNames(result.tables.map(({table})=>table.name));
                 this.renderPreview(result.tables);
+                this.updChips();
             }).catch(error=>{if(generation===this._renderGeneration && error.name!=='AbortError')Toast.show(error.message,true);}).finally(()=>{
                 this.finishJob(job);
                 if(generation===this._renderGeneration && $('previewArea'))$('previewArea').setAttribute('aria-busy','false');
@@ -1251,6 +1253,7 @@ validflag Time      Level   Message                 Code
         
         const ui = Store.curr().ui;
         const processedTables = processedOverride || this.getPreviewProcessedTables();
+        TableRegistry.setPoolNames(processedTables.map(({ table }) => table.name));
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         const combined = processedTables.map(({ table }) => table);
         if(!combined.length) {

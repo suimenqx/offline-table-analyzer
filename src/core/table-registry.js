@@ -13,6 +13,8 @@ const TableRegistry = {
     /** @type {Object[]} raw parsed tables */
     _raw: [],
     _pageCells:new Map(),
+    /** 最近一次预览的表池显示名（view 引用可用性判定用） */
+    _poolNames: [],
     /** @type {string} format id from the last parse result */
     _format: 'empty',
     /** @type {string} human-readable format label */
@@ -28,6 +30,7 @@ const TableRegistry = {
      */
     setResult(result) {
         this._pageCells.clear();
+        this._poolNames = [];
         this._diagnosticCount=result?.diagnosticCount ?? result?.diagnostics?.length ?? 0;
         this._background=!!result?.background;
         this._datasetKey=result?.datasetKey;
@@ -52,6 +55,8 @@ const TableRegistry = {
 
     /** @returns {Object[]} all raw parsed tables */
     getRaw() { return this._raw; },
+    setPoolNames(names) { this._poolNames = (names || []).slice(); },
+    getPoolNames() { return this._poolNames; },
     isBackground() {return !!this._background;},
     setPreview(tables) {
         this._pageCells.clear();
