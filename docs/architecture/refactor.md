@@ -114,6 +114,8 @@ App orchestrator → bootstrap
 | | `app.js` | 应用编排和 UI，委托过滤给 FilterEngine、表格构建给 TableBuilder | `App` |
 | （根） | `bootstrap.js` | 应用启动 | — |
 
+2026-10-19 卡片交互深化：SourceController → TableRegistry → TableUtils 的依赖均指向 manifest 中较早模块，不新增或重排模块。SourceController 拥有稳定卡片 DOM、焦点和排序交互；TableRegistry 拥有非持久化的修订绑定解析摘要及完整预览计数；BackgroundService 返回有界解析描述并校验驻留来源版本。命名兼容及可选字段的决策见[多卡片 ADR](multi-card-workspace.md)。
+
 结构性拆分和运行时模块隔离已落地：业务代码通过 `OTA.define()` 声明依赖，`OTA.require()` 按需解析并缓存；`TableRegistry` 为 App 与 JoinEditor 提供共享的解析表访问边界，避免彼此直接依赖。
 
 ## 6. 状态与事件设计

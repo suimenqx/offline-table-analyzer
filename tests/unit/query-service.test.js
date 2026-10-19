@@ -53,6 +53,16 @@ describe('QueryService — shared result contract', () => {
     assert.deepEqual(joined.res.rows[0].d, ['A','9']);
   });
 
+  it('invalidates pooled previews on card names, source revisions and per-card corrections', async () => {
+    const base={rawTables:[],ui:{},visible:[{id:'a',name:'Old'}],cards:[{id:'a',sourceRevision:1,config:{format:'csv',headerMode:'auto'}}],cardUis:{a:{cellEdits:{}}}};
+    let serial=0;
+    const executor={async query(){return {tables:[],serial:++serial};}};
+    assert.equal((await QueryService.getPreviewAsync(base,executor)).serial,1);
+    assert.equal((await QueryService.getPreviewAsync({...base,visible:[{id:'a',name:'New'}]},executor)).serial,2);
+    assert.equal((await QueryService.getPreviewAsync({...base,cards:[{...base.cards[0],sourceRevision:2}]},executor)).serial,3);
+    assert.equal((await QueryService.getPreviewAsync({...base,cardUis:{a:{cellEdits:{$T:{0:{0:'changed'}}}}}},executor)).serial,4);
+  });
+
   it('fetches a new page while the Worker can reuse the complete query',async()=>{
     const input={rawTables:[],ui:{pageSize:50,tablePages:{T:1}}};
     const pages=[];const executor={async query(snapshot){pages.push(snapshot.ui.tablePages.T);return {tables:[]};}};

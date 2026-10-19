@@ -72,6 +72,50 @@ describe('Store — 工程/卡片 renaming', () => {
     assert.equal(Store.state.projects[2].title, 'Analysis 2 (2)');
   });
 
+  it('keeps default card labels separate from project names while preserving export prefixes', () => {
+    const project = Store.transition('project:create');
+    const card = Store.curr();
+    assert.equal(Store.getExportTitle(), 'Analysis 4');
+    Store.transition('project:rename', { id:project.id, title:'Orders' });
+    assert.equal(card.title, '数据段 1');
+    assert.equal(Store.getExportTitle(), 'Orders');
+    Store.transition('card:rename', { id:card.id, title:'January' });
+    assert.equal(Store.getExportTitle(), 'January');
+  });
+
+  it('does not infer export naming policy from a historical or explicitly chosen data-segment title', () => {
+    Store.getCard('a').title = '数据段 2';
+    assert.equal(Store.getExportTitle('a'), '数据段 2');
+    const project = Store.transition('project:create');
+    const card = Store.curr();
+    Store.transition('card:rename', {id:card.id, title:'数据段 99'});
+    assert.equal(Store.getExportTitle(), '数据段 99');
+    Store.transition('project:rename', {id:project.id, title:'Changed'});
+    assert.equal(Store.getExportTitle(), '数据段 99');
+  });
+
+  it('round trips the explicit export naming policy and does not change it when cards are reordered', () => {
+    const project = Store.transition('project:create');
+    const first = Store.curr();
+    const second = Store.transition('card:create');
+    Store.transition('card:reorder', {sourceId:first.id,targetId:second.id,place:'after'});
+    assert.equal(Store.getExportTitle(first.id), 'Analysis 4');
+    const backup={...Store.serializeState(), kind:'ota-workspace'};
+    Store.transition('workspace:import', {workspace:backup});
+    const restored = Store.getState().docs.find(card=>card.exportTitleFromProject === true);
+    assert.equal(restored.title, '数据段 1');
+    assert.equal(Store.getExportTitle(restored.id), project.title);
+  });
+
+  it('keeps project names unique after default card names no longer mirror them', () => {
+    const first=Store.transition('project:create');
+    const next=Store.transition('project:create');
+    Store.transition('project:rename',{id:next.id,title:first.title});
+    assert.equal(next.title,'Analysis 4 (2)');
+    Store.transition('project:rename',{id:first.id,title:first.title});
+    assert.equal(first.title,'Analysis 4', 'renaming to the existing name is stable');
+  });
+
   it('卡片重命名：updates card title within its project', () => {
     assert.equal(Store.renameCard('a', '主数据段'), true);
     assert.equal(Store.state.docs[0].title, '主数据段');
@@ -149,10 +193,19 @@ describe('Store — 工程/卡片 add/remove', () => {
     assert.equal(card.ui.importFormat, 'auto');
   });
 
+  it('uses data-segment names for every new default card without renaming historical cards', () => {
+    const project = Store.transition('project:create');
+    assert.equal(Store.getCard(project.cardIds[0]).title, '数据段 1');
+    assert.equal(Store.transition('card:create').title, '数据段 2');
+    const next = Store.transition('project:create');
+    assert.equal(Store.getCard(next.cardIds[0]).title, '数据段 3');
+    assert.equal(Store.getCard('a').title, 'Analysis 1');
+  });
+
   it('addCard appends into the active project and activates it', () => {
     const project = Store.getActiveProject();
     const card = Store.addCard({});
-    assert.equal(card.title, '数据段 2');
+    assert.equal(card.title, '数据段 1');
     assert.equal(project.cardIds.length, 2);
     assert.equal(project.activeCardId, card.id);
     assert.equal(card.visible, true);
@@ -486,6 +539,7 @@ describe('Store — source lifecycle and migration contract', () => {
     assert.equal(migrated.projects[1].enabledViews.length, 0);
     assert.equal(migrated.docs[0].id, 'd1', '卡片保 id');
     assert.equal(migrated.docs[0].visible, true);
+    assert.notEqual(migrated.docs[0].exportTitleFromProject, true, '旧卡片不推断或改写导出命名策略');
     assert.equal(migrated.activeProjectId, 'd2');
     assert.equal('globalViews' in migrated, false, '顶层 globalViews 移除');
   });

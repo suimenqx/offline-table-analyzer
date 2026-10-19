@@ -96,10 +96,12 @@ Drag the horizontal handle below the source textarea to resize it. The height ra
 The source area holds a **card list**: each card is one data segment with its own raw text, parse options (format / header mode), and a visibility toggle.
 
 - **Click a card** to select it — the left panel then shows its content and parse options, and parsing applies to it.
-- **Paste** replaces the selected card's content. The **＋ 新增卡片** button adds an empty card (default visible, auto-selected).
-- **Visibility (👁)** controls whether the card's tables enter the **table pool** — the set of tables shown in the preview, filtering, JOIN and export context. Hidden cards are greyed out and their tables leave the pool immediately.
+- **Paste** inserts at the caret or replaces the selection for small text. Select all before pasting to replace the whole card. Large pastes and pastes into a large-source read-only preview replace the complete card; the editor explains this distinction and names the target card. **＋ 新增卡片** adds an empty, participating card, selects it and focuses its source input.
+- **参与分析** controls whether the card's tables enter the **table pool** — the context for preview, filtering, JOIN and data export. Clearing the checkbox excludes its data, not its editor; **编辑中** independently marks the selected card. Excluded cards are not struck through or treated as deleted.
 - The workspace tab bar now manages **projects (工程)**: each project is a container holding a group of cards and its own JOIN views.
-- **Rename** a card by double-clicking its title or pressing `F2`: edit in place, `Enter`/blur saves, `Escape` cancels.
+- **Rename** a card by double-clicking its title or pressing `F2`: edit in place, `Enter`/blur saves, `Escape` cancels. New default cards consistently use **数据段 N**; historical names remain unchanged. Default main-card downloads retain the project's filename prefix; after an explicit card rename, downloads use that card name.
+- **Keyboard**: ↑↓ and Home/End move card focus without selecting; Enter/Space selects. **Order**: drag the handle or use Alt+↑↓. This controls concatenation order and never deduplicates records or changes the editing target.
+- Cards show format, full row count and parse status instead of repeating raw previews. The right-hand header reports participating/total cards and full filtered result counts, not the active card's rows or just the displayed page.
 - **Delete** any card with its × button or `Delete`, including the last card. An empty project keeps its JOIN views; source editing and data export stay disabled until you click **新增卡片**. Reloading does not add a replacement card.
 
 ---

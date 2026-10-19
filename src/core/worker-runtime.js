@@ -8,7 +8,7 @@ const WorkerRuntime = {
     createSession() {
         let datasets=new Map(); // cardId -> { tables, previousEdits }
         let poolCache={ sig:null, pool:null, tables:null };
-        const sigOf = visible => (visible || []).map(v => v.id).join('\u0001');
+        const sigOf = visible => JSON.stringify((visible || []).map(v => [v.id, v.name || v.id]));
         const poolToTables = pool => pool.map(entry => ({ name:entry.displayName, headers:entry.columns.slice(), rows:entry.rows, isView:false }));
         const buildPool = visible => {
             const sig = sigOf(visible);

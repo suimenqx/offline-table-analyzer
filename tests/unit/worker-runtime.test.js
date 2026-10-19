@@ -27,6 +27,19 @@ describe('background dataset session',()=>{
     assert.ok(session.excel({...input,mode:'raw'}).byteLength>100);
   });
 
+  it('refreshes side-by-side display names after a card rename without reparsing its data', () => {
+    const {OTA}=loadModules(['worker-runtime']);
+    const session=OTA.require('worker-runtime').WorkerRuntime.createSession();
+    session.parse({cardId:'a',text:'id,name\n1,A',options:{format:'csv',headerMode:'first-row'}});
+    session.parse({cardId:'b',text:'id,label\n1,B',options:{format:'csv',headerMode:'first-row'}});
+    const visible=[{id:'a',name:'Base'},{id:'b',name:'Old'}];
+    const first=session.preview({visible,ui:{},cardUis:{}});
+    assert.equal(first[1].table.name,'CSV Table 1 (Old)');
+    const renamed=session.preview({visible:[visible[0],{id:'b',name:'New'}],ui:{},cardUis:{}});
+    assert.equal(renamed[1].table.name,'CSV Table 1 (New)');
+    assert.equal(renamed[1].res.totalRows,1);
+  });
+
   it('re-parsing the same card replaces its dataset instead of double-counting the session budget',()=>{
     const {OTA}=loadModules(['worker-runtime','query-service']);const {WorkerRuntime}=OTA.require('worker-runtime');const {QueryService}=OTA.require('query-service');
     const session=WorkerRuntime.createSession();

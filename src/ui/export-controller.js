@@ -35,7 +35,7 @@ const ExportController = {
             validate();
             updateLabel(TableRegistry.isBackground()?'正在后台生成 Excel…':'正在生成 Excel…');
             if(TableRegistry.isBackground())return BackgroundService.export(TableRegistry.getBackgroundInput(),mode);
-            const tables=mode==='raw'?TableRegistry.getRaw():mode==='full'?this._getFullExportTables():this._getPreviewExportTables();
+            const tables=mode==='raw'?TableRegistry.getQueryTables():mode==='full'?this._getFullExportTables():this._getPreviewExportTables();
             return Exporter.createExcelBytes(tables);
         },this._getPrefix(mode),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','xlsx',validate);
     },
@@ -191,7 +191,7 @@ const ExportController = {
     // ── Export helpers (used by App.renderPreview and other methods) ──
 
     _getPrefix(kind) {
-        const title = Store.getDocument()?.title || Store.getActiveProject()?.title || 'Analysis';
+        const title = Store.getExportTitle();
         return Exporter.sanitizeFilePrefix(`${title}_${kind}`);
     },
 
@@ -204,7 +204,7 @@ const ExportController = {
         if (!Joiner) return [];
         return ui.enabledViews.map(v => {
             const cfg = Store.getViews().find(g => g.view === v);
-            return cfg ? Joiner.run(TableRegistry.getRaw(), cfg, Store.getViews()) : null;
+            return cfg ? Joiner.run(TableRegistry.getQueryTables(), cfg, Store.getViews()) : null;
         }).filter(x => x);
     },
 
@@ -215,7 +215,7 @@ const ExportController = {
 
     _getFullExportTables() {
         const ui = Store.getActiveUI();
-        let tables = TableRegistry.getRaw();
+        let tables = TableRegistry.getQueryTables();
         if (ui.exportOnlyChecked && Array.isArray(ui.displayTables)) {
             const selected = new Set(ui.displayTables);
             tables = tables.filter(t => selected.has(t.name));
@@ -229,7 +229,7 @@ const ExportController = {
         const doc = Store.getDocument();
         if(!doc) return [];
         return QueryService.getPreview({
-            rawTables:TableRegistry.getRaw(),
+            rawTables:TableRegistry.getQueryTables(),
             globalViews:Store.getViews(),
             ui:Store.getActiveUI(),
             docId:doc.id,

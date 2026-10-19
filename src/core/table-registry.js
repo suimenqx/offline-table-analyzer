@@ -1,4 +1,4 @@
-OTA.define('table-registry', ["store", "joiner", "background-service"], ({Store}, {Joiner}, {BackgroundService}) => {
+OTA.define('table-registry', ["store", "joiner", "background-service", "table-utils"], ({Store}, {Joiner}, {BackgroundService}, {TableUtils}) => {
 /* TableRegistry — single source of truth for parsed table data and metadata.
 
    This module holds local tables or Worker descriptors (tables, format, diagnostics,
@@ -13,6 +13,27 @@ const TableRegistry = {
     /** @type {Object[]} raw parsed tables */
     _raw: [],
     _pageCells:new Map(),
+    _cardSummaries:new Map(),
+    /** Session-only counts; never retain raw text or complete tables here. */
+    recordParse(context, result) {
+        const card = Store.getCard(context?.docId);
+        if(!card || card.sourceRevision !== context.sourceRevision) return false;
+        const config = context.config || context.options || {};
+        const format = config.format || 'auto', headerMode = config.headerMode || 'auto';
+        if((card.ui.importFormat || 'auto') !== format || (card.ui.importHeaderMode || 'auto') !== headerMode) return false;
+        this._cardSummaries.set(card.id, {sourceRevision:card.sourceRevision, format, headerMode,
+            summary:Object.freeze({format:result.format, label:result.label || result.format,
+                tableCount:(result.tables || []).length,
+                rowCount:(result.tables || []).reduce((sum, table) => sum + TableUtils.rowCount(table), 0)})});
+        for(const id of this._cardSummaries.keys()) if(!Store.getCard(id)) this._cardSummaries.delete(id);
+        return true;
+    },
+    getCardSummary(id) {
+        const card = Store.getCard(id), saved = this._cardSummaries.get(id);
+        if(!card || !saved || saved.sourceRevision !== card.sourceRevision
+            || saved.format !== (card.ui.importFormat || 'auto') || saved.headerMode !== (card.ui.importHeaderMode || 'auto')) return null;
+        return saved.summary;
+    },
     /** 最近一次预览的表池显示名（view 引用可用性判定用） */
     _poolNames: [],
     /** @type {string} format id from the last parse result */
@@ -31,6 +52,7 @@ const TableRegistry = {
     setResult(result) {
         this._pageCells.clear();
         this._poolNames = [];
+        this._previewSummary = null;
         this._diagnosticCount=result?.diagnosticCount ?? result?.diagnostics?.length ?? 0;
         this._background=!!result?.background;
         this._datasetKey=result?.datasetKey;
@@ -55,11 +77,18 @@ const TableRegistry = {
 
     /** @returns {Object[]} all raw parsed tables */
     getRaw() { return this._raw; },
+    /** Window-only single-card query scope; source diagnostics still use getRaw(). */
+    getQueryTables() { const card=Store.getDocument(); return card && card.visible !== false ? this._raw : []; },
     setPoolNames(names) { this._poolNames = (names || []).slice(); },
     getPoolNames() { return this._poolNames; },
     isBackground() {return !!this._background;},
+    getPreviewSummary() { return this._previewSummary || null; },
     setPreview(tables) {
+        this._poolNames = (tables || []).map(item => item.table.name);
+        this._previewSummary = tables ? Object.freeze({tableCount:tables.length,
+            rowCount:tables.reduce((sum, item) => sum + (item.res.totalRows ?? item.res.rows.length), 0)}) : null;
         this._pageCells.clear();
+        if(!tables) return;
         for(const {table,res} of tables) {
             if(table.isView || !table.remote)continue;
             const cells=new Map();this._pageCells.set(table.name,cells);
@@ -94,9 +123,9 @@ const TableRegistry = {
         for(const v of visible) {
             const card=Store.getCard(v.id);
             if(!card || !card.raw) continue;
-            cards.push({ id:card.id, raw:card.raw,
-                options:{ format:card.ui.importFormat || 'auto', headerMode:card.ui.importHeaderMode || 'auto',
-                    html: card.id===doc.id ? (this._parseOptions && this._parseOptions.html) || '' : '' } });
+            const config={format:card.ui.importFormat || 'auto', headerMode:card.ui.importHeaderMode || 'auto'};
+            cards.push({ id:card.id, sourceRevision:card.sourceRevision, raw:card.raw, config,
+                options:card.id === doc.id && this._parseOptions ? this._parseOptions : {...config, html:''} });
         }
         const cardUis={};
         for(const v of visible) {

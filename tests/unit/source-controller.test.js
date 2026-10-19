@@ -84,6 +84,23 @@ describe('SourceController.detectFormat', () => {
   });
 });
 
+describe('SourceController card status', () => {
+  it('distinguishes empty, pending, successful, ambiguous and failed parses without reparsing data', () => {
+    const {TableRegistry} = OTA.require('table-registry');
+    assert.equal(SourceController.getCardStatus('a').state, 'pending');
+    const card = Store.curr();
+    const context = {docId:card.id, sourceRevision:card.sourceRevision, options:{format:'auto', headerMode:'auto'}};
+    TableRegistry.recordParse(context, {format:'csv', label:'CSV', tables:[{headers:['id'], rows:[], rowCount:200000, remote:true}]});
+    assert.deepEqual(SourceController.getCardStatus('a'), {state:'ready', text:'CSV · 200,000 行 · 已解析'});
+    TableRegistry.recordParse(context, {format:'ambiguous', tables:[]});
+    assert.equal(SourceController.getCardStatus('a').state, 'confirm');
+    TableRegistry.recordParse(context, {format:'error', tables:[]});
+    assert.equal(SourceController.getCardStatus('a').state, 'error');
+    Store.transition('source:replace', {text:''});
+    assert.equal(SourceController.getCardStatus('a').state, 'empty');
+  });
+});
+
 describe('SourceController auto-parse policy', () => {
   it('shows a bounded read-only preview while retaining complete original input', () => {
     const editor={value:'',readOnly:false,dataset:{},setAttribute(){},removeAttribute(){}};

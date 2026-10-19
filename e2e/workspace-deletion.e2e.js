@@ -70,7 +70,7 @@ test('删除卡片释放其后台数据，最后一张也能删；刷新后可�
   await expect(page.locator('#rawInput')).toHaveValue('');
   await expect(page.locator('#rawInput')).toBeDisabled();
   await expect(page.locator('.table-container')).toHaveCount(0);
-  await expect(page.locator('#poolCount')).toHaveText('表池 0 张卡片');
+  await expect(page.locator('#poolCount')).toHaveText('表池 0/0 张卡片');
   await expect(page.locator('#addCardBtn')).toBeFocused();
   await page.reload();
   await expect(cards(page)).toHaveCount(0);

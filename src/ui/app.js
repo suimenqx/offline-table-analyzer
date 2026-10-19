@@ -91,11 +91,17 @@ const App = {
                 case 'project:reordered':
                     this.renderTabs();
                     break;
+                case 'project:renamed':
+                    this.renderTabs();
+                    SourceController.renderCards();
+                    this.requestRender();
+                    break;
                 case 'card:created':
                 case 'card:duplicated':
-                    // 新卡自动选中：左侧编辑器必须切换到新卡内容（否则粘贴会追加到旧卡文本）
+                    // 新卡自动选中，并把键盘粘贴落点移到它的原文框。
                     SourceController.renderCards();
                     this.loadDoc();
+                    $('rawInput')?.focus();
                     this.requestRender();
                     break;
                 case 'card:removed':
@@ -126,6 +132,7 @@ const App = {
                     this.loadDoc();
                     break;
                 case 'source:textChanged':
+                    SourceController.renderCards();
                     if (!payload || payload.docId === Store.getDocument()?.id) {
                         if(payload && payload.sourceRevision!==Store.getDocument()?.sourceRevision)break;
                         this._regionSelection=null;
@@ -151,6 +158,7 @@ const App = {
                     Toast.show('解析结果已过期，请重新解析当前数据源', true);
                     break;
                 case 'ui:changed':
+                    SourceController.renderCards();
                     if (!payload || payload.replaced || ['globalFilter','columnFilters','rules','displayTables','enabledViews','previewModes','pageSize','previewTable','tablePages'].includes(payload.key)) this.requestRender();
                     this.updateWorkspaceSummary();
                     break;
@@ -160,6 +168,7 @@ const App = {
                     this.requestRender();
                     break;
                 case 'parse:completed':
+                    SourceController.renderCards();
                     this.updSelects();
                     this.updChips();
                     this.requestRender();
@@ -338,17 +347,15 @@ const App = {
     updateWorkspaceSummary() {
         const title = $('workspaceTitle');
         const summary = $('datasetSummary');
-        if(title) title.textContent = Store.getDocument()?.title || Store.getActiveProject()?.title || '工作区为空';
-        const tableCount = TableRegistry.getRaw().length;
-        const rows = TableRegistry.getRaw().reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
-        const maxCols = TableRegistry.getRaw().reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
-        const importItems = this.getImportSummaryItems();
-        const format = (TableRegistry.getLastResult() && (TableRegistry.getLastResult().label || TableRegistry.getLastResult().format)) || (importItems[0] || '').replace(/^格式:\s*/, '');
-        const header = importItems.find(text => text.indexOf('表头:') === 0) || '';
+        const project = Store.getActiveProject();
+        if(title) title.textContent = project ? `${project.title} · 表池` : '工作区为空';
+        const cards = (project?.cardIds || []).map(id => Store.getCard(id)).filter(Boolean);
+        const visibleCount = cards.filter(card => card.visible !== false).length;
+        const preview = TableRegistry.getPreviewSummary();
         if(summary) {
-            summary.textContent = tableCount
-                ? `${format || '已解析'}${header ? ` · ${header}` : ''} · ${tableCount} 表 · ${rows.toLocaleString()} 行 · 最多 ${maxCols} 列`
-                : '所有处理均在本地浏览器完成';
+            summary.textContent = `表池 ${visibleCount}/${cards.length} 张卡片 · ` + (preview
+                ? `${preview.tableCount} 表 · ${preview.rowCount.toLocaleString()} 行（当前筛选结果，非当前页）`
+                : '等待解析或更新结果');
             summary.title = summary.textContent;
         }
         this.updateAnalysisState();
@@ -578,7 +585,8 @@ const App = {
     getSourceContext(text=SourceController.readText()) {
         const doc=Store.getDocument();
         if(!doc) return null;
-        return {docId:doc.id,sourceRevision:doc.sourceRevision,text,options:this.getParseOptions()};
+        return {docId:doc.id,sourceRevision:doc.sourceRevision,text,options:this.getParseOptions(),
+            config:{format:doc.ui.importFormat || 'auto', headerMode:doc.ui.importHeaderMode || 'auto'}};
     },
 
     matchesSourceContext(a,b) {
@@ -594,13 +602,17 @@ const App = {
         const text=SourceController.readText();
         if(Store.getDocument().raw!==text)dispatch('source:replace',{text});
         const requested=this.getSourceContext(text);
+        // An empty or excluded editor must not block other participating sources.
+        const canUseOtherSources=()=>TableRegistry.isBackground()
+            && (!Store.getDocument()?.raw || Store.getDocument()?.visible === false)
+            && TableRegistry.getBackgroundInput().cards.some(card=>card.id!==requested.docId);
         if(!this._parseToken?.completed || !this.matchesSourceContext(this._parseToken,requested)) {
             const pending=this._pendingParse;
             const parsed=await (this.matchesSourceContext(pending?.context,requested)?pending.promise:this.run());
             if(!this.matchesSourceContext(requested,this.getSourceContext())) {
                 throw new Error('数据源或解析设置已变化，请重新导出');
             }
-            if(!parsed)return null; // Parsing already reports errors and cancellation.
+            if(!parsed && !(canUseOtherSources() && this._parseToken?.failedGeneration === this._parseGeneration)) return null;
         }
         const token=this._parseToken, generation=this._parseGeneration;
         const validate=()=>{
@@ -612,7 +624,8 @@ const App = {
             }
         };
         validate();
-        if(!TableRegistry.getRaw().length){
+        const noVisibleTables = TableRegistry.isBackground() ? !TableRegistry.getBackgroundInput().cards.length : !TableRegistry.getQueryTables().length;
+        if(noVisibleTables || (!TableRegistry.getRaw().length && !canUseOtherSources())){
             if(TableRegistry.getFormat()==='ambiguous')Toast.show('请先在解析详情中确认格式、表格区域或表头',true);
             else Toast.show('无数据可导出',true);
             return null;
@@ -659,7 +672,7 @@ const App = {
     getPreviewProcessedTables() {
         const doc = Store.curr();
         return QueryService.getPreview({
-            rawTables: TableRegistry.getRaw(),
+            rawTables: TableRegistry.getQueryTables(),
             globalViews: Store.getViews(),
             ui: Store.getActiveUI(),
             docId: doc?.id,
@@ -1087,10 +1100,7 @@ validflag Time      Level   Message                 Code
             const options=parseContext.options;
             // 多可见卡片时同样走后台：表池派生只在 Worker 内实现（单 owner）。
             const project = Store.getActiveProject();
-            const visibleCardsWithRaw = ((project && project.cardIds) || [])
-                .map(id => Store.getCard(id))
-                .filter(card => card && card.visible !== false && (card.raw || '').length > 0);
-            const useBackground = (BackgroundService.isLarge(sourceText) || visibleCardsWithRaw.length > 1)
+            const useBackground = (BackgroundService.isLarge(sourceText) || (project?.cardIds.length || 0) > 1)
                 && !ImportEngine.requiresDOMParser(sourceText,options);
             if(useBackground) {
                 const pending={context:parseContext};
@@ -1106,6 +1116,8 @@ validflag Time      Level   Message                 Code
                 throw new Error(message || result.label || '解析失败');
             }
             TableRegistry.setResult(result);
+            TableRegistry.recordParse(parseContext, result);
+            SourceController.renderCards();
             CellEditController.setRawTables(result.tables);
             this.applyStoredCellEdits();
             this.updateImportSummary();
@@ -1144,6 +1156,8 @@ validflag Time      Level   Message                 Code
                     elapsed: Math.round(performance.now() - parseContext.started),
                 });
             }
+            if(parseContext) TableRegistry.recordParse(parseContext, TableRegistry.getLastResult());
+            SourceController.renderCards();
             CellEditController.setRawTables([]);
             this.updateImportSummary();
             this.updSelects();
@@ -1173,10 +1187,12 @@ validflag Time      Level   Message                 Code
         try {
             // 会话键 = 卡片 id（Worker 多数据集会话按 cardId 寻址）；
             // 复合 key 仅作为 TableRegistry 的 datasetKey 标识。
-            const result=await BackgroundService.parse({text,options,key:context.docId});
+            const result=await BackgroundService.parse({text,options,key:context.docId,sourceRevision:context.sourceRevision,config:context.config});
             const doc=Store.getDocument();
             if(generation!==this._parseGeneration || !this.matchesSourceContext(context,this.getSourceContext()))return false;
             TableRegistry.setResult({...result,background:true,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision});
+            TableRegistry.recordParse(context, result);
+            SourceController.renderCards();
             this.applyStoredCellEdits();
             this.updateImportSummary();
             dispatch('parse:completed',{docId:doc.id,sourceRevision:doc.sourceRevision,format:result.format,tables:result.tables,elapsed:Math.round(performance.now()-context.started)});
@@ -1186,7 +1202,13 @@ validflag Time      Level   Message                 Code
         } catch(error) {
             console.error('[runBackground]', error && error.message || error);
             if(generation!==this._parseGeneration || error.name==='AbortError' || !this.matchesSourceContext(context,this.getSourceContext()))return false;
-            TableRegistry.setResult({format:'error',label:'解析失败',tables:[],diagnostics:[{severity:'error',code:'PARSE_ERROR',message:error.message}]});
+            context.failedGeneration = generation;
+            const keepPool = Store.getDocument()?.visible === false;
+            TableRegistry.setResult({format:'error',label:'解析失败',tables:[],
+                background:keepPool,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision,
+                diagnostics:[{severity:'error',code:'PARSE_ERROR',message:error.message}]});
+            TableRegistry.recordParse(context, TableRegistry.getLastResult());
+            SourceController.renderCards();
             Toast.show(error.message,true);this.updateImportSummary();this.requestRender();
             return false;
         } finally {
@@ -1261,6 +1283,7 @@ validflag Time      Level   Message                 Code
         if(!Store.getDocument()) TableRegistry.setResult(null);
         if(TableRegistry.isBackground() && !processedOverride) {
             const doc=Store.getDocument();const revision=Store.revision;
+            TableRegistry.setPreview(null);this.updateWorkspaceSummary();
             const job=this.showJob('正在后台更新筛选与 JOIN…');
             if($('previewArea'))$('previewArea').setAttribute('aria-busy','true');
             let input;
@@ -1268,7 +1291,8 @@ validflag Time      Level   Message                 Code
             QueryService.getPreviewAsync(input,BackgroundService).then(result=>{
                 if(generation!==this._renderGeneration || Store.getDocument()?.id!==doc.id || Store.getDocument()?.sourceRevision!==input.sourceRevision)return;
                 if(revision!==Store.revision){this.requestRender();return;}
-                TableRegistry.setPoolNames(result.tables.map(({table})=>table.name));
+                for(const parsed of result.parsed || []) TableRegistry.recordParse(parsed.context, parsed.result);
+                SourceController.renderCards();
                 this.renderPreview(result.tables);
                 this.updChips();
             }).catch(error=>{if(generation===this._renderGeneration && error.name!=='AbortError')Toast.show(error.message,true);}).finally(()=>{
@@ -1281,6 +1305,7 @@ validflag Time      Level   Message                 Code
         if(CellEditController.activeEditor) CellEditController.finish(true);
         const div = $('previewArea'); div.innerHTML = '';
         this.rendered = []; Select.clear();
+        TableRegistry.setPreview([]);this.updateWorkspaceSummary();
         this.syncPreviewTablePicker([], false);
         if(!Store.getDocument()) {
             const hasProject = !!Store.getActiveProject();
@@ -1295,7 +1320,7 @@ validflag Time      Level   Message                 Code
             div.querySelector('.empty')?.appendChild(button);
             return;
         }
-        if(!TableRegistry.getRaw().length) { 
+        if(!TableRegistry.getRaw().length && !processedOverride) {
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
                 <div style="font-weight:800; color:var(--text-strong);">把杂乱数据变成可分析表格</div>
@@ -1307,7 +1332,8 @@ validflag Time      Level   Message                 Code
         
         const ui = Store.curr().ui;
         const processedTables = processedOverride || this.getPreviewProcessedTables();
-        TableRegistry.setPoolNames(processedTables.map(({ table }) => table.name));
+        TableRegistry.setPreview(processedTables);
+        this.updateWorkspaceSummary();
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         const combined = processedTables.map(({ table }) => table);
         if(!combined.length) {
@@ -1321,7 +1347,6 @@ validflag Time      Level   Message                 Code
 
         // Keep filtered results for full preview export and column configuration,
         // while only materializing one table's DOM in large-table mode.
-        TableRegistry.setPreview(processedTables);
         this.rendered = processedTables.map(({table, res}) => ({name:table.name, ...res}));
         const singleTableView = this.shouldUseSingleTableView(combined);
         const activeTableName = this.syncPreviewTablePicker(combined, singleTableView);

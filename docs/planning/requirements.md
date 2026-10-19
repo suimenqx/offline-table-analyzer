@@ -81,6 +81,7 @@ The defining constraints are:
 ### R1 — trustworthy persistence
 
 - Schema version `22`, application version `23.2.0`. Empty `projects`/`docs` and `activeProjectId`/`activeCardId: null` are valid existing schema-22 shapes; no new persisted fields or schema bump are needed. Schema 21 migrates each old document into one project/card; explicit empty legacy backups remain empty.
+- Card labels and export naming are distinct: new default cards use unique `数据段 N` names while projects keep `Analysis N`; historical names are not rewritten. Optional schema-22 `exportTitleFromProject: true` explicitly preserves the new default main card's project-based download prefix. Missing/false keeps the old card-title policy; explicit card renaming and duplication use card names, reordering does not change the policy, and workspace backups preserve it. Old schema 20/21/22 fixtures without the field remain compatible; no result counts are persisted.
 - Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
 - Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
 - Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.
@@ -151,7 +152,9 @@ The defining constraints are:
 - Primary workflow: sidebar data tab → parse button → config tab/preview → export buttons (Import → Parse → Analyze → Export).
 - Visible parse states via `parseStatus` element with ready/warning/error CSS classes.
 - Status bar shows storage status, usage meter fill, and saved timestamp.
-- Keyboard: tab activation (Enter/Space), rename (F2), close (Delete), arrow key navigation.
+- Keyboard: tab activation (Enter/Space), rename (F2), close (Delete), arrow key navigation. Cards use ↑↓/Home/End for focus, Enter/Space for selection, F2/double-click for inline rename (Enter/blur saves, Esc cancels), Delete for removal and Alt+↑↓ or a drag handle for concatenation order; refreshes retain focus and do not interrupt a rename.
+- Card lists are bounded and compact, with no duplicate source preview. Editing and participation are separate visible states. The source editor names its target and explains native caret/selection paste versus large-source whole-card replacement; new cards focus the source input.
+- Card summaries show empty/pending/parsed/confirmation/error states with revision/strategy-matching counts. The project result header distinguishes participating/total cards and complete filtered preview counts from page counts. Excluded cards stay editable but do not contribute to preview/export. See the [interaction baseline](../testing/card-interaction-baseline.md).
 - Shortcuts: Ctrl+Enter (parse), Ctrl+N (new tab), Ctrl+O (file import), Ctrl+S (save), Ctrl+Z/Ctrl+Y (undo/redo cell edits), Ctrl+A (select all), F2 (rename tab), ? (help).
 - CSS rules for `prefers-reduced-motion: reduce` (animations/transitions set to 0.01 ms) and `forced-colors: active` (borders, selection outline).
 - Mobile: below 760 px, the sidebar becomes a fixed drawer with a toggle button.

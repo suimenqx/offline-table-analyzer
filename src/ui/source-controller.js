@@ -1,9 +1,9 @@
-OTA.define('source-controller', ["runtime", "store", "dispatch", "modal-controller", "source-snapshot", "exporter"], ({$, createEl, escapeHtml, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {ModalController}, {SourceSnapshot}, {Exporter}) => {
-/* SourceController — manages source text input, file import, fullscreen editor,
-   and input resizer. Delegates all state changes to dispatch().
+OTA.define('source-controller', ["runtime", "store", "dispatch", "source-snapshot", "exporter", "table-registry"], ({$, createEl, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {SourceSnapshot}, {Exporter}, {TableRegistry}) => {
+/* SourceController — source input, card interaction, file import and input
+   resizer. Delegates all persisted state changes to dispatch().
 
    Responsibilities:
-   - Main editor + fullscreen editor lifecycle
+   - Main editor and compact keyed card list, focus/rename/participation/order
    - File drag/drop and file picker
    - Format detection from file extension (pure)
    - Input height persistence and resizer
@@ -191,7 +191,7 @@ const SourceController = {
         const exportSource = $('exportSourceBtn');
         if (exportSource) exportSource.onclick = () => {
             const doc = Store.getDocument();
-            const prefix = Exporter.sanitizeFilePrefix(`${doc?.title || 'Analysis'}_source`);
+            const prefix = Exporter.sanitizeFilePrefix(`${Store.getExportTitle()}_source`);
             Exporter.download(`${prefix}_${Exporter.getTimestamp()}.txt`, doc?.raw || '', 'text/plain;charset=utf-8');
         };
 
@@ -200,6 +200,17 @@ const SourceController = {
     // ── Main editor ──
 
     // ── 卡片列表（数据段区由 SourceController 拥有：选中/显隐/删除/重命名/新增） ──
+
+    getCardStatus(id) {
+        const card = Store.getCard(id);
+        if(!card?.raw) return {state:'empty', text:'空卡片'};
+        const summary = TableRegistry.getCardSummary(id);
+        if(!summary) return {state:'pending', text:`待解析 · ${card.raw.length.toLocaleString()} 字符`};
+        if(summary.format === 'ambiguous') return {state:'confirm', text:'待确认 · 选中后查看解析详情'};
+        if(summary.format === 'error') return {state:'error', text:'解析失败 · 选中后查看详情'};
+        if(!summary.tableCount) return {state:'confirm', text:'未识别出表格 · 请检查格式'};
+        return {state:'ready', text:`${summary.label} · ${summary.rowCount.toLocaleString()} 行 · 已解析`};
+    },
 
     /** 选中卡片（左侧面板显示其内容，解析作用于它） */
     activateCard(id, force=false) {
@@ -213,10 +224,62 @@ const SourceController = {
     },
 
     /** 卡片显隐（范围控制）：表池成员随显隐变化 */
-    toggleCardVisible(id) {
+    toggleCardVisible(id, visible) {
         const card = Store.getCard(id);
         if(!card) return false;
-        return dispatch('card:visible', { id, visible: card.visible === false });
+        const enabled = visible === undefined ? card.visible === false : visible;
+        const changed = dispatch('card:visible', { id, visible:enabled });
+        if(changed) this.announceCardChange(`${card.title}${enabled ? '已参与分析' : '已退出表池，仍可编辑'}`);
+        return changed;
+    },
+
+    announceCardChange(text) {
+        const feedback = $('cardFeedback');
+        if(feedback) feedback.textContent = text;
+    },
+
+    focusCard(id, control='root') {
+        const nodes = this._cardNodes.get(id);
+        if(!nodes) return false;
+        this._focusedCardId = id;
+        this._syncCardTabStops();
+        (nodes[control] || nodes.root).focus({preventScroll:true});
+        nodes.root.scrollIntoView?.({block:'nearest'});
+        return true;
+    },
+
+    _syncCardTabStops() {
+        const insideList = $('cardList')?.contains?.(document.activeElement);
+        const activeId = insideList && this._cardNodes.has(this._focusedCardId) ? this._focusedCardId : Store.getDocument()?.id;
+        for(const [id, nodes] of this._cardNodes) {
+            const tabIndex = id === activeId ? 0 : -1;
+            nodes.root.tabIndex = tabIndex;
+            nodes.visible.tabIndex = tabIndex;
+            nodes.remove.tabIndex = tabIndex;
+            nodes.drag.tabIndex = tabIndex;
+        }
+    },
+
+    /** Reordering changes pool concatenation order, never the active card. */
+    moveCardBy(id, offset) {
+        const ids = Store.getActiveProject()?.cardIds || [];
+        const index = ids.indexOf(id), target = ids[index + offset];
+        return target ? this.reorderCard(id, target, offset < 0 ? 'before' : 'after') : false;
+    },
+
+    reorderCard(sourceId, targetId, place) {
+        const moved = dispatch('card:reorder', {sourceId, targetId, place});
+        if(moved) {
+            this.renderCards(); this.focusCard(sourceId);
+            const index = Store.getActiveProject().cardIds.indexOf(sourceId) + 1;
+            this.announceCardChange(`${Store.getCard(sourceId).title}已移至第 ${index} 位，拼接顺序已更新`);
+        }
+        return moved;
+    },
+
+    _clearCardDrag() {
+        for(const {root} of this._cardNodes.values()) root.classList.remove('drag-before', 'drag-after', 'dragging');
+        this._dragCardId = null;
     },
 
     /** 卡片删除（经确认） */
@@ -229,100 +292,200 @@ const SourceController = {
 
     /** 卡片重命名：双击/F2 在卡片内就地编辑（与页签栏一致），不用全局弹窗 */
     startCardRename(id) {
-        const el = Array.from(document.querySelectorAll('.data-card')).find(node => node.dataset.cardId === id);
-        if(!el) return;
-        const titleEl = el.querySelector('.data-card-title');
+        const nodes = this._cardNodes.get(id);
+        const titleEl = nodes?.title;
         const card = Store.getCard(id);
         if(!titleEl || !card) return;
+        const existing = titleEl.querySelector('input');
+        if(existing) { existing.focus(); return; }
         const input = document.createElement('input');
         input.className = 'data-card-title-input';
         input.value = card.title || '';
         input.maxLength = 40;
         input.setAttribute('aria-label', '卡片名称');
-        titleEl.innerHTML = '';
+        titleEl.textContent = '';
         titleEl.appendChild(input);
         let done = false;
-        const finish = (save) => {
+        const finish = (save, restoreFocus=false) => {
             if(done) return;
             done = true;
             if(save && String(input.value || '').trim()) dispatch('card:rename', { id, title: input.value });
-            SourceController.renderCards();
+            if(input.parentNode === titleEl) titleEl.removeChild(input);
+            titleEl.textContent = Store.getCard(id)?.title || '';
+            this.renderCards();
+            if(restoreFocus) this.focusCard(id);
+            if(save) this.announceCardChange(`卡片名称：${Store.getCard(id)?.title || ''}`);
         };
         input.onclick = e => e.stopPropagation();
         input.ondblclick = e => e.stopPropagation();
         input.onkeydown = e => {
             e.stopPropagation();
-            if(e.key === 'Enter') finish(true);
-            if(e.key === 'Escape') finish(false);
+            if(e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); finish(e.key === 'Enter', true); }
         };
         input.onblur = () => finish(true);
-        setTimeout(() => { input.focus(); input.select(); }, 0);
+        setTimeout(() => { if(!done) { input.focus(); input.select(); } }, 0);
     },
 
-    /**
-     * 渲染卡片列表：点击=选中、👁=显隐、双击/F2=重命名、Delete=删除、
-     * 键盘可聚焦（tabindex=0 + Enter/Space 激活）。
-     */
+    _cardNodes: new Map(),
+    _focusedCardId: null,
+
+    /** DOM nodes are keyed by card id: status/visibility refreshes must not discard focus or an inline rename. */
+    _createCard(id) {
+        const root = createEl('div', 'data-card');
+        root.dataset.cardId = id;
+        root.setAttribute('role', 'listitem');
+        root.setAttribute('aria-describedby', 'cardKeyboardHint');
+        root.setAttribute('aria-keyshortcuts', 'ArrowUp ArrowDown Home End Enter F2 Delete Alt+ArrowUp Alt+ArrowDown');
+        const head = createEl('div', 'data-card-head');
+        const drag = createEl('button', 'card-drag-handle');
+        drag.type = 'button'; drag.draggable = true; drag.dataset.cardAct = 'drag';
+        drag.title = '拖拽调整拼接顺序，也可按 Alt+↑/↓';
+        drag.setAttribute('aria-label', '调整卡片拼接顺序');
+        drag.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h.01M10 3h.01M6 8h.01M10 8h.01M6 13h.01M10 13h.01"/></svg>';
+        const title = createEl('span', 'data-card-title');
+        const badge = createEl('span', 'card-editing-badge');
+        badge.textContent = '编辑中';
+        const remove = createEl('button', 'card-remove');
+        remove.type = 'button'; remove.dataset.cardAct = 'remove';
+        remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
+        head.appendChild(drag); head.appendChild(title); head.appendChild(badge); head.appendChild(remove);
+        const detail = createEl('div', 'data-card-detail');
+        const participation = createEl('label', 'card-participation');
+        const visible = document.createElement('input');
+        visible.type = 'checkbox'; visible.dataset.cardAct = 'visible';
+        const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
+        participation.appendChild(visible); participation.appendChild(visibleLabel);
+        const summary = createEl('span', 'data-card-summary');
+        detail.appendChild(participation); detail.appendChild(summary);
+        root.appendChild(head); root.appendChild(detail);
+        root.onclick = event => {
+            if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
+            this.activateCard(id);
+        };
+        root.ondblclick = event => {
+            if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
+            event.preventDefault(); this.startCardRename(id);
+        };
+        root.onfocusin = () => { this._focusedCardId = id; this._syncCardTabStops(); };
+        root.onkeydown = event => {
+            if(event.target.closest('.data-card-title-input')) return;
+            const control = event.target.closest('[data-card-act]');
+            if(control && control.dataset.cardAct !== 'drag') return;
+            if(event.altKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+                event.preventDefault(); event.stopPropagation();
+                this.moveCardBy(id, event.key === 'ArrowUp' ? -1 : 1);
+                return;
+            }
+            const ids = Store.getActiveProject()?.cardIds || [];
+            const index = ids.indexOf(id);
+            if(['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) && !event.altKey) {
+                event.preventDefault(); event.stopPropagation();
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? ids.length - 1
+                    : Math.max(0, Math.min(ids.length - 1, index + (event.key === 'ArrowUp' ? -1 : 1)));
+                this.focusCard(ids[next]);
+            }
+            if(['Enter', ' ', 'F2', 'Delete'].includes(event.key)) {
+                event.preventDefault(); event.stopPropagation();
+                if(event.key === 'F2') this.startCardRename(id);
+                else if(event.key === 'Delete') this.removeCard(id);
+                else this.activateCard(id);
+            }
+        };
+        visible.onchange = () => this.toggleCardVisible(id, visible.checked);
+        remove.onclick = event => { event.stopPropagation(); this.removeCard(id); };
+        drag.onclick = event => event.stopPropagation();
+        drag.ondragstart = event => {
+            event.stopPropagation();
+            this._dragCardId = id;
+            root.classList.add('dragging');
+            if(event.dataTransfer) {
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', id);
+                event.dataTransfer.setDragImage?.(root, 10, 10);
+            }
+        };
+        drag.ondragend = () => this._clearCardDrag();
+        root.ondragover = event => {
+            if(!this._dragCardId || this._dragCardId === id) return;
+            event.preventDefault(); event.stopPropagation();
+            const rect = root.getBoundingClientRect();
+            const after = event.clientY > rect.top + rect.height / 2;
+            root.classList.toggle('drag-before', !after); root.classList.toggle('drag-after', after);
+            if(event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        };
+        root.ondragleave = event => {
+            if(!root.contains(event.relatedTarget)) root.classList.remove('drag-before', 'drag-after');
+        };
+        root.ondrop = event => {
+            if(!this._dragCardId) return;
+            event.preventDefault(); event.stopPropagation();
+            const sourceId = this._dragCardId, rect = root.getBoundingClientRect();
+            const place = event.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
+            this._clearCardDrag(); this.reorderCard(sourceId, id, place);
+        };
+        return {root, title, badge, remove, visible, summary, drag};
+    },
+
+    syncEditorContext() {
+        const card = Store.getDocument();
+        const label = $('sourceEditorLabel'), hint = $('pasteBehaviorHint');
+        if(label) label.textContent = card ? `当前编辑：${card.title}${card.visible === false ? '（未参与分析）' : ''}` : '尚未选择卡片';
+        const editor = $('rawInput');
+        if(editor) editor.setAttribute('aria-label', card ? `原文：${card.title}` : '原始表格数据');
+        if(hint) hint.textContent = !card ? '请先新增卡片，再粘贴或导入数据。'
+            : editor?.dataset.sourcePreview === 'true' ? '当前为只读预览；粘贴会替换这张卡片的完整原文。'
+            : '普通粘贴在光标处插入或替换选区；全选后粘贴可替换整卡。大段粘贴会替换整卡。';
+    },
+
     renderCards() {
         const container = $('cardList');
         if(!container) return;
         const project = Store.getActiveProject();
         const cards = (project?.cardIds || []).map(id => Store.getCard(id)).filter(Boolean);
-        container.innerHTML = cards.map((card, idx) => {
+        const focused = document.activeElement;
+        const ids = new Set(cards.map(card => card.id));
+        for(const [id, nodes] of this._cardNodes) if(!ids.has(id) || nodes.root.parentNode !== container) {
+            if(nodes.root.parentNode === container) container.removeChild(nodes.root);
+            this._cardNodes.delete(id);
+        }
+        cards.forEach((card, index) => {
+            let nodes = this._cardNodes.get(card.id);
+            if(!nodes) { nodes = this._createCard(card.id); this._cardNodes.set(card.id, nodes); }
             const active = card.id === project.activeCardId;
-            const visible = card.visible !== false;
-            const stats = `${(card.raw || '').length.toLocaleString()} 字符`;
-            const preview = card.raw ? card.raw.slice(0, 200) : '';
-            const label = `${escapeHtml(card.title || `数据段 ${idx + 1}`)}${active ? '（选中）' : ''}${visible ? '' : '（已隐藏）'}`;
-            return `<div class="data-card ${active ? 'active' : ''} ${visible ? '' : 'hidden-card'}" data-card-id="${escapeHtml(card.id)}" role="listitem" tabindex="0" aria-label="${label}">
-                <div class="data-card-head">
-                    <button type="button" class="card-visibility ${visible ? '' : 'off'}" data-card-act="visible" title="${visible ? '隐藏：数据退出表池' : '显示：数据进入表池'}" aria-pressed="${visible}">${visible ? '👁' : '🚫'}</button>
-                    <span class="data-card-title ${visible ? '' : 'strike'}">${escapeHtml(card.title || `数据段 ${idx + 1}`)}</span>
-                    <button type="button" class="sm text-button" data-card-act="remove" title="删除卡片" aria-label="删除卡片 ${escapeHtml(card.title || '')}">×</button>
-                </div>
-                <div class="muted" style="font-size:11px;">${stats}${visible ? '' : ' · 已隐藏'}</div>
-                ${preview ? `<pre class="data-card-preview">${escapeHtml(preview)}</pre>` : ''}
-            </div>`;
-        }).join('');
-        container.querySelectorAll('.data-card').forEach(el => {
-            const id = el.dataset.cardId;
-            el.onclick = (e) => {
-                if(e.target.closest('[data-card-act]')) return;
-                SourceController.activateCard(id);
-            };
-            el.onkeydown = (e) => {
-                if(e.target.closest('[data-card-act]') || e.target.closest('.data-card-title-input')) return;
-                if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); SourceController.activateCard(id); }
-                if(e.key === 'F2') { e.preventDefault(); e.stopPropagation(); SourceController.startCardRename(id); }
-                if(e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); SourceController.removeCard(id); }
-            };
-            el.querySelector('[data-card-act="visible"]').onclick = (e) => {
-                e.stopPropagation();
-                SourceController.toggleCardVisible(id);
-            };
-            el.querySelector('[data-card-act="remove"]').onclick = (e) => {
-                e.stopPropagation();
-                SourceController.removeCard(id);
-            };
-            el.ondblclick = (e) => {
-                if(e.target.closest('[data-card-act]')) return;
-                e.preventDefault();
-                SourceController.startCardRename(id);
-            };
+            nodes.root.className = `data-card${active ? ' active' : ''}${card.visible === false ? ' excluded-card' : ''}`;
+            nodes.root.tabIndex = active ? 0 : -1;
+            nodes.root.setAttribute('aria-current', String(active));
+            nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '未参与分析' : '参与分析'}`);
+            if(!nodes.title.querySelector('input')) nodes.title.textContent = card.title;
+            nodes.title.title = `${card.title} · 双击或 F2 重命名`;
+            nodes.badge.hidden = !active;
+            nodes.visible.checked = card.visible !== false;
+            nodes.visible.setAttribute('aria-label', `${card.title}：参与分析`);
+            nodes.remove.title = `删除卡片 ${card.title}`;
+            nodes.remove.setAttribute('aria-label', nodes.remove.title);
+            const status = this.getCardStatus(card.id);
+            nodes.summary.textContent = status.text;
+            nodes.summary.dataset.state = status.state;
+            nodes.summary.title = status.text;
+            if(container.children[index] !== nodes.root) {
+                if(container.insertBefore) container.insertBefore(nodes.root, container.children[index] || null);
+                else { if(nodes.root.parentNode === container) container.removeChild(nodes.root); container.appendChild(nodes.root); }
+            }
         });
+        this._syncCardTabStops();
+        if(this._renderedActiveCardId !== project?.activeCardId) {
+            this._cardNodes.get(project?.activeCardId)?.root.scrollIntoView?.({block:'nearest'});
+            this._renderedActiveCardId = project?.activeCardId;
+        }
+        if(focused?.isConnected && document.activeElement !== focused) focused.focus({preventScroll:true});
         const addBtn = $('addCardBtn');
         if(addBtn) {
             addBtn.disabled = !project;
-            addBtn.onclick = (e) => {
-                e.preventDefault();
-                dispatch('card:create', {});
-            };
+            addBtn.onclick = event => { event.preventDefault(); dispatch('card:create', {}); };
         }
         const poolCount = $('poolCount');
-        if(poolCount) {
-            const visibleCount = cards.filter(card => card.visible !== false).length;
-            poolCount.textContent = `表池 ${visibleCount} 张卡片`;
-        }
+        if(poolCount) poolCount.textContent = `表池 ${cards.filter(card => card.visible !== false).length}/${cards.length} 张卡片`;
+        this.syncEditorContext();
     },
 
     _bindMainEditor() {
@@ -377,6 +540,7 @@ const SourceController = {
         if (!zone) return;
         ['dragenter', 'dragover'].forEach(type => {
             zone.addEventListener(type, (e) => {
+                if(this._dragCardId) return;
                 e.preventDefault();
                 zone.classList.add('drag-over');
             });

@@ -6,9 +6,11 @@ const lanes=new Map();
 let nextId=0;
 const snapshotInput=input=>({...input,ui:JSON.parse(JSON.stringify(input.ui || {})),globalViews:JSON.parse(JSON.stringify(input.globalViews || []))});
 const abortError=()=>Object.assign(new Error('操作已取消，原文仍保留'),{name:'AbortError'});
+const cardVersion=card=>JSON.stringify([card.sourceRevision, (card.config || card.options)?.format || 'auto', (card.config || card.options)?.headerMode || 'auto']);
 const BackgroundService = {
     THRESHOLD:128*1024,
     datasetKeys:new Set(),
+    _datasetVersions:new Map(),
     canUse() { return typeof Worker !== 'undefined' && typeof URL.createObjectURL === 'function'; },
     isLarge(text) { return text.length>this.THRESHOLD; },
     hasDataset(cardId) { return this.datasetKeys.has(cardId); },
@@ -28,7 +30,7 @@ const BackgroundService = {
             const lane=lanes.get(name);
             if(lane) {lane.worker.terminate();clearTimeout(lane.timer);for(const job of lane.jobs.values())job.reject(abortError());lane.rejectReady(abortError());lanes.delete(name);}
         }
-        this.datasetKeys.clear();
+        this.datasetKeys.clear();this._datasetVersions.clear();
     },
     request(kind,payload={},handlers={},name='compute') {
         if(!this.canUse()) return Promise.reject(new Error('浏览器无法启动后台计算；请使用桌面 Chrome 或 Firefox，原文仍保留'));
@@ -40,7 +42,7 @@ const BackgroundService = {
             URL.revokeObjectURL(url);
             lane={worker,jobs:new Map()};
             lane.ready=new Promise((resolve,reject)=>{lane.resolveReady=resolve;lane.rejectReady=reject;});
-            const fail=error=>{worker.terminate();clearTimeout(lane.timer);lane.rejectReady(error);for(const job of lane.jobs.values())job.reject(error);lanes.delete(name);if(name==='compute')this.datasetKeys.clear();};
+            const fail=error=>{worker.terminate();clearTimeout(lane.timer);lane.rejectReady(error);for(const job of lane.jobs.values())job.reject(error);lanes.delete(name);if(name==='compute'){this.datasetKeys.clear();this._datasetVersions.clear();}};
             lane.timer=setTimeout(()=>fail(new Error('后台启动超时，原文仍保留')),10000);
             worker.onerror=event=>fail(new Error(event.message || '后台计算失败，原文仍保留'));
             worker.onmessageerror=()=>fail(new Error('后台消息无法读取，原文仍保留'));
@@ -61,37 +63,37 @@ const BackgroundService = {
             try {lane.worker.postMessage({id,kind,payload});} catch(error) {lane.jobs.delete(id);reject(error);}
         }));
     },
-    async parse({text,options={},key}) {
+    async parse({text,options={},key,sourceRevision,config}) {
         let result;
         await this.request('parse',{text,options,cardId:key},{
             start:value=>{result=value;result.tables.forEach(table=>table.rows=[]);},
         });
         this.datasetKeys.add(key);
+        this._datasetVersions.set(key,cardVersion({sourceRevision,options,config}));
         return result;
     },
     async prepare(input) {
-        // 惰性解析：只解析尚不在会话中的卡片
+        // Return bounded descriptors for cards parsed lazily, so their UI status is accurate too.
+        const parsed=[];
         for(const card of input.cards || []) {
-            if(this.datasetKeys.has(card.id)) continue;
-            await this.parse({text:card.raw || '', options:card.options || {}, key:card.id});
+            if(this.datasetKeys.has(card.id) && this._datasetVersions.get(card.id) === cardVersion(card)) continue;
+            const result=await this.parse({text:card.raw || '', options:card.options || {}, key:card.id,
+                sourceRevision:card.sourceRevision, config:card.config});
+            parsed.push({context:{docId:card.id, sourceRevision:card.sourceRevision, options:card.options, config:card.config}, result});
         }
+        return parsed;
     },
-    async prepareMany(cards) {
-        for(const card of cards || []) {
-            if(this.datasetKeys.has(card.id)) continue;
-            await this.parse({text:card.raw || '', options:card.options || {}, key:card.id});
-        }
-    },
+    async prepareMany(cards) { await this.prepare({cards}); },
     removeCard(cardId) {
-        this.datasetKeys.delete(cardId);
+        this.datasetKeys.delete(cardId);this._datasetVersions.delete(cardId);
         const lane=lanes.get('compute');
         if(!lane) return Promise.resolve();
         return lane.ready.then(()=>this.request('removeCard',{cardId}));
     },
     async query(input) {
-        await this.prepare(input);
+        const parsed=await this.prepare(input);
         const tables=await this.request('query',this.workerPayload(input));
-        return {tables};
+        return {tables, parsed};
     },
     async export(input,mode) {
         input=snapshotInput(input);

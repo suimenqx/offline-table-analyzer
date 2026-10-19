@@ -6,6 +6,11 @@ All notable changes are documented here. The project follows semantic versioning
 
 ### 卡片式数据源工作区
 
+- Compact the source-card list into two-line, independently scrollable items; separate editing state from the native participation checkbox, name the editor's paste target, and explain caret/selection versus whole-card replacement.
+- Preserve card DOM/focus across status, rename and visibility updates; add arrow/Home/End navigation and drag-handle/Alt+arrow reordering with concatenation-order feedback.
+- Use consistent default data-segment names without rewriting historical names, with an explicit optional export-prefix policy to retain project-based default downloads and custom/legacy card naming.
+- Show revision-bound, session-only parse summaries and full filtered preview scope; keep excluded sources out of single-card queries and preserve other participating sources when editing an excluded card. Refresh source/name/correction cache keys and return bounded lazy-parse descriptors without copying full Worker data.
+
 - Workspace tabs become **projects (工程)**: each project holds a group of **data cards (卡片)**, and its own JOIN views and enabled-view list.
 - Each card is a data segment with independent parse options (format / header mode) and a visibility toggle; the **table pool (表池)** is the set of tables from visible cards — same-name same-structure tables are concatenated without deduplication, differently-shaped same-name tables are shown side by side with the card name as a qualifier, and card order is the concatenation order.
 - The Worker session now holds one dataset per card and derives the table pool from the visible list; corrections apply per source card, concatenated tables are read-only, and deleting a card releases its dataset. Session budget is enforced with an explicit error.

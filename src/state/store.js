@@ -139,6 +139,13 @@ const Store = {
         return projects.find(p => p.id === id) || projects[0] || null;
     },
     getActiveProject() { return this.getProject(this.state.activeProjectId); },
+    /** 默认主卡的导出前缀沿用工程名；自定义卡名及旧卡名保持原行为。 */
+    getExportTitle(id) {
+        const card = this.getCard(id);
+        const project = this.ensureProjects().find(item => item.cardIds.includes(card?.id));
+        if(card?.exportTitleFromProject === true && project) return project.title;
+        return card?.title || project?.title || this.getActiveProject()?.title || 'Analysis';
+    },
     getView(name) {
         const project = this.getActiveProject();
         return ((project && project.views) || []).find(view => view.view === name) || null;
@@ -427,7 +434,8 @@ const Store = {
             const cards = project.cardIds.map(cid => payload.docs.find(d => d && d.id === cid)).filter(Boolean);
             if(cards.length !== project.cardIds.length) throw new Error('工作区工程引用了缺失的卡片');
             const importedProject = { id:this.generateProjectId(),
-                title: this.makeUniqueTitle(typeof project.title === 'string' && project.title ? project.title : 'Analysis'),
+                title: this.makeUniqueTitle(typeof project.title === 'string' && project.title ? project.title : 'Analysis', null,
+                    (merge ? this.state.projects : []).concat(newProjects)),
                 cardIds:[], activeCardId:null,
                 enabledViews:Array.isArray(project.enabledViews) ? project.enabledViews.slice() : [],
                 views:Array.isArray(project.views) ? project.views.slice() : [] };
@@ -436,7 +444,7 @@ const Store = {
                 if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`卡片“${doc.title || ''}”的数据超过 128 MiB 限制`);
                 const card = { id:this.generateDocId(),
                     title: typeof doc.title === 'string' && doc.title ? doc.title : '数据段',
-                    raw, visible: doc.visible !== false,
+                    raw, visible: doc.visible !== false, exportTitleFromProject:doc.exportTitleFromProject === true,
                     sourceRevision:Number.isInteger(doc.sourceRevision) && doc.sourceRevision >= 0 ? doc.sourceRevision : undefined,
                     lastParse:null,
                     ui:(doc.ui && typeof doc.ui === 'object') ? doc.ui : {} };
@@ -513,9 +521,9 @@ const Store = {
     getMaxAnalysisNumber() {
         return Math.max(0, ...[...(this.state.projects || []), ...(this.state.docs || [])].map(item => this.getAnalysisNumber(item && item.title)));
     },
-    makeUniqueTitle(title, excludeId=null) {
+    makeUniqueTitle(title, excludeId=null, items=this.state.docs || []) {
         const clean = String(title || 'Analysis').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Analysis';
-        const used = new Set((this.state.docs || []).filter(d => d.id !== excludeId).map(d => String(d.title || '').trim()));
+        const used = new Set(items.filter(item => item.id !== excludeId).map(item => String(item.title || '').trim()));
         const trimWithSuffix = (base, suffix='') => (base.slice(0, Math.max(1, 40 - suffix.length)) + suffix).trim();
         const base = trimWithSuffix(clean);
         if(!used.has(base)) return base;
@@ -531,10 +539,10 @@ const Store = {
     nextDocTitle() {
         const n = Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1);
         this.state.nextAnalysisSeq = n + 1;
-        return this.makeUniqueTitle(`Analysis ${n}`);
+        return this.makeUniqueTitle(`Analysis ${n}`, null, this.state.projects);
     },
     addProject(initial={}) {
-        const title = initial.title ? this.makeUniqueTitle(initial.title) : this.nextDocTitle();
+        const title = initial.title ? this.makeUniqueTitle(initial.title, null, this.state.projects) : this.nextDocTitle();
         const project = { id:this.generateProjectId(), title, cardIds:[], activeCardId:null,
             enabledViews:Array.isArray(initial.enabledViews) ? initial.enabledViews.slice() : [],
             views:Array.isArray(initial.views) ? JSON.parse(JSON.stringify(initial.views)) : [] };
@@ -547,14 +555,12 @@ const Store = {
     addCard(initial={}, projectId=this.state.activeProjectId) {
         const project = this.getProject(projectId);
         if(!project) return null;
-        // 首张卡片继承工程标题（保持 v22 前「页签标题 → 原文导出文件名」的公开行为）；
-        // 后续卡片用「数据段 N」。
-        const isFirst = project.cardIds.length === 0;
-        const base = typeof initial.title === 'string' && initial.title ? initial.title
-            : isFirst ? (project.title || 'Analysis')
-            : `数据段 ${project.cardIds.length + 1}`;
+        // 所有默认卡片使用同一规则；沿用工作区内唯一命名，不重写历史标题。
+        const sequence = Math.max(0, ...this.state.docs.map(card => Number(/^数据段 (\d+)$/.exec(card.title || '')?.[1]) || 0)) + 1;
+        const base = typeof initial.title === 'string' && initial.title ? initial.title : `数据段 ${sequence}`;
         const title = this.makeUniqueTitle(base);
-        const card = this.normalizeDoc(Object.assign({ id:this.generateDocId(), title, raw:"", visible:true }, initial, { title }), this.state.docs.length);
+        const card = this.normalizeDoc(Object.assign({ id:this.generateDocId(), title, raw:"", visible:true }, initial,
+            { title, exportTitleFromProject:project.cardIds.length === 0 && !initial.title }), this.state.docs.length);
         this.state.docs.push(card);
         project.cardIds.push(card.id);
         project.activeCardId = card.id;
@@ -580,6 +586,7 @@ const Store = {
         const copy = JSON.parse(JSON.stringify(source));
         copy.id = this.generateDocId();
         copy.title = this.makeUniqueTitle(`${source.title || '数据段'} (副本)`, copy.id);
+        copy.exportTitleFromProject = false;
         // Clear cell edits — they reference row indices that may not apply to the new context
         if(copy.ui && copy.ui.cellEdits) copy.ui.cellEdits = {};
         this.state.docs.push(copy);
@@ -593,6 +600,7 @@ const Store = {
         const next = String(title ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
         if(!next) return false;
         card.title = this.makeUniqueTitle(next, id);
+        card.exportTitleFromProject = false;
         this.save();
         return true;
     },
@@ -633,7 +641,7 @@ const Store = {
         id = this.resolveProjectId(id);
         const source = this.getProject(id);
         if(!source) return null;
-        const project = { id:this.generateProjectId(), title:this.makeUniqueTitle(`${source.title || 'Analysis'} (副本)`), cardIds:[], activeCardId:null,
+        const project = { id:this.generateProjectId(), title:this.makeUniqueTitle(`${source.title || 'Analysis'} (副本)`, null, this.state.projects), cardIds:[], activeCardId:null,
             enabledViews:(source.enabledViews || []).slice(), views:JSON.parse(JSON.stringify(source.views || [])) };
         this.state.projects.push(project);
         this.state.activeProjectId = project.id;
@@ -643,6 +651,7 @@ const Store = {
             const copy = JSON.parse(JSON.stringify(sourceCard));
             copy.id = this.generateDocId();
             copy.title = this.makeUniqueTitle(`${sourceCard.title || '数据段'} (副本)`, copy.id);
+            copy.exportTitleFromProject = false;
             if(copy.ui && copy.ui.cellEdits) copy.ui.cellEdits = {};
             this.state.docs.push(copy);
             project.cardIds.push(copy.id);
@@ -665,11 +674,12 @@ const Store = {
         if(!project) return false;
         const next = String(title ?? '').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
         if(!next) return false;
-        project.title = this.makeUniqueTitle(next);
-        // 单卡工程：卡片标题与工程同步（1:1 迁移语义；导出文件名等引用卡片标题）
+        const previousTitle = project.title;
+        project.title = this.makeUniqueTitle(next, project.id, this.state.projects);
+        // 仅保留旧版同名主卡的联动；新的数据段命名和用户自定义卡名不受影响。
         if(project.cardIds.length === 1) {
             const card = this.state.docs.find(d => d.id === project.cardIds[0]);
-            if(card) card.title = this.makeUniqueTitle(next, card.id);
+            if(card?.title === previousTitle && card.exportTitleFromProject !== true) card.title = this.makeUniqueTitle(next, card.id);
         }
         this.save();
         return true;

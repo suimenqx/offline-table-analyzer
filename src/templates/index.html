@@ -37,26 +37,30 @@
                 <div class="card">
                     <div class="card-header" style="border-bottom:1px solid var(--border);">
                         <div class="source-card-title">
-                            <span class="card-title">导入数据</span>
-                            <span class="muted" style="font-size:11px;">点击卡片选中 · 👁 控制是否进入表池 · 粘贴替换选中卡片</span>
+                            <span class="card-title">数据卡片</span>
+                            <span class="source-help">选中卡片编辑；勾选“参与分析”控制表池范围。</span>
                         </div>
                     </div>
                     <div class="card-body source-drop-zone" id="sourceDropZone">
-                        <div class="data-card-list" id="cardList" role="list" aria-label="数据卡片"></div>
-                        <div class="row" style="margin:6px 0;">
+                        <div class="data-card-list" id="cardList" role="list" aria-label="数据卡片，顺序决定拼接顺序"></div>
+                        <div class="row card-list-toolbar">
                             <button class="sm" id="addCardBtn" type="button">＋ 新增卡片</button>
                             <span class="muted" id="poolCount" role="status" aria-live="polite" style="font-size:11px;"></span>
                         </div>
-                        <div class="textarea-shell">
-                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" placeholder="粘贴 JSON（可截取片段）、CSV、TSV、网页表格、Markdown、ASCII 或 CLI table-data…" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
-                            <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
-                        </div>
+                        <p class="source-help" id="cardKeyboardHint">↑↓ 聚焦 · Enter 选中 · F2 改名 · Alt+↑↓ 调整拼接顺序</p>
+                        <span id="cardFeedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
+                        <label class="source-editor-label" id="sourceEditorLabel" for="rawInput">当前编辑</label>
                         <div class="source-actions">
                             <button class="sm" id="parseBtn" type="button" title="立即解析当前数据（Ctrl/⌘ + Enter）">立即解析</button>
                             <button id="importSourceBtn" type="button" title="导入 CSV、TSV、JSON、TXT、HTML 或 Markdown 文件">选择文件</button>
                             <button id="clearBtn" type="button" title="清空当前数据源">清空</button>
                             <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.json,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,application/json,text/html">
                         </div>
+                        <div class="textarea-shell">
+                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" aria-describedby="pasteBehaviorHint" placeholder="粘贴 JSON、CSV、TSV、网页表格、Markdown、ASCII 或 CLI table-data…" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
+                            <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
+                        </div>
+                        <p class="source-help" id="pasteBehaviorHint">普通粘贴按光标位置插入；全选后粘贴替换整卡。</p>
                         <div class="source-options">
                             <select id="formatSelect" class="format-select" title="输入格式">
                                 <option value="auto">自动识别</option>

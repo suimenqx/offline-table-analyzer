@@ -64,7 +64,7 @@ describe('Original source export filenames', () => {
     assert.ok(dom.getElementById('rawInput').value.length<large.length);
     Exporter.getTimestamp=()=> '20261009_160708';
     dom.getElementById('exportSourceBtn').onclick();
-    const title=Store.getDocument().title;
+    const title='Analysis 1';
     Exporter.getTimestamp=()=> '20261009_160709';
     dom.getElementById('exportSourceBtn').onclick();
     assert.equal(downloads[0].filename,`${title.replace(/\s+/g,'_')}_source_20261009_160708.txt`);

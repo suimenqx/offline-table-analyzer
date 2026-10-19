@@ -62,7 +62,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed page data from `QueryService` and renders filterable `<table>` elements. |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
-| `SourceController` | Source text input, clipboard/FileReader adaptation, file drag-and-drop import, fullscreen editor lifecycle, input resizer, and format detection from file extension |
+| `SourceController` | Source input, keyed compact card DOM, independent editing/participation state, keyboard/focus/rename/reorder, clipboard/FileReader adaptation, file drag-and-drop, input resizer and extension-based format detection |
 | `CellEditController` | Inline cell editing with Enter/Tab/Escape/blur, non-destructive overlay persistence, 100-step undo/redo stacks |
 | `FilterController` | Per-column "contains" filter popover positioned near column headers, apply/clear/close actions |
 | `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
@@ -100,6 +100,7 @@ Projects and their card lists may be empty. `curr()` / `getDocument()` return `n
 ```text
 id
 title
+exportTitleFromProject?: boolean (absent/false preserves card-title export naming)
 raw
 sourceRevision
 lastParse: { docId, sourceRevision, format, completedAt }
@@ -131,6 +132,10 @@ Cell corrections are stored as a nested overlay in `cellEdits`, keyed by `$${tab
 Parsing starts from the unchanged source text and reapplies the overlay. This preserves the original input while keeping corrections stable across filtering, pagination, orientation changes, and reloads. An edit history stack (max 100) and redo stack support undo/redo.
 
 When the source text, imported file, parser format, or header mode changes, the overlay and session edit history are invalidated. This prevents row-indexed corrections from being applied to a different parsed record.
+
+### Card and preview summaries
+
+TableRegistry owns session-only card parse summaries (`recordParse` / `getCardSummary`) and full filtered preview counts (`setPreview` / `getPreviewSummary`). Summaries retain no raw text or table rows, and are checked against source revision and configured parser/header strategy. BackgroundService returns bounded descriptors for lazily parsed cards and checks resident source/configuration versions; QueryService cache keys also include ordered card names, source revisions and per-card UI/corrections. The card list consumes this metadata without reparsing or persisting counts. SourceController depends on the earlier TableRegistry, which uses the earlier TableUtils for shared descriptor row counts. See the [card interaction baseline](../testing/card-interaction-baseline.md) and [multi-card decision](multi-card-workspace.md).
 
 ### Ephemeral paste/source snapshot
 

@@ -39,7 +39,7 @@ test('场景1+2：两卡同名同结构 10 万行 CSV 拼接 20 万行、显隐�
   await paste(page, fixture.text);await parse(page);
   // 表池 = 拼接 20 万行（同名同结构直接拼接，不去重）
   await expect(tableA.locator('.meta-tag').filter({hasText:/^Show:/})).toHaveText('Show: 200000',{timeout:30000});
-  await expect(page.locator('#poolCount')).toContainText('2 张卡片');
+  await expect(page.locator('#poolCount')).toHaveText('表池 2/2 张卡片');
   // 导出全量 Excel 读回 20 万行 + 表头
   const downloading=page.waitForEvent('download');
   await page.locator('#exportFullBtn').click();
@@ -50,7 +50,7 @@ test('场景1+2：两卡同名同结构 10 万行 CSV 拼接 20 万行、显隐�
   // 场景 2：隐藏卡 B → 表池回落 10 万行
   await cardList(page).nth(1).locator('[data-card-act="visible"]').click();
   await expect(tableA.locator('.meta-tag').filter({hasText:/^Show:/})).toHaveText('Show: 100000',{timeout:30000});
-  await expect(page.locator('#poolCount')).toContainText('1 张卡片');
+  await expect(page.locator('#poolCount')).toHaveText('表池 1/2 张卡片');
   // 恢复可见 → 回 20 万行
   await cardList(page).nth(1).locator('[data-card-act="visible"]').click();
   await expect(tableA.locator('.meta-tag').filter({hasText:/^Show:/})).toHaveText('Show: 200000',{timeout:30000});
@@ -125,7 +125,7 @@ test('场景6：浏览器重启恢复多卡工作区',async({page,context})=>{
   await expect(page.locator('#storageStatus')).toContainText('已保存',{timeout:30000});
   await page.reload();
   await expect(cardList(page)).toHaveCount(2);
-  await expect(page.locator('#poolCount')).toContainText('1 张卡片');
+  await expect(page.locator('#poolCount')).toHaveText('表池 1/2 张卡片');
   await parse(page); // 重开后解析（autoParse 持久化为关闭）
   const first=page.locator('.table-container').filter({has:page.locator('.table-title',{hasText:/^CSV Table 1$/})}).first();
   await expect(first.locator('.meta-tag').filter({hasText:/^Show:/})).toHaveText('Show: 1');
