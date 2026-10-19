@@ -494,14 +494,22 @@ describe('Store — transition protocol', () => {
     unsub();
   });
 
-  it('project:remove returns last_project for single remaining project', () => {
+  it('project:remove deletes the last remaining project and empties the workspace', () => {
     // We have several projects now. Remove until one left.
     while (Store.state.projects.length > 1) {
       Store.removeProject(Store.state.projects[Store.state.projects.length - 1].id);
     }
     const lastId = Store.state.projects[0].id;
     const result = Store.transition('project:remove', { id: lastId });
-    assert.equal(result, 'last_project');
+    assert.equal(result, true);
+    assert.equal(Store.state.projects.length, 0, '最后一个工程也可删除');
+    assert.equal(Store.state.docs.length, 0, '其卡片一并删除');
+    assert.equal(Store.state.activeProjectId, null);
+    // curr() 惰性重建新的空工程
+    const fresh = Store.curr();
+    assert.equal(typeof fresh.id, 'string');
+    assert.equal(Store.state.projects.length, 1);
+    assert.equal(Store.getActiveProject().cardIds.length, 1);
   });
 
   it('project:remove reports active-project changes through the canonical event', async () => {
@@ -521,7 +529,7 @@ describe('Store — transition protocol', () => {
     unsub();
   });
 
-  it('does not report a missing id as last_project', () => {
+  it('does not report a missing id as a removal', () => {
     Store.state.docs = [{ id: 'only', title: 'Only', raw: '', visible: true, ui: {} }];
     Store.state.projects = [{ id: 'onlyp', title: 'Only', cardIds: ['only'], activeCardId: 'only', enabledViews: [], views: [] }];
     Store.state.activeProjectId = 'onlyp';

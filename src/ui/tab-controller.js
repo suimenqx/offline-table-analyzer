@@ -211,20 +211,17 @@ const TabController = {
         dispatch('project:create');
     },
 
-    /** Remove a 工程 through the canonical command path. */
+    /** Remove a 工程 through the canonical command path（允许删除最后一个：工作区归空后惰性重建） */
     remove(id) {
         const project = Store.state.projects.find(item => item.id === id);
         if (!project) return false;
-        if (Store.state.projects.length <= 1) {
-            Toast.show('至少保留一个工程', true);
-            return 'last_project';
-        }
-        if (typeof confirm === 'function' && !confirm(`确定关闭工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除。`)) return false;
+        const isLast = Store.state.projects.length <= 1;
+        if (typeof confirm === 'function' && !confirm(isLast
+            ? `删除最后一个工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除，工作区将重置为空。`
+            : `确定关闭工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除。`)) return false;
 
         TabController._persistCurrentSource();
-        const result = dispatch('project:remove', { id });
-        if (result === 'last_project') Toast.show('至少保留一个工程', true);
-        return result;
+        return dispatch('project:remove', { id });
     },
 
     _persistCurrentSource() {

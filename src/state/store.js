@@ -626,11 +626,11 @@ const Store = {
         if(!id) return false;
         const idx = this.state.projects.findIndex(p=>p.id===id);
         if(idx < 0) return false;
-        if(this.state.projects.length<=1) return 'last_project';
         const project = this.state.projects[idx];
         this.state.projects.splice(idx,1);
         this.state.docs = this.state.docs.filter(d => !project.cardIds.includes(d.id));
-        if(this.state.activeProjectId===id) this.state.activeProjectId = this.state.projects[Math.max(0,idx-1)].id;
+        if(this.state.activeProjectId===id) this.state.activeProjectId = this.state.projects[Math.max(0,idx-1)]?.id ?? null;
+        // 允许删除最后一个工程：工作区归空，curr() 会惰性创建新的空工程
         this.save();
         return true;
     },

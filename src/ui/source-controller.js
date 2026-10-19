@@ -229,13 +229,36 @@ const SourceController = {
         return result === true;
     },
 
-    /** 卡片重命名（F2 / 双击） */
-    renameCard(id) {
+    /** 卡片重命名：双击/F2 在卡片内就地编辑（与页签栏一致），不用全局弹窗 */
+    startCardRename(id) {
+        const el = Array.from(document.querySelectorAll('.data-card')).find(node => node.dataset.cardId === id);
+        if(!el) return;
+        const titleEl = el.querySelector('.data-card-title');
         const card = Store.getCard(id);
-        if(!card) return false;
-        const name = typeof prompt === 'function' ? prompt('卡片名称', card.title || '') : null;
-        if(name) dispatch('card:rename', { id, title:name });
-        return Boolean(name);
+        if(!titleEl || !card) return;
+        const input = document.createElement('input');
+        input.className = 'data-card-title-input';
+        input.value = card.title || '';
+        input.maxLength = 40;
+        input.setAttribute('aria-label', '卡片名称');
+        titleEl.innerHTML = '';
+        titleEl.appendChild(input);
+        let done = false;
+        const finish = (save) => {
+            if(done) return;
+            done = true;
+            if(save && String(input.value || '').trim()) dispatch('card:rename', { id, title: input.value });
+            SourceController.renderCards();
+        };
+        input.onclick = e => e.stopPropagation();
+        input.ondblclick = e => e.stopPropagation();
+        input.onkeydown = e => {
+            e.stopPropagation();
+            if(e.key === 'Enter') finish(true);
+            if(e.key === 'Escape') finish(false);
+        };
+        input.onblur = () => finish(true);
+        setTimeout(() => { input.focus(); input.select(); }, 0);
     },
 
     /**
@@ -271,9 +294,9 @@ const SourceController = {
                 SourceController.activateCard(id);
             };
             el.onkeydown = (e) => {
-                if(e.target.closest('[data-card-act]')) return;
+                if(e.target.closest('[data-card-act]') || e.target.closest('.data-card-title-input')) return;
                 if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); SourceController.activateCard(id); }
-                if(e.key === 'F2') { e.preventDefault(); e.stopPropagation(); SourceController.renameCard(id); }
+                if(e.key === 'F2') { e.preventDefault(); e.stopPropagation(); SourceController.startCardRename(id); }
                 if(e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); SourceController.removeCard(id); }
             };
             el.querySelector('[data-card-act="visible"]').onclick = (e) => {
@@ -287,7 +310,7 @@ const SourceController = {
             el.ondblclick = (e) => {
                 if(e.target.closest('[data-card-act]')) return;
                 e.preventDefault();
-                SourceController.renameCard(id);
+                SourceController.startCardRename(id);
             };
         });
         const addBtn = $('addCardBtn');

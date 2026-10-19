@@ -119,7 +119,7 @@ describe('TabController — canonical mutations', () => {
     }
   });
 
-  it('does not remove the final tab', () => {
+  it('removes the final tab too (workspace resets lazily)', () => {
     const previousConfirm = globalThis.confirm;
     globalThis.confirm = () => true;
     try {
@@ -127,8 +127,9 @@ describe('TabController — canonical mutations', () => {
       Store.state.projects = [{ id: 'only', title: 'Only', cardIds: ['only'], activeCardId: 'only', enabledViews: [], views: [] }];
       Store.state.activeProjectId = 'only';
       Store.state.activeId = 'only';
-      assert.equal(TabController.remove('only'), 'last_project');
-      assert.equal(Store.state.docs.length, 1);
+      assert.equal(TabController.remove('only'), true);
+      assert.equal(Store.state.projects.length, 0);
+      assert.equal(Store.state.docs.length, 0);
     } finally {
       if (previousConfirm === undefined) delete globalThis.confirm;
       else globalThis.confirm = previousConfirm;

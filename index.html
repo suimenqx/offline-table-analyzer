@@ -591,6 +591,7 @@
 .card-visibility { border:none; background:transparent; cursor:pointer; font-size:13px; padding:2px; }
 .card-visibility.off { opacity:.5; }
 .view-unavailable { background:#fee2e2; border-color:#fca5a5; color:var(--danger,#b91c1c); }
+.data-card-title-input { width:100%; font:inherit; font-size:13px; border:1px solid var(--accent); border-radius:4px; padding:2px 6px; background:var(--bg-card, #fff); color:var(--text-main); }
     </style>
 </head>
 <body>
@@ -2337,11 +2338,11 @@ const Store = {
         if(!id) return false;
         const idx = this.state.projects.findIndex(p=>p.id===id);
         if(idx < 0) return false;
-        if(this.state.projects.length<=1) return 'last_project';
         const project = this.state.projects[idx];
         this.state.projects.splice(idx,1);
         this.state.docs = this.state.docs.filter(d => !project.cardIds.includes(d.id));
-        if(this.state.activeProjectId===id) this.state.activeProjectId = this.state.projects[Math.max(0,idx-1)].id;
+        if(this.state.activeProjectId===id) this.state.activeProjectId = this.state.projects[Math.max(0,idx-1)]?.id ?? null;
+        // 允许删除最后一个工程：工作区归空，curr() 会惰性创建新的空工程
         this.save();
         return true;
     },
@@ -9340,13 +9341,36 @@ const SourceController = {
         return result === true;
     },
 
-    /** 卡片重命名（F2 / 双击） */
-    renameCard(id) {
+    /** 卡片重命名：双击/F2 在卡片内就地编辑（与页签栏一致），不用全局弹窗 */
+    startCardRename(id) {
+        const el = Array.from(document.querySelectorAll('.data-card')).find(node => node.dataset.cardId === id);
+        if(!el) return;
+        const titleEl = el.querySelector('.data-card-title');
         const card = Store.getCard(id);
-        if(!card) return false;
-        const name = typeof prompt === 'function' ? prompt('卡片名称', card.title || '') : null;
-        if(name) dispatch('card:rename', { id, title:name });
-        return Boolean(name);
+        if(!titleEl || !card) return;
+        const input = document.createElement('input');
+        input.className = 'data-card-title-input';
+        input.value = card.title || '';
+        input.maxLength = 40;
+        input.setAttribute('aria-label', '卡片名称');
+        titleEl.innerHTML = '';
+        titleEl.appendChild(input);
+        let done = false;
+        const finish = (save) => {
+            if(done) return;
+            done = true;
+            if(save && String(input.value || '').trim()) dispatch('card:rename', { id, title: input.value });
+            SourceController.renderCards();
+        };
+        input.onclick = e => e.stopPropagation();
+        input.ondblclick = e => e.stopPropagation();
+        input.onkeydown = e => {
+            e.stopPropagation();
+            if(e.key === 'Enter') finish(true);
+            if(e.key === 'Escape') finish(false);
+        };
+        input.onblur = () => finish(true);
+        setTimeout(() => { input.focus(); input.select(); }, 0);
     },
 
     /**
@@ -9382,9 +9406,9 @@ const SourceController = {
                 SourceController.activateCard(id);
             };
             el.onkeydown = (e) => {
-                if(e.target.closest('[data-card-act]')) return;
+                if(e.target.closest('[data-card-act]') || e.target.closest('.data-card-title-input')) return;
                 if(e.key === 'Enter' || e.key === ' ') { e.preventDefault(); SourceController.activateCard(id); }
-                if(e.key === 'F2') { e.preventDefault(); e.stopPropagation(); SourceController.renameCard(id); }
+                if(e.key === 'F2') { e.preventDefault(); e.stopPropagation(); SourceController.startCardRename(id); }
                 if(e.key === 'Delete') { e.preventDefault(); e.stopPropagation(); SourceController.removeCard(id); }
             };
             el.querySelector('[data-card-act="visible"]').onclick = (e) => {
@@ -9398,7 +9422,7 @@ const SourceController = {
             el.ondblclick = (e) => {
                 if(e.target.closest('[data-card-act]')) return;
                 e.preventDefault();
-                SourceController.renameCard(id);
+                SourceController.startCardRename(id);
             };
         });
         const addBtn = $('addCardBtn');
@@ -10176,20 +10200,17 @@ const TabController = {
         dispatch('project:create');
     },
 
-    /** Remove a 工程 through the canonical command path. */
+    /** Remove a 工程 through the canonical command path（允许删除最后一个：工作区归空后惰性重建） */
     remove(id) {
         const project = Store.state.projects.find(item => item.id === id);
         if (!project) return false;
-        if (Store.state.projects.length <= 1) {
-            Toast.show('至少保留一个工程', true);
-            return 'last_project';
-        }
-        if (typeof confirm === 'function' && !confirm(`确定关闭工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除。`)) return false;
+        const isLast = Store.state.projects.length <= 1;
+        if (typeof confirm === 'function' && !confirm(isLast
+            ? `删除最后一个工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除，工作区将重置为空。`
+            : `确定关闭工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除。`)) return false;
 
         TabController._persistCurrentSource();
-        const result = dispatch('project:remove', { id });
-        if (result === 'last_project') Toast.show('至少保留一个工程', true);
-        return result;
+        return dispatch('project:remove', { id });
     },
 
     _persistCurrentSource() {

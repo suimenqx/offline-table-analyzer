@@ -582,3 +582,4 @@
 .card-visibility { border:none; background:transparent; cursor:pointer; font-size:13px; padding:2px; }
 .card-visibility.off { opacity:.5; }
 .view-unavailable { background:#fee2e2; border-color:#fca5a5; color:var(--danger,#b91c1c); }
+.data-card-title-input { width:100%; font:inherit; font-size:13px; border:1px solid var(--accent); border-radius:4px; padding:2px 6px; background:var(--bg-card, #fff); color:var(--text-main); }
