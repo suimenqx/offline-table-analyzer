@@ -27,6 +27,20 @@ describe('background dataset session',()=>{
     assert.ok(session.excel({...input,mode:'raw'}).byteLength>100);
   });
 
+  it('invalidates complete query results when corrections on another participating card change', () => {
+    const {OTA}=loadModules(['worker-runtime']);
+    const session=OTA.require('worker-runtime').WorkerRuntime.createSession();
+    session.parse({cardId:'a',text:'table-data A\nvalidflag ID Name\n1 001 Base'});
+    session.parse({cardId:'b',text:'table-data B\nvalidflag ID Name\n1 002 Old'});
+    const visible=[{id:'a',name:'A'},{id:'b',name:'B'}];
+    const initial=session.query({visible,ui:{},cardUis:{a:{},b:{}}});
+    assert.equal(initial.find(item=>item.table.name==='B').res.rows[0].d[2],'Old');
+    const corrected=session.query({visible,ui:{},cardUis:{a:{},b:{cellEdits:{$B:{0:{2:'Corrected'}}}}}});
+    assert.equal(corrected.find(item=>item.table.name==='B').res.rows[0].d[2],'Corrected');
+    const undone=session.query({visible,ui:{},cardUis:{a:{},b:{}}});
+    assert.equal(undone.find(item=>item.table.name==='B').res.rows[0].d[2],'Old');
+  });
+
   it('refreshes side-by-side display names after a card rename without reparsing its data', () => {
     const {OTA}=loadModules(['worker-runtime']);
     const session=OTA.require('worker-runtime').WorkerRuntime.createSession();

@@ -8,6 +8,7 @@ const WorkerRuntime = {
     createSession() {
         let datasets=new Map(); // cardId -> { tables, previousEdits }
         let poolCache={ sig:null, pool:null, tables:null };
+        let previousEditSignature = null;
         const sigOf = visible => JSON.stringify((visible || []).map(v => [v.id, v.name || v.id]));
         const poolToTables = pool => pool.map(entry => ({ name:entry.displayName, headers:entry.columns.slice(), rows:entry.rows, isView:false }));
         const buildPool = visible => {
@@ -24,6 +25,12 @@ const WorkerRuntime = {
             return poolCache;
         };
         const applyEdits = payload => {
+            const editSignature = JSON.stringify((payload.visible || []).map(card =>
+                [card.id, payload.cardUis?.[card.id]?.cellEdits || {}]));
+            if(editSignature !== previousEditSignature) {
+                QueryService.clearCache();
+                previousEditSignature = editSignature;
+            }
             for(const ds of datasets.values()) {
                 for(const [row,col,value] of ds.previousEdits) row[col]=value;
                 ds.previousEdits=[];
