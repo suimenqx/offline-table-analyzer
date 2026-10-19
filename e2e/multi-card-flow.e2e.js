@@ -12,12 +12,18 @@ const paste = async (page, text) => {
   await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
 };
 const cardList = page => page.locator('.data-card');
-const parse = async page => { await page.locator('#parseBtn').click(); await expect(page.locator('#parseStatusText')).toContainText(/\d[\d,]* 行/, {timeout:60000}); };
+const prepare = async page => { await page.locator('#autoParseToggle').uncheck(); };
+const parse = async page => {
+  // 固定格式：小样本 CSV 的自动识别会歧义（“请在详情中选择候选”）
+  await page.locator('#formatSelect').selectOption('csv');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#parseStatusText')).toContainText(/\d[\d,]* 行/, {timeout:60000});
+};
 
 test('场景1+2：两卡同名同结构 10 万行 CSV 拼接 20 万行、显隐回落、导出读回',async({page,context})=>{
   test.setTimeout(300000);
   const fixture=createLargeCsv();const errors=[];page.on('pageerror',e=>errors.push(String(e)));
-  await grant(context);await page.goto('/index.html');
+  await grant(context);await page.goto('/index.html');await prepare(page);
   // 卡 A：粘贴 + 解析
   await paste(page, fixture.text);await parse(page);
   const tableA=page.locator('.table-container').filter({has:page.locator('.table-title',{hasText:/^CSV Table 1$/})});
@@ -48,7 +54,7 @@ test('场景1+2：两卡同名同结构 10 万行 CSV 拼接 20 万行、显隐�
 
 test('场景3：同名不同结构卡并列显示，互不合并',async({page,context})=>{
   test.setTimeout(120000);
-  await grant(context);await page.goto('/index.html');
+  await grant(context);await page.goto('/index.html');await prepare(page);
   const csvA='id,name,value\n1,甲,10\n2,乙,20';
   await paste(page, csvA);await parse(page);
   await page.locator('#addCardBtn').click();
@@ -65,7 +71,7 @@ test('场景3：同名不同结构卡并列显示，互不合并',async({page,co
 
 test('场景4：view 引用完整性——隐藏来源卡标记不可用、恢复自动复原',async({page,context})=>{
   test.setTimeout(120000);
-  await grant(context);await page.goto('/index.html');
+  await grant(context);await page.goto('/index.html');await prepare(page);
   const csv='id,name\n1,甲\n2,乙';
   await paste(page, csv);await parse(page);
   await page.locator('#addCardBtn').click();
@@ -88,7 +94,7 @@ test('场景4：view 引用完整性——隐藏来源卡标记不可用、恢�
 
 test('场景5：粘贴落选中卡 + 新增卡片流',async({page,context})=>{
   test.setTimeout(120000);
-  await grant(context);await page.goto('/index.html');
+  await grant(context);await page.goto('/index.html');await prepare(page);
   await paste(page, 'id,name\n1,甲');await parse(page);
   // 新增卡片自动选中：粘贴应落新卡（表池含两张卡的表）
   await page.locator('#addCardBtn').click();
@@ -105,7 +111,7 @@ test('场景5：粘贴落选中卡 + 新增卡片流',async({page,context})=>{
 
 test('场景6：浏览器重启恢复多卡工作区',async({page,context})=>{
   test.setTimeout(180000);
-  await grant(context);await page.goto('/index.html');
+  await grant(context);await page.goto('/index.html');await prepare(page);
   await paste(page, 'id,name\n1,甲');await parse(page);
   await page.locator('#addCardBtn').click();
   await paste(page, 'id,name\n2,乙');await parse(page);
@@ -115,6 +121,7 @@ test('场景6：浏览器重启恢复多卡工作区',async({page,context})=>{
   await page.reload();
   await expect(cardList(page)).toHaveCount(2);
   await expect(page.locator('#poolCount')).toContainText('1 张卡片');
+  await parse(page); // 重开后解析（autoParse 持久化为关闭）
   const first=page.locator('.table-container').filter({has:page.locator('.table-title',{hasText:/^CSV Table 1$/})}).first();
   await expect(first.locator('.meta-tag').filter({hasText:/^Show:/})).toHaveText('Show: 1');
 });

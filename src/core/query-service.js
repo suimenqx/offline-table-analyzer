@@ -163,7 +163,10 @@ const QueryService = {
     },
 
     getPreviewAsync(input, executor) {
-        const key=querySignature(input.ui || {}, {...input,rawToken:objectIdentity(input.rawTables)})+JSON.stringify(stableValue({pageSize:input.ui?.pageSize,tablePages:input.ui?.tablePages,previewTable:input.ui?.previewTable,collapsedTables:input.ui?.collapsedTables}));
+        // 缓存键必须含可见清单：显隐只改表池成员，不改 ui/来源修订。
+        const key=querySignature(input.ui || {}, {...input,rawToken:objectIdentity(input.rawTables)})
+            + JSON.stringify(stableValue({pageSize:input.ui?.pageSize,tablePages:input.ui?.tablePages,previewTable:input.ui?.previewTable,
+                collapsedTables:input.ui?.collapsedTables,visible:(input.visible || []).map(v => v && v.id)}));
         if(asyncCache.has(key)) return asyncCache.get(key);
         executor.cancelQueries?.();
         const snapshot={...input,ui:JSON.parse(JSON.stringify(input.ui || {})),globalViews:JSON.parse(JSON.stringify(input.globalViews || []))};
