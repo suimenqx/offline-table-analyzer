@@ -12,7 +12,8 @@ const paste = async (page, text) => {
   await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
 };
 const cardList = page => page.locator('.data-card');
-const prepare = async page => { await page.locator('#autoParseToggle').uncheck(); };
+const watchConsole = page => { page.on('console', m => { if(m.type()==='error') console.log('PAGE-CONSOLE-ERROR:', m.text()); }); };
+const prepare = async page => { await page.locator('#autoParseToggle').uncheck(); watchConsole(page); };
 const parse = async page => {
   // 固定格式：小样本 CSV 的自动识别会歧义（“请在详情中选择候选”）
   await page.locator('#formatSelect').selectOption('csv');

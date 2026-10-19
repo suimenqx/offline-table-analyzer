@@ -11735,6 +11735,7 @@ validflag Time      Level   Message                 Code
             context.completed=true;
             return true;
         } catch(error) {
+            console.error('[runBackground]', error && error.message || error);
             if(generation!==this._parseGeneration || error.name==='AbortError' || !this.matchesSourceContext(context,this.getSourceContext()))return false;
             TableRegistry.setResult({format:'error',label:'解析失败',tables:[],diagnostics:[{severity:'error',code:'PARSE_ERROR',message:error.message}]});
             Toast.show(error.message,true);this.updateImportSummary();this.requestRender();
