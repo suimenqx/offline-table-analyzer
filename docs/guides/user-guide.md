@@ -99,6 +99,8 @@ The source area holds a **card list**: each card is one data segment with its ow
 - **Paste** replaces the selected card's content. The **＋ 新增卡片** button adds an empty card (default visible, auto-selected).
 - **Visibility (👁)** controls whether the card's tables enter the **table pool** — the set of tables shown in the preview, filtering, JOIN and export context. Hidden cards are greyed out and their tables leave the pool immediately.
 - The workspace tab bar now manages **projects (工程)**: each project is a container holding a group of cards and its own JOIN views.
+- **Rename** a card by double-clicking its title or pressing `F2`: edit in place, `Enter`/blur saves, `Escape` cancels.
+- **Delete** any card with its × button or `Delete`, including the last card. An empty project keeps its JOIN views; source editing and data export stay disabled until you click **新增卡片**. Reloading does not add a replacement card.
 
 ---
 
@@ -132,7 +134,7 @@ Each analysis **tab** (page) is an independent workspace — it stores its own s
 | **New tab** | Click **New tab** or press `Ctrl/Cmd+N` |
 | **Rename tab** | Double-click the tab label, or select the tab and press `F2`. Press `Enter` to confirm, `Escape` to cancel. |
 | **Reorder tabs** | Drag a tab left or right. A visual indicator shows the drop target. |
-| **Close tab** | Select the tab and press `Delete`. At least one tab must remain. |
+| **Close tab** | Click × or focus the tab and press `Delete`, including the final tab. After all tabs are deleted, the workspace stays empty across reloads; **New tab** starts again at `Analysis 1`. |
 | **Switch tabs** | Click a tab, or use `←` / `→` arrow keys when a tab is focused. |
 | **Activate tab** | Press `Enter` or `Space` on a focused tab. |
 

@@ -11,6 +11,7 @@ All notable changes are documented here. The project follows semantic versioning
 - The Worker session now holds one dataset per card and derives the table pool from the visible list; corrections apply per source card, concatenated tables are read-only, and deleting a card releases its dataset. Session budget is enforced with an explicit error.
 - The source area shows a card list (click to select, 👁 to toggle visibility, double-click to rename, keyboard accessible); the tab bar manages projects.
 - The full-screen source editor is removed; large-source previews keep guiding users to edit data in their own local editor before pasting.
+- Allow deleting every card and project without silently rebuilding placeholders. Preserve empty states across reload and backup/restore, keep views in cardless projects, reset project numbering to `Analysis 1` only after all projects are removed, and synchronize the editor/focus/Worker datasets after deletion.
 - Workspace schema 22: tabs migrate 1:1 to projects + cards with preserved ids; per-document enabled views move up to the project; backups and old snapshots import through the same migration.
 
 - Keep expanding the bounded detection sample when a truncated sample's confident winner is the plain-text fallback, so a table region after a long prose prefix is still found with original source offsets.

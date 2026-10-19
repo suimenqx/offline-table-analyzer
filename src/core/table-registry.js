@@ -84,7 +84,7 @@ const TableRegistry = {
     },
     getBackgroundInput() {
         const doc=Store.getDocument();
-        if(doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
+        if(!doc || doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
         const project=Store.getActiveProject() || {};
         const visible=(project.cardIds || [])
             .map(id => Store.getCard(id))

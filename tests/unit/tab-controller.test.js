@@ -119,7 +119,7 @@ describe('TabController — canonical mutations', () => {
     }
   });
 
-  it('removes the final tab too (workspace resets lazily)', () => {
+  it('removes the final tab without automatically rebuilding it', () => {
     const previousConfirm = globalThis.confirm;
     globalThis.confirm = () => true;
     try {

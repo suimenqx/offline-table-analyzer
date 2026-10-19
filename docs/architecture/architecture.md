@@ -77,15 +77,15 @@ The refactor decision, module manifest, dependency rules, migration phases, and 
 ### Workspace state
 
 ```text
-schemaVersion: 21
+schemaVersion: 22
 appVersion: 23.2.0
 cellEditKeyEncoding: dollar-v1
 rawExternal?: committed snapshot generation (local settings stub only)
 revision / viewRevision / queryRevision
-docs[]
-activeId
+projects[]: { id, title, cardIds[], activeCardId, views[], enabledViews[] }
+docs[] (cards)
+activeProjectId
 theme
-globalViews[]
 nextAnalysisSeq
 copyFormat (`default`/`csv`/`markdown`/`ascii`/`json-inline`/`json-expanded`/`lua-inline`/`lua-expanded`; legacy `json` means `json-expanded`)
 spreadsheetSafe
@@ -93,7 +93,9 @@ persistRaw
 lastSavedAt
 ```
 
-### Analysis document
+Projects and their card lists may be empty. `curr()` / `getDocument()` return `null` when there is no active card; `getActiveUI()` returns UI defaults plus any project-level enabled views. Reads never create replacement projects/cards. UI disables source-bound controls, clears obsolete preview/source/selection state, and offers an explicit add action. Deleting the last project resets `nextAnalysisSeq` to 1; deleting its last card retains the project and its views. Initialization, migration, backup/restore and duplication retain these empty shapes. A first visit without a saved workspace still starts with one default project/card. See [multi-card ADR](multi-card-workspace.md).
+
+### Analysis document (card)
 
 ```text
 id

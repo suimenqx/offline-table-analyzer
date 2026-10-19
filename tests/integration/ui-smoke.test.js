@@ -22,6 +22,16 @@ function setupDOM() {
   return { storage, dom };
 }
 
+// Use a complete project/card fixture: an empty project is now valid state,
+// so replacing docs alone must not rely on reads to recreate its active card.
+function setDocuments(Store, docs, activeId) {
+  Store.state.docs = docs;
+  Store.state.projects = docs.map(doc => ({
+    id:doc.id, title:doc.title, cardIds:[doc.id], activeCardId:doc.id, enabledViews:[], views:[],
+  }));
+  Store.state.activeProjectId = activeId;
+}
+
 describe('App bootstrap', () => {
   it('initializes and creates a workspace', () => {
     setupDOM();
@@ -42,11 +52,10 @@ describe('App bootstrap', () => {
     const { App } = OTA.require('app');
     const { Store } = OTA.require('store');
     const { TableRegistry } = OTA.require('table-registry');
-    Store.state.docs = [
+    setDocuments(Store, [
       { id: 'a', title: 'First', raw: 'id,name\n1,Alice', ui: {} },
       { id: 'b', title: 'Second', raw: 'id,name\n2,Bob', ui: {} },
-    ];
-    Store.state.activeId = 'a';
+    ], 'a');
     App.loadDoc();
 
     Store.transition('tab:activate', { id: 'b' });
@@ -65,8 +74,7 @@ describe('App bootstrap', () => {
     const targetSelect = document.getElementById('targetTableSelect');
     targetSelect.options = [];
     targetSelect.add = option => targetSelect.options.push(option);
-    Store.state.docs = [{ id: 'a', title: 'First', raw: '', ui: {} }];
-    Store.state.activeId = 'a';
+    setDocuments(Store, [{ id: 'a', title: 'First', raw: '', ui: {} }], 'a');
     TableRegistry.setResult({
       tables: [{ name: 'Old', headers: ['id'], rows: [['1']] }],
       format: 'csv', label: 'CSV', diagnostics: [], candidates: [],
@@ -96,8 +104,7 @@ describe('App bootstrap', () => {
     const targetSelect = document.getElementById('targetTableSelect');
     targetSelect.options = [];
     targetSelect.add = option => targetSelect.options.push(option);
-    Store.state.docs = [{ id: 'a', title: 'First', raw: '', ui: {} }];
-    Store.state.activeId = 'a';
+    setDocuments(Store, [{ id: 'a', title: 'First', raw: '', ui: {} }], 'a');
 
     const previousParse = ImportEngine.parse;
     const previousToast = Toast.show;
@@ -123,8 +130,7 @@ describe('App bootstrap', () => {
     setupDOM();
     const { App } = OTA.require('app');
     const { Store } = OTA.require('store');
-    Store.state.docs = [{ id: 'a', title: 'First', raw: '', ui: {} }];
-    Store.state.activeId = 'a';
+    setDocuments(Store, [{ id: 'a', title: 'First', raw: '', ui: {} }], 'a');
     assert.equal(Object.hasOwn(App.getParseOptions(),'lastSuccessfulFormat'), false);
   });
 
@@ -134,8 +140,7 @@ describe('App bootstrap', () => {
     const { Store } = OTA.require('store');
     const { TableRegistry } = OTA.require('table-registry');
     const text = 'alpha,beta\none,two\nthree,four';
-    Store.state.docs = [{ id:'header-confirm', title:'Header confirmation', raw:'', ui:{} }];
-    Store.state.activeId = 'header-confirm';
+    setDocuments(Store, [{ id:'header-confirm', title:'Header confirmation', raw:'', ui:{} }], 'header-confirm');
     document.getElementById('rawInput').value = text;
     const target = document.getElementById('targetTableSelect');
     target.options = [];
@@ -180,8 +185,7 @@ describe('App bootstrap', () => {
     const { Store } = OTA.require('store');
     const { TableRegistry } = OTA.require('table-registry');
     const text = '报告\nid,name\n1,Alice\nbad,<b>too</b>,many,fields\n2,Bob\n结束';
-    Store.state.docs = [{ id:'region-confirm', title:'Region confirmation', raw:'', ui:{} }];
-    Store.state.activeId = 'region-confirm';
+    setDocuments(Store, [{ id:'region-confirm', title:'Region confirmation', raw:'', ui:{} }], 'region-confirm');
     document.getElementById('rawInput').value = text;
     const target = document.getElementById('targetTableSelect');
     target.options = [];

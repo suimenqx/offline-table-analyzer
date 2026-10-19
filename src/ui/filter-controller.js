@@ -83,7 +83,8 @@ const FilterController = {
         const title = FilterController.title;
         if (!pop || !input || !title) return;
 
-        const doc = Store.curr();
+        const doc = Store.getDocument();
+        if(!doc) return;
         const prev = ((doc.ui.columnFilters && doc.ui.columnFilters[tableName] && doc.ui.columnFilters[tableName][colName]) || '').toString();
         input.value = prev;
         title.textContent = `${tableName}.${colName}`;

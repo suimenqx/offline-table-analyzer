@@ -100,7 +100,7 @@ const Store = {
     _storageTouched:false,
     _rawSnapshot:null,
     getState() { return this.state; },
-    /** 当前选中卡片（v22 起文档升级为工程+卡片，docs 数组即卡片列表） */
+    /** 当前选中卡片；空工程/空工作区返回 null，读取不自动创建内容。 */
     getCard(id) {
         if(!id) return this.curr();
         return (this.state.docs || []).find(card => card.id === id) || null;
@@ -121,7 +121,6 @@ const Store = {
             this.state.projects.push({ id:doc.id, title:doc.title || 'Analysis', cardIds:[doc.id], activeCardId:doc.id,
                 enabledViews:Array.isArray(doc.ui && doc.ui.enabledViews) ? doc.ui.enabledViews.slice() : [], views:[] });
         }
-        this.state.projects = this.state.projects.filter(p => p.cardIds.length > 0 || p.id === this.state.activeProjectId);
         if(this.state.projects.length === 0 && this.state.docs.length > 0) {
             const doc = this.state.docs[0];
             this.state.projects.push({ id:doc.id, title:doc.title || 'Analysis', cardIds:[doc.id], activeCardId:doc.id,
@@ -158,7 +157,7 @@ const Store = {
     getActiveUI() {
         const card = this.curr();
         const project = this.getActiveProject();
-        return Object.assign({}, card.ui, { enabledViews:(project && project.enabledViews) || [] });
+        return Object.assign(this.createDefaultUI(), card?.ui, { enabledViews:(project && project.enabledViews) || [] });
     },
     init() {
         this._rawSnapshot=null;
@@ -192,7 +191,7 @@ const Store = {
         if(typeof this.state.persistRaw !== 'boolean') this.state.persistRaw = true;
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
-        if(this.state.projects.length===0) {
+        if(!loaded && this.state.projects.length===0) {
             if(this.loadFailed) {
                 const card = this.normalizeDoc({ id:this.generateDocId(), title:'Analysis 1', raw:'', visible:true, ui:{} }, 0);
                 this.state.docs.push(card);
@@ -216,17 +215,13 @@ const Store = {
             if(project === this.state.projects[0]) {
                 orphans.forEach(orphan => { if(!project.cardIds.includes(orphan.id)) project.cardIds.push(orphan.id); });
             }
-            if(project.cardIds.length === 0) {
-                const card = this.normalizeDoc({ id:this.generateDocId(), title:'数据段 1', raw:'', visible:true, ui:{} }, this.state.docs.length);
-                this.state.docs.push(card);
-                project.cardIds.push(card.id);
-            }
-            if(!project.cardIds.includes(project.activeCardId)) project.activeCardId = project.cardIds[0];
+            if(!project.cardIds.includes(project.activeCardId)) project.activeCardId = project.cardIds[0] || null;
             if(!Array.isArray(project.enabledViews)) project.enabledViews = [];
             if(!Array.isArray(project.views)) project.views = [];
         });
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
-        if(!this.state.projects.some(p => p.id === this.state.activeProjectId)) this.state.activeProjectId = this.state.projects[0].id;
+        if(!this.state.projects.some(p => p.id === this.state.activeProjectId)) this.state.activeProjectId = this.state.projects[0]?.id || null;
+        if(this.state.projects.length === 0) this.state.nextAnalysisSeq = 1;
         this.applyTheme();
         if(this.loadFailed) this.notifyStorage(false, this.lastSaveError);
         else if(loaded && loaded.rawExternal) {
@@ -419,17 +414,18 @@ const Store = {
     importWorkspace(payload, merge=false) {
         if(!payload || typeof payload !== 'object' || !this.isSafePayload(payload)) throw new Error('工作区文件包含不安全或过深的数据结构');
         if(!['ota-workspace','table-tool-tabs'].includes(payload.kind)) throw new Error('不是受支持的工作区文件');
+        if(!Array.isArray(payload.docs)) throw new Error('工作区卡片数量无效');
         payload = migrateWorkspacePayload(payload);
-        if(!Array.isArray(payload.docs) || payload.docs.length === 0 || payload.docs.length > 100) throw new Error('工作区卡片数量无效');
-        const projects = Array.isArray(payload.projects) && payload.projects.length > 0
-            ? payload.projects
-            : [{ title:null, cardIds: payload.docs.map(d => d && d.id).filter(Boolean), enabledViews:[], views:[] }];
+        if(!Array.isArray(payload.docs) || payload.docs.length > 100) throw new Error('工作区卡片数量无效');
+        const projects = Array.isArray(payload.projects) ? payload.projects
+            : payload.docs.length ? [{ title:null, cardIds: payload.docs.map(d => d && d.id).filter(Boolean), enabledViews:[], views:[] }] : [];
+        if(projects.length > 100) throw new Error('工作区超过 100 个工程或卡片预算');
         const newCards = [];
         const newProjects = [];
         for(const project of projects) {
-            const cards = (Array.isArray(project.cardIds) ? project.cardIds : [])
-                .map(cid => payload.docs.find(d => d && d.id === cid)).filter(Boolean);
-            if(cards.length === 0) continue;
+            if(!project || !Array.isArray(project.cardIds)) throw new Error('工作区工程结构无效');
+            const cards = project.cardIds.map(cid => payload.docs.find(d => d && d.id === cid)).filter(Boolean);
+            if(cards.length !== project.cardIds.length) throw new Error('工作区工程引用了缺失的卡片');
             const importedProject = { id:this.generateProjectId(),
                 title: this.makeUniqueTitle(typeof project.title === 'string' && project.title ? project.title : 'Analysis'),
                 cardIds:[], activeCardId:null,
@@ -447,10 +443,10 @@ const Store = {
                 newCards.push(card);
                 importedProject.cardIds.push(card.id);
             }
-            importedProject.activeCardId = importedProject.cardIds[0];
+            importedProject.activeCardId = importedProject.cardIds[0] || null;
             newProjects.push(importedProject);
         }
-        if(newProjects.length === 0) throw new Error('工作区不包含有效卡片');
+        if(newCards.length < payload.docs.length) throw new Error('工作区包含未归属工程的卡片');
         const baseProjects = merge ? this.state.projects.slice() : [];
         const baseCards = merge ? this.state.docs.slice() : [];
         const nextProjects = baseProjects.concat(newProjects);
@@ -460,8 +456,8 @@ const Store = {
         this.state.projects = nextProjects;
         this.state.docs = nextCards;
         this.state.docs.forEach((doc, idx) => this.normalizeDoc(doc, idx));
-        this.state.activeProjectId = newProjects[0].id;
-        this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1);
+        this.state.activeProjectId = newProjects[0]?.id || (merge ? this.state.activeProjectId : null);
+        this.state.nextAnalysisSeq = nextProjects.length ? Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1) : 1;
         this.loadFailed = false;
         this.save();
         return newCards.length;
@@ -515,7 +511,7 @@ const Store = {
         return m ? parseInt(m[1], 10) : 0;
     },
     getMaxAnalysisNumber() {
-        return Math.max(0, ...(this.state.docs || []).map(d => this.getAnalysisNumber(d && d.title)));
+        return Math.max(0, ...[...(this.state.projects || []), ...(this.state.docs || [])].map(item => this.getAnalysisNumber(item && item.title)));
     },
     makeUniqueTitle(title, excludeId=null) {
         const clean = String(title || 'Analysis').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Analysis';
@@ -569,12 +565,11 @@ const Store = {
     removeCard(id) {
         const project = this.ensureProjects().find(p => p.cardIds.includes(id));
         if(!project) return false;
-        if(project.cardIds.length<=1) return 'last_card';
         const idx = this.state.docs.findIndex(d=>d.id===id);
         if(idx < 0) return false;
         this.state.docs.splice(idx,1);
         project.cardIds = project.cardIds.filter(cid => cid !== id);
-        if(project.activeCardId===id) project.activeCardId = project.cardIds[0];
+        if(project.activeCardId===id) project.activeCardId = project.cardIds[0] || null;
         this.save();
         return true;
     },
@@ -630,7 +625,7 @@ const Store = {
         this.state.projects.splice(idx,1);
         this.state.docs = this.state.docs.filter(d => !project.cardIds.includes(d.id));
         if(this.state.activeProjectId===id) this.state.activeProjectId = this.state.projects[Math.max(0,idx-1)]?.id ?? null;
-        // 允许删除最后一个工程：工作区归空，curr() 会惰性创建新的空工程
+        if(this.state.projects.length === 0) this.state.nextAnalysisSeq = 1;
         this.save();
         return true;
     },
@@ -652,12 +647,7 @@ const Store = {
             this.state.docs.push(copy);
             project.cardIds.push(copy.id);
         }
-        if(project.cardIds.length===0) {
-            const card = this.normalizeDoc({ id:this.generateDocId(), title:'数据段 1', raw:'', visible:true, ui:{} }, this.state.docs.length);
-            this.state.docs.push(card);
-            project.cardIds.push(card.id);
-        }
-        project.activeCardId = project.cardIds[0];
+        project.activeCardId = project.cardIds[0] || null;
         this.save();
         return project;
     },
@@ -698,21 +688,28 @@ const Store = {
         this.save();
         return true;
     },
-    curr() { 
+    curr() {
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!Array.isArray(this.state.projects)) this.state.projects = [];
         const project = this.getActiveProject();
-        if(!project) { this.addProject(); return this.curr(); }
-        let card = this.state.docs.find(d=>d.id===project.activeCardId) || this.state.docs.find(d => project.cardIds.includes(d.id));
-        if(!card) { this.addCard({}, project.id); return this.curr(); }
-        return this.normalizeDoc(card, this.state.docs.indexOf(card));
+        if(!project) return null;
+        const card = this.state.docs.find(d=>d.id===project.activeCardId) || this.state.docs.find(d => project.cardIds.includes(d.id));
+        return card ? this.normalizeDoc(card, this.state.docs.indexOf(card)) : null;
     },
-    updateUI(k, v) { this.curr().ui[k]=v; this.scheduleSave(); },
+    updateUI(k, v) {
+        const card = this.curr();
+        if(!card) return false;
+        card.ui[k]=v; this.scheduleSave();
+    },
     updateRule(table, field, value) {
-        const ui = this.curr().ui; if(!ui.rules[table]) ui.rules[table] = {}; ui.rules[table][field] = value; this.scheduleSave();
+        const card = this.curr();
+        if(!card) return false;
+        const ui = card.ui; if(!ui.rules[table]) ui.rules[table] = {}; ui.rules[table][field] = value; this.scheduleSave();
     },
     clearCellEdits() {
-        const ui = this.curr().ui;
+        const card = this.curr();
+        if(!card) return false;
+        const ui = card.ui;
         const edits = ui.cellEdits && typeof ui.cellEdits === 'object' ? ui.cellEdits : {};
         const hadEdits = Object.keys(edits).length > 0;
         ui.cellEdits = {};
@@ -839,9 +836,11 @@ const Store = {
             }
             case 'project:remove': case 'tab:remove': {
                 const previousActiveId = this.state.activeProjectId;
-                const result = this.removeProject(payload && payload.id);
+                const id = this.resolveProjectId(payload && payload.id);
+                const cardIds = this.state.projects.find(project => project.id === id)?.cardIds.slice() || [];
+                const result = this.removeProject(id);
                 if (result === true) {
-                    this._notify('project:removed', { id:payload.id, previousActiveId, activeProjectId:this.state.activeProjectId, activeChanged:previousActiveId !== this.state.activeProjectId });
+                    this._notify('project:removed', { id, cardIds, previousActiveId, activeProjectId:this.state.activeProjectId, activeChanged:previousActiveId !== this.state.activeProjectId });
                     this._notify('state:changed', {});
                 }
                 return result;
@@ -903,9 +902,11 @@ const Store = {
                 return true;
             }
             case 'card:remove': {
+                const previousActiveId = this.curr()?.id || null;
                 const result = this.removeCard(payload && payload.id);
                 if (result === true) {
-                    this._notify('card:removed', { id:payload.id });
+                    const activeCardId = this.curr()?.id || null;
+                    this._notify('card:removed', { id:payload.id, activeCardId, activeChanged:previousActiveId !== activeCardId });
                     this._notify('state:changed', {});
                 }
                 return result;
@@ -962,7 +963,8 @@ const Store = {
                 // Payload: { text, docId?, format?, headerMode?, preservePaste? }
                 // preservePaste is a compatibility hint for source listeners; they still
                 // validate the current snapshot against the emitted text.
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const next = payload && typeof payload.text === 'string' ? payload.text : '';
                 const format = payload && typeof payload.format === 'string' ? payload.format : null;
@@ -998,7 +1000,8 @@ const Store = {
             case 'parse:completed': {
                 // Emitted by App.run() after a parse attempt settles, including failures.
                 // Payload: { tables, elapsed, diagnostics, format }
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 const parsePayload = payload || {};
                 const resultRevision = Number.isInteger(parsePayload.sourceRevision) ? parsePayload.sourceRevision : doc.sourceRevision;
                 if(resultRevision !== doc.sourceRevision) {
@@ -1018,7 +1021,8 @@ const Store = {
 
             // ── Generic document state ──
             case 'ui:set': {
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const key = payload && payload.key;
                 if(!key || key === 'cellEdits') return false;
@@ -1029,7 +1033,8 @@ const Store = {
                 return doc.ui[key];
             }
             case 'rule:set': {
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const table = payload && payload.table;
                 const field = payload && payload.field;
@@ -1062,7 +1067,9 @@ const Store = {
                 const column = payload && payload.column;
                 if (!table || !column) return false;
                 const val = (payload.value || '').trim();
-                const current = this.curr().ui.columnFilters || {};
+                const doc = this.curr();
+                if(!doc) return false;
+                const current = doc.ui.columnFilters || {};
                 const nextFilters = JSON.parse(JSON.stringify(current));
                 if(!nextFilters[table]) nextFilters[table] = {};
                 if(val) nextFilters[table][column] = val;
@@ -1081,6 +1088,7 @@ const Store = {
                 const colIdx = payload && payload.col;
                 if (!tableName || !Number.isInteger(rowIdx) || !Number.isInteger(colIdx)) return false;
                 const doc = this.curr();
+                if(!doc) return false;
                 if (!doc.ui.cellEdits) doc.ui.cellEdits = {};
                 const tableKey = `$${tableName}`;
                 if (!doc.ui.cellEdits[tableKey]) doc.ui.cellEdits[tableKey] = {};
@@ -1098,7 +1106,9 @@ const Store = {
                 // Payload: { table }
                 const table = payload && payload.table;
                 if (!table) return false;
-                const nextFilters = JSON.parse(JSON.stringify(this.curr().ui.columnFilters || {}));
+                const doc = this.curr();
+                if(!doc) return false;
+                const nextFilters = JSON.parse(JSON.stringify(doc.ui.columnFilters || {}));
                 delete nextFilters[table];
                 this.transition('ui:set', { key:'columnFilters', value:nextFilters });
                 this._notify('filter:changed', { scope: 'column', table, column: null, value: '' });
@@ -1114,6 +1124,7 @@ const Store = {
             }
             case 'preview:tableCollapse': {
                 const doc = this.curr();
+                if(!doc) return false;
                 if (!doc.ui.collapsedTables) doc.ui.collapsedTables = {};
                 doc.ui.collapsedTables[payload.table] = !doc.ui.collapsedTables[payload.table];
                 this.save();
@@ -1123,6 +1134,7 @@ const Store = {
             }
             case 'preview:tablePage': {
                 const doc = this.curr();
+                if(!doc) return false;
                 if (!doc.ui.tablePages) doc.ui.tablePages = {};
                 doc.ui.tablePages[payload.table] = Math.max(1, Number(payload.page) || 1);
                 this.save();
@@ -1138,13 +1150,15 @@ const Store = {
                 return true;
             }
             case 'ui:autoParse': {
+                if(!this.curr()) return false;
                 this.transition('ui:set', { key:'autoParse', value:payload && payload.enabled !== false });
                 this._notify('ui:autoParseChanged', { enabled: this.curr().ui.autoParse });
                 return true;
             }
             case 'import:setFormat': {
                 // Parse/UI option only — not a source content mutation.
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const format = payload && typeof payload.format === 'string' && payload.format
                     ? payload.format
@@ -1160,7 +1174,8 @@ const Store = {
             }
             case 'import:setHeaderMode': {
                 // Parse/UI option only — not a source content mutation.
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const mode = payload && typeof payload.mode === 'string' && payload.mode
                     ? payload.mode

@@ -122,7 +122,10 @@ const ExportController = {
             schemaVersion: WORKSPACE_SCHEMA_VERSION,
             appVersion: APP_VERSION,
             exportedAt: new Date().toISOString(),
-            docs: Store.state.docs,
+            docs: Store.getState().docs,
+            projects: Store.getState().projects,
+            activeProjectId: Store.getState().activeProjectId,
+            nextAnalysisSeq: Store.getState().nextAnalysisSeq,
             globalViews: Store.getViews(),
             preferences: {
                 theme: Store.state.theme,
@@ -188,7 +191,7 @@ const ExportController = {
     // ── Export helpers (used by App.renderPreview and other methods) ──
 
     _getPrefix(kind) {
-        const title = Store.curr().title || 'Analysis';
+        const title = Store.getDocument()?.title || Store.getActiveProject()?.title || 'Analysis';
         return Exporter.sanitizeFilePrefix(`${title}_${kind}`);
     },
 
@@ -206,7 +209,7 @@ const ExportController = {
     },
 
     _projectTableForExport(table, shownOnly) {
-        const focus=shownOnly?Store.curr().ui.rules?.[table.name]?.focus:[];
+        const focus=shownOnly?Store.getActiveUI().rules?.[table.name]?.focus:[];
         return TableUtils.projectColumns(table,focus);
     },
 
@@ -223,7 +226,8 @@ const ExportController = {
     },
 
     _getPreviewProcessedTables() {
-        const doc = Store.curr();
+        const doc = Store.getDocument();
+        if(!doc) return [];
         return QueryService.getPreview({
             rawTables:TableRegistry.getRaw(),
             globalViews:Store.getViews(),

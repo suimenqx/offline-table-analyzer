@@ -1,6 +1,6 @@
 # Requirements and Scope
 
-The current workspace schema is `21`; application release **23.2.0**. Schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
+The current workspace schema is `22`; application release **23.2.0**. Schema 21, schema 20 and legacy backups remain supported through migration. Historical additions below describe their release at the time; current requirements take precedence. The [large-data ADR](../architecture/large-data.md) records the authorized extension.
 
 ## 1. Product definition
 
@@ -40,7 +40,9 @@ The defining constraints are:
 ### Workspace
 
 - Create, close, activate, rename, and reorder analysis tabs.
-- Maintain unique IDs and titles and retain at least one tab.
+- Maintain unique IDs and titles. Projects (tabs) and cards may all be deleted; reads, preview renders and reloads must preserve the empty state instead of creating replacement content.
+- Reset automatic project numbering to `Analysis 1` only when all projects are gone. Clearing a project's cards does not remove the project, reset project numbering, or delete its views.
+- Empty projects and empty workspaces remain valid for local persistence and backup/restore. The first visit still opens a default project with one card; after deletion, users explicitly add a project/card.
 - Preserve theme, global JOIN views, and copy preferences. `copyFormat` remains the existing global field and accepts `default`, `csv`, `markdown`, `ascii`, `json-inline`, `json-expanded`, `lua-inline`, or `lua-expanded`; the older `json` value retains the expanded layout.
 - Backup/restore tabs and import/export configuration.
 
@@ -78,7 +80,7 @@ The defining constraints are:
 
 ### R1 — trustworthy persistence
 
-- Schema version `21`, application version `23.2.0`.
+- Schema version `22`, application version `23.2.0`. Empty `projects`/`docs` and `activeProjectId`/`activeCardId: null` are valid existing schema-22 shapes; no new persisted fields or schema bump are needed. Schema 21 migrates each old document into one project/card; explicit empty legacy backups remain empty.
 - Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
 - Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
 - Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.

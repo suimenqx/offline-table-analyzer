@@ -180,8 +180,39 @@ describe('Store — 工程/卡片 add/remove', () => {
     assert.equal(project.activeCardId, 'b');
   });
 
-  it('removeCard returns last_card for the last card of a project', () => {
-    assert.equal(Store.removeCard('a'), 'last_card');
+  it('deletes the last card without deleting its project or recreating a card', () => {
+    Store.transition('view:upsert', { view: { view:'Saved', left:'T', right:'U', on:'id=id' } });
+    assert.equal(Store.transition('card:remove', { id:'b' }), true);
+    const project = Store.getActiveProject();
+    assert.equal(project.id, 'p2');
+    assert.deepEqual(project.cardIds, []);
+    assert.equal(project.activeCardId, null);
+    assert.equal(Store.curr(), null);
+    assert.equal(Store.getCard('b'), null);
+    assert.equal(Store.getViews()[0].view, 'Saved', '删除卡片不删除工程的 view');
+    Store.transition('project:activate', { id:'p1' });
+    assert.equal(Store.getProject('p2').id, 'p2', '切换工程不会丢弃空工程');
+    Store.transition('project:activate', { id:'p2' });
+    const card = Store.transition('card:create');
+    assert.notEqual(card.id, 'b');
+    assert.equal(card.raw, '');
+    assert.deepEqual(project.cardIds, [card.id]);
+    assert.equal(Store.curr().id, card.id);
+  });
+
+  it('restarts project numbering at 1 after all projects are deleted', () => {
+    Store.transition('project:create');
+    for (const project of [...Store.getState().projects]) {
+      assert.equal(Store.transition('project:remove', { id: project.id }), true);
+    }
+    const fresh = Store.transition('project:create');
+    assert.equal(fresh.title, 'Analysis 1');
+    assert.equal(Store.getState().projects.length, 1);
+  });
+
+  it('does not reset project numbers when only the cards have been cleared', () => {
+    for (const card of [...Store.getState().docs]) Store.transition('card:remove', { id:card.id });
+    assert.equal(Store.transition('project:create').title, 'Analysis 4');
   });
 
   it('deleted project numbers are not reused', () => {
@@ -200,6 +231,14 @@ describe('Store — 工程/卡片 add/remove', () => {
     assert.equal(events.some(e => e.evt === 'card:visibilityChanged'), true);
     assert.ok(Store.queryRevision > before, '显隐修订必须进入查询缓存失效');
     unsub();
+  });
+
+  it('duplicates an empty project without inventing a card', () => {
+    Store.transition('card:remove', { id:'b' });
+    const copy = Store.transition('project:duplicate', { id:'p2' });
+    assert.deepEqual(copy.cardIds, []);
+    assert.equal(copy.activeCardId, null);
+    assert.equal(Store.getDocument(), null);
   });
 
   it('duplicateProject deep-copies cards and clears cell edits', () => {
@@ -284,6 +323,28 @@ describe('Store — copy format', () => {
 
 // ---------------------------------------------------------------------------
 describe('Store — persistence', () => {
+  it('restores empty projects without adding cards or dropping inactive projects', () => {
+    for (const card of [...Store.getState().docs]) {
+      Store.transition('card:remove', { id:card.id });
+    }
+    Store.init();
+    assert.deepEqual(Store.getState().projects.map(project => project.id), ['p1','p2','p3']);
+    assert.deepEqual(Store.getState().docs, []);
+    assert.equal(Store.getActiveProject().id, 'p2');
+    assert.equal(Store.curr(), null);
+  });
+
+  it('restores a cleared workspace without consuming its first project number', () => {
+    for (const project of [...Store.getState().projects]) {
+      Store.transition('project:remove', { id:project.id });
+    }
+    Store.init();
+    assert.deepEqual(Store.getState().projects, []);
+    assert.equal(Store.getActiveProject(), null);
+    assert.equal(Store.curr(), null);
+    assert.equal(Store.transition('project:create').title, 'Analysis 1');
+  });
+
   it('does not persist raw data in temporary mode', () => {
     Store.state.docs[0].raw = 'sensitive';
     Store.state.persistRaw = false;
@@ -342,6 +403,22 @@ describe('Store — workspace import', () => {
     assert.equal(project.cardIds.length, 2);
     const hidden = project.cardIds.map(cid => Store.getCard(cid)).find(card => card.visible === false);
     assert.ok(hidden, '卡片显隐随导入保留');
+  });
+
+  it('restores explicit empty schema 21 and 22 backups without creating projects', () => {
+    for (const schemaVersion of [21, 22]) {
+      const count = Store.transition('workspace:import', { workspace:{ kind:'ota-workspace', schemaVersion, docs:[], projects:[] } });
+      assert.equal(count, 0);
+      assert.deepEqual(Store.getState().projects, []);
+      assert.equal(Store.curr(), null);
+      assert.equal(Store.transition('project:create').title, 'Analysis 1');
+    }
+  });
+
+  it('does not mistake a malformed backup for an empty workspace', () => {
+    assert.throws(() => Store.transition('workspace:import', { workspace:{kind:'ota-workspace'} }), /卡片数量无效/);
+    assert.equal(Store.getState().projects.length, 3);
+    assert.equal(Store.getDocument().id, 'b');
   });
 
   it('rejects future schema versions', () => {
@@ -505,11 +582,14 @@ describe('Store — transition protocol', () => {
     assert.equal(Store.state.projects.length, 0, '最后一个工程也可删除');
     assert.equal(Store.state.docs.length, 0, '其卡片一并删除');
     assert.equal(Store.state.activeProjectId, null);
-    // curr() 惰性重建新的空工程
-    const fresh = Store.curr();
-    assert.equal(typeof fresh.id, 'string');
-    assert.equal(Store.state.projects.length, 1);
-    assert.equal(Store.getActiveProject().cardIds.length, 1);
+    assert.equal(Store.curr(), null, '读取空工作区不得自动创建工程或占用编号');
+    assert.equal(Store.getDocument(), null);
+    assert.equal(Store.getActiveProject(), null);
+    assert.deepEqual(Store.getActiveUI().rules, {});
+    assert.equal(Store.state.projects.length, 0);
+    const fresh = Store.transition('project:create');
+    assert.equal(fresh.title, 'Analysis 1');
+    assert.equal(fresh.cardIds.length, 1);
   });
 
   it('project:remove reports active-project changes through the canonical event', async () => {
@@ -534,6 +614,30 @@ describe('Store — transition protocol', () => {
     Store.state.projects = [{ id: 'onlyp', title: 'Only', cardIds: ['only'], activeCardId: 'only', enabledViews: [], views: [] }];
     Store.state.activeProjectId = 'onlyp';
     assert.equal(Store.removeProject('missing'), false);
+  });
+
+  it('rejects card-bound writes and late parse results after deletion', () => {
+    Store.transition('card:remove', { id:'b' });
+    for (const [action, payload] of [
+      ['source:replace', {text:'late input'}],
+      ['ui:set', {key:'globalFilter', value:'late'}],
+      ['import:setFormat', {format:'csv'}],
+      ['import:setHeaderMode', {mode:'none'}],
+      ['ui:autoParse', {enabled:false}],
+      ['rule:set', {table:'T', field:'filter', value:'late'}],
+      ['filter:column', {table:'T', column:'id', value:'late'}],
+      ['filter:clearTable', {table:'T'}],
+      ['preview:tablePage', {table:'T', page:2}],
+      ['preview:tableCollapse', {table:'T'}],
+      ['cell:edit', {table:'T', row:0, col:0, value:'late'}],
+      ['parse:completed', {docId:'b', sourceRevision:0, format:'csv'}],
+    ]) assert.equal(Store.transition(action, payload), false, action);
+    assert.equal(Store.getDocument(), null);
+    const fresh = Store.transition('card:create');
+    assert.equal(Store.transition('source:replace', {docId:'b', text:'late original'}), false);
+    assert.equal(Store.transition('parse:completed', {docId:'b', sourceRevision:0, format:'csv'}), false);
+    assert.equal(fresh.raw, '');
+    assert.equal(fresh.lastParse, null);
   });
 
   it('card:create emits card:created and appends into active project', async () => {

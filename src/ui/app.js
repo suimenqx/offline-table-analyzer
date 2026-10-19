@@ -74,13 +74,19 @@ const App = {
                     this.updateStorageStatus();
                     break;
                 case 'project:created':
+                case 'project:duplicated':
                 case 'project:activated':
                     this.renderTabs();
                     this.loadDoc();
                     break;
                 case 'project:removed':
+                    for(const id of payload?.cardIds || []) BackgroundService.removeCard(id).catch(error => Toast.show(`卡片数据释放失败：${error.message}`, true));
                     this.renderTabs();
-                    if (payload && payload.activeChanged) this.loadDoc();
+                    if (payload && payload.activeChanged) {
+                        this.loadDoc();
+                        const tab = Array.from(document.querySelectorAll('.doc-tab')).find(el => el.dataset.id === Store.getState().activeProjectId);
+                        (tab || $('addTabBtn'))?.focus();
+                    }
                     break;
                 case 'project:reordered':
                     this.renderTabs();
@@ -93,6 +99,17 @@ const App = {
                     this.requestRender();
                     break;
                 case 'card:removed':
+                    BackgroundService.removeCard(payload.id).catch(error => Toast.show(`卡片数据释放失败：${error.message}`, true));
+                    QueryService.clearCache();
+                    if(payload.activeChanged) {
+                        this.loadDoc();
+                        const card = Array.from(document.querySelectorAll('.data-card')).find(el => el.dataset.cardId === Store.getDocument()?.id);
+                        (card || $('addCardBtn'))?.focus();
+                    } else {
+                        SourceController.renderCards();
+                        this.requestRender();
+                    }
+                    break;
                 case 'card:renamed':
                 case 'card:reordered':
                     SourceController.renderCards();
@@ -104,16 +121,13 @@ const App = {
                     this.updChips();
                     this.requestRender();
                     break;
-                case 'card:removed':
-                    if(payload && payload.id) BackgroundService.removeCard(payload.id);
-                    break;
                 case 'card:activated':
                     SourceController.renderCards();
                     this.loadDoc();
                     break;
                 case 'source:textChanged':
-                    if (!payload || payload.docId === Store.curr().id) {
-                        if(payload && payload.sourceRevision!==Store.getDocument().sourceRevision)break;
+                    if (!payload || payload.docId === Store.getDocument()?.id) {
+                        if(payload && payload.sourceRevision!==Store.getDocument()?.sourceRevision)break;
                         this._regionSelection=null;
                         this._headerModeConfirmation=null;
                         if(this._parseToken && this._parseToken.sourceRevision!==payload.sourceRevision) {
@@ -263,12 +277,12 @@ const App = {
     },
 
     getTablePreviewMode(tableName) {
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         return (ui.previewModes && ui.previewModes[tableName]) === 'row-header' ? 'row-header' : 'column-header';
     },
 
     setTablePreviewMode(tableName, mode) {
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         const previewModes = Object.assign({}, ui.previewModes || {});
         previewModes[tableName] = mode === 'row-header' ? 'row-header' : 'column-header';
         dispatch('ui:set', { key:'previewModes', value:previewModes });
@@ -305,7 +319,7 @@ const App = {
         picker.classList.toggle('active', singleTableView && tables.length > 0);
         select.innerHTML = '';
         if(!singleTableView || !tables.length) return '';
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         const selected = tables.some(table => table.name === ui.previewTable) ? ui.previewTable : tables[0].name;
         if(ui.previewTable !== selected) dispatch('ui:set', { key:'previewTable', value:selected });
         tables.forEach(table => {
@@ -324,7 +338,7 @@ const App = {
     updateWorkspaceSummary() {
         const title = $('workspaceTitle');
         const summary = $('datasetSummary');
-        if(title) title.textContent = Store.curr().title || 'Analysis';
+        if(title) title.textContent = Store.getDocument()?.title || Store.getActiveProject()?.title || '工作区为空';
         const tableCount = TableRegistry.getRaw().length;
         const rows = TableRegistry.getRaw().reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
         const maxCols = TableRegistry.getRaw().reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
@@ -344,7 +358,7 @@ const App = {
     updateAnalysisState() {
         const el = $('analysisState');
         if(!el) return;
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         const filterCount = (ui.globalFilter ? 1 : 0)
             + Object.values(ui.rules || {}).reduce((sum, rules) => sum + ['filter','hl','focus'].filter(key => {
                 const value = rules && rules[key];
@@ -362,7 +376,7 @@ const App = {
         if(!container) return;
         if(typeof container.replaceChildren === 'function') container.replaceChildren();
         else container.innerHTML = '';
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         const add = (label, clear) => {
             const button = document.createElement('button');
             button.type = 'button';
@@ -417,7 +431,8 @@ const App = {
         const rowCount = (result.tables || []).reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
-            if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
+            if(!Store.getDocument()) text.textContent = Store.getActiveProject() ? '当前工程没有卡片 · 点击“新增卡片”' : '工作区为空 · 点击“新建页签”';
+            else if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
             else if(result.format==='ambiguous'){text.textContent='解析结果需要确认 · 请在详情中选择候选';if(typeof console!=='undefined'){const ui=Store.curr().ui;console.error('[ambiguous]',(result.diagnostics||[]).map(d=>d.code).join(','),'format=',ui.importFormat,'header=',ui.importHeaderMode);}}
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
             else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
@@ -456,25 +471,26 @@ const App = {
     },
 
     syncImportControls() {
-        const d = Store.curr();
+        const ui = Store.getActiveUI();
         const formatSelect = $('formatSelect');
         const headerSelect = $('headerModeSelect');
-        if(formatSelect) formatSelect.value = (d.ui && d.ui.importFormat) || 'auto';
+        if(formatSelect) formatSelect.value = ui.importFormat || 'auto';
         if(headerSelect) {
-            headerSelect.value = (d.ui && d.ui.importHeaderMode) || 'auto';
+            headerSelect.value = ui.importHeaderMode || 'auto';
             const manualFormat = formatSelect ? formatSelect.value : 'auto';
             const parsedFormat = TableRegistry.getLastResult() && TableRegistry.getLastResult().format;
             const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
-            headerSelect.disabled = isCli;
+            headerSelect.disabled = !Store.getDocument() || isCli;
         }
         const autoParseToggle = $('autoParseToggle');
-        if (autoParseToggle) autoParseToggle.checked = d.ui.autoParse !== false;
+        if (autoParseToggle) autoParseToggle.checked = ui.autoParse !== false;
         if (SourceController._syncControls) SourceController._syncControls();
     },
 
     setHeaderMode(mode) {
+        if(!Store.getDocument()) return false;
         this._headerModeConfirmation=null;
-        const current = Store.curr().ui.importHeaderMode || 'auto';
+        const current = Store.getActiveUI().importHeaderMode || 'auto';
         if(current !== mode) this.invalidateCellEdits();
         dispatch('import:setHeaderMode', { mode });
         this.syncImportControls();
@@ -482,6 +498,7 @@ const App = {
     },
 
     setImportFormat(format) {
+        if(!Store.getDocument()) return false;
         this._regionSelection=null;
         this._headerModeConfirmation=null;
         const next = format || 'auto';
@@ -539,19 +556,20 @@ const App = {
     },
 
     getParseOptions() {
-        const d = Store.curr();
+        const d = Store.getDocument();
+        const ui = Store.getActiveUI();
         const text = SourceController.readText();
         const last = SourceController.getCurrentPaste(text) || {};
         const html = last.html || '';
         const formatEl = $('formatSelect');
         const headerEl = $('headerModeSelect');
-        const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
-        const storedHeaderMode=(headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
+        const format = (formatEl && formatEl.value) || ui.importFormat || 'auto';
+        const storedHeaderMode=(headerEl && headerEl.value) || ui.importHeaderMode || 'auto';
         const confirmation=this._headerModeConfirmation;
-        const confirmationMatches=confirmation && confirmation.docId===d.id && confirmation.sourceRevision===d.sourceRevision && confirmation.text===text;
+        const confirmationMatches=d && confirmation && confirmation.docId===d.id && confirmation.sourceRevision===d.sourceRevision && confirmation.text===text;
         const headerMode=confirmationMatches?confirmation.mode:storedHeaderMode;
         const selectedRegion=this._regionSelection;
-        const regionSelection=selectedRegion && selectedRegion.docId===d.id && selectedRegion.sourceRevision===d.sourceRevision && selectedRegion.text===text
+        const regionSelection=d && selectedRegion && selectedRegion.docId===d.id && selectedRegion.sourceRevision===d.sourceRevision && selectedRegion.text===text
             ? selectedRegion.selection
             : null;
         return { html, format, headerMode, regionSelection };
@@ -559,6 +577,7 @@ const App = {
 
     getSourceContext(text=SourceController.readText()) {
         const doc=Store.getDocument();
+        if(!doc) return null;
         return {docId:doc.id,sourceRevision:doc.sourceRevision,text,options:this.getParseOptions()};
     },
 
@@ -570,6 +589,7 @@ const App = {
 
     /** Resolve the current parse and return a validator for the eventual download. */
     async prepareExport() {
+        if(!Store.getDocument()) { Toast.show('请先新增卡片并导入数据', true); return null; }
         SourceController.clearAutoParse();
         const text=SourceController.readText();
         if(Store.getDocument().raw!==text)dispatch('source:replace',{text});
@@ -642,8 +662,8 @@ const App = {
             rawTables: TableRegistry.getRaw(),
             globalViews: Store.getViews(),
             ui: Store.getActiveUI(),
-            docId: doc.id,
-            sourceRevision: doc.sourceRevision,
+            docId: doc?.id,
+            sourceRevision: doc?.sourceRevision,
             stateRevision: Store.revision,
             viewRevision: Store.viewRevision,
             queryRevision: Store.queryRevision,
@@ -732,7 +752,7 @@ const App = {
             btn.removeAttribute('disabled');
             btn.setAttribute('type', 'button');
         });
-        this.applySidebarTab((Store.curr().ui && Store.curr().ui.sidebarTab) || 'data', false);
+        this.applySidebarTab(Store.getActiveUI().sidebarTab || 'data', false);
     },
 
     bindAccordions() {
@@ -933,26 +953,43 @@ validflag Time      Level   Message                 Code
     },
 
     loadDoc() {
-        const d = Store.curr();
+        const d = Store.getDocument();
+        const ui = Store.getActiveUI();
         SourceController.resetPendingInput();
         SourceController.clearLastPaste();
         CellEditController.reset();
-        SourceController.displayText(d.raw || '');
-        $('globalFilter').value = d.ui.globalFilter || '';
-        const formatSelect = $('formatSelect'); if(formatSelect) formatSelect.value = d.ui.importFormat || 'auto';
-        const headerModeSelect = $('headerModeSelect'); if(headerModeSelect) headerModeSelect.value = d.ui.importHeaderMode || 'auto';
-        $('checkHl').checked = d.ui.enableHighlight !== false;
-        $('checkOnlyHl').checked = d.ui.onlyHighlighted || false;
-        $('checkExpSelected').checked = d.ui.exportOnlyChecked || false;
-        $('expColSelect').value = d.ui.exportCols || 'all';
-        if($('pageSizeSelect')) $('pageSizeSelect').value = String(d.ui.pageSize || 100);
+        SourceController.displayText(d?.raw || '');
+        // 没有选中卡片时保留空状态，禁止编辑/解析旧内容；新增与备份恢复仍可用。
+        for(const id of ['rawInput','parseBtn','clearBtn','importSourceBtn','sourceFileInput','formatSelect','headerModeSelect','autoParseToggle','exportSourceBtn','exportRawBtn','exportFullBtn','exportPrevBtn','sampleLink','sampleBtn','globalFilter','hlInput','filterInput','focusColsInput','targetTableSelect','selectColsBtn','checkHl','checkOnlyHl','checkExpSelected','expColSelect','pageSizeSelect']) {
+            const control = $(id);
+            if(control) control.disabled = !d;
+        }
+        $('globalFilter').value = ui.globalFilter || '';
+        const formatSelect = $('formatSelect'); if(formatSelect) formatSelect.value = ui.importFormat || 'auto';
+        const headerModeSelect = $('headerModeSelect'); if(headerModeSelect) headerModeSelect.value = ui.importHeaderMode || 'auto';
+        $('checkHl').checked = ui.enableHighlight !== false;
+        $('checkOnlyHl').checked = ui.onlyHighlighted || false;
+        $('checkExpSelected').checked = ui.exportOnlyChecked || false;
+        $('expColSelect').value = ui.exportCols || 'all';
+        if($('pageSizeSelect')) $('pageSizeSelect').value = String(ui.pageSize || 100);
         if($('persistRawToggle')) $('persistRawToggle').checked = Store.state.persistRaw !== false;
         if($('checkFormulaSafe')) $('checkFormulaSafe').checked = Store.state.spreadsheetSafe !== false;
-        if($('sidebar')) this.applySidebarTab(d.ui.sidebarTab || 'data',false);
+        if($('sidebar')) this.applySidebarTab(ui.sidebarTab || 'data',false);
         this.syncCopyFormatControl();
         this.syncCopyHeaderControl();
         this.updatePasteSourceButton();
         SourceController.renderCards();
+        if(!d) {
+            this._parseGeneration++;
+            this._pendingParse=null;this._parseToken=null;
+            this._regionSelection=null;this._headerModeConfirmation=null;
+            BackgroundService.cancelQueries();BackgroundService.cancelParses();
+            QueryService.clearCache();TableRegistry.setResult(null);
+            if($('backgroundJob')) $('backgroundJob').hidden=true;
+            this.updSelects();this.updChips();this.updateImportSummary();
+            this.renderPreview();this.updateStorageStatus();
+            return;
+        }
         if(Store.restoring) {
             if($('previewArea'))$('previewArea').textContent='正在恢复完整原文…';
             this.updateStorageStatus();return;
@@ -964,7 +1001,7 @@ validflag Time      Level   Message                 Code
 
     applyStoredCellEdits() {
         if(TableRegistry.isBackground())return;
-        const edits = Store.curr().ui.cellEdits || {};
+        const edits = Store.getActiveUI().cellEdits || {};
         TableRegistry.getRaw().forEach(table => {
             const tableEdits = edits[`$${table.name}`];
             if(!tableEdits) return;
@@ -1015,11 +1052,13 @@ validflag Time      Level   Message                 Code
     rememberRegionSelection(selection) {
         if(!selection){this._regionSelection=null;return;}
         const doc=Store.getDocument();
+        if(!doc) return;
         this._regionSelection={docId:doc.id,sourceRevision:doc.sourceRevision,text:SourceController.readText(),selection};
     },
 
     rememberHeaderMode(mode) {
         const doc=Store.getDocument();
+        if(!doc) return;
         this._headerModeConfirmation={docId:doc.id,sourceRevision:doc.sourceRevision,text:SourceController.readText(),mode};
     },
 
@@ -1036,6 +1075,7 @@ validflag Time      Level   Message                 Code
     },
 
     run(render=true) {
+        if(!Store.getDocument()) return false;
         let parseContext = null;
         try {
             SourceController.clearAutoParse();
@@ -1168,14 +1208,14 @@ validflag Time      Level   Message                 Code
 
     syncRules() {
         const t = $('targetTableSelect').value;
-        const r = Store.curr().ui.rules[t] || {};
+        const r = Store.getActiveUI().rules[t] || {};
         $('hlInput').value = r.hl || '';
         $('filterInput').value = r.filter || '';
         $('focusColsInput').value = (r.focus || []).join(', ');
     },
 
     updChips() {
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         // 只显示表/视图名称，过滤掉误保存的字段名
         const tableNames = TableRegistry.getRaw().map(t => t.name);
         const tsRaw = ui.displayTables;
@@ -1218,6 +1258,7 @@ validflag Time      Level   Message                 Code
 
     renderPreview(processedOverride=null) {
         const generation=++this._renderGeneration;
+        if(!Store.getDocument()) TableRegistry.setResult(null);
         if(TableRegistry.isBackground() && !processedOverride) {
             const doc=Store.getDocument();const revision=Store.revision;
             const job=this.showJob('正在后台更新筛选与 JOIN…');
@@ -1225,7 +1266,7 @@ validflag Time      Level   Message                 Code
             let input;
             try {input=TableRegistry.getBackgroundInput();} catch(error) {this.finishJob(job);Toast.show(error.message,true);return;}
             QueryService.getPreviewAsync(input,BackgroundService).then(result=>{
-                if(generation!==this._renderGeneration || Store.getDocument().id!==doc.id || Store.getDocument().sourceRevision!==input.sourceRevision)return;
+                if(generation!==this._renderGeneration || Store.getDocument()?.id!==doc.id || Store.getDocument()?.sourceRevision!==input.sourceRevision)return;
                 if(revision!==Store.revision){this.requestRender();return;}
                 TableRegistry.setPoolNames(result.tables.map(({table})=>table.name));
                 this.renderPreview(result.tables);
@@ -1241,6 +1282,19 @@ validflag Time      Level   Message                 Code
         const div = $('previewArea'); div.innerHTML = '';
         this.rendered = []; Select.clear();
         this.syncPreviewTablePicker([], false);
+        if(!Store.getDocument()) {
+            const hasProject = !!Store.getActiveProject();
+            div.innerHTML = `<div class="empty">
+                <div style="font-weight:700; color:var(--text-strong);">${hasProject ? '当前工程没有卡片' : '工作区为空'}</div>
+                <div class="muted">${hasProject ? '新增卡片后，再粘贴或导入数据。' : '新建页签后开始；页签编号从 1 开始。'}</div>
+            </div>`;
+            const button = createEl('button', 'tonal');
+            button.type = 'button';
+            button.textContent = hasProject ? '新增卡片' : '新建页签';
+            button.onclick = () => hasProject ? dispatch('card:create', {}) : TabController.createNew();
+            div.querySelector('.empty')?.appendChild(button);
+            return;
+        }
         if(!TableRegistry.getRaw().length) { 
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
@@ -1386,7 +1440,7 @@ validflag Time      Level   Message                 Code
     closeModal() { ModalController.close(); },
     modal(title, html) { ModalController.show(title, html); },
 
-    modTables() { ModalController.showTableSelector(TableRegistry.getRaw().map(t => t.name), Store.curr().ui.displayTables); },
+    modTables() { ModalController.showTableSelector(TableRegistry.getRaw().map(t => t.name), Store.getActiveUI().displayTables); },
     modViews() { ModalController.showViewSelector(Store.getViews(), Store.getEnabledViews()); },
     
     modCols() {
@@ -1402,7 +1456,7 @@ validflag Time      Level   Message                 Code
         }
         if (!all || !all.length) { const rt = this.rendered.find(x => x.name === tName); if (rt) all = rt.headers; }
         if (!all || !all.length) { if (typeof alert === 'function') alert('无法获取列信息'); return; }
-        ModalController.showColumnSelector(tName, all, Store.curr().ui.rules[tName] || {});
+        ModalController.showColumnSelector(tName, all, Store.getActiveUI().rules[tName] || {});
     }
 
 };

@@ -81,7 +81,7 @@ const SourceController = {
     },
 
     isAutoParseEnabled() {
-        return Store.curr().ui.autoParse !== false;
+        return !!Store.getDocument() && Store.getActiveUI().autoParse !== false;
     },
 
     getAutoParseState(text='') {
@@ -126,8 +126,8 @@ const SourceController = {
      * Only bounded previews of non-parser formats are retained; text/plain
      * and text/html remain available in full for the existing parse path.
      */
-    captureClipboard(data, docId=Store.curr().id) {
-        if (!data) return this.setPasteSnapshot(null);
+    captureClipboard(data, docId=Store.getDocument()?.id) {
+        if (!docId || !data) return this.setPasteSnapshot(null);
         const declaredTypes = Array.from(data.types || []).map(type => String(type || '')).filter(Boolean);
         const candidateTypes = new Set([...declaredTypes, ...this.CLIPBOARD_KNOWN_TYPES]);
         const formats = [];
@@ -159,7 +159,7 @@ const SourceController = {
 
     /** Return the current source snapshot only when it still matches the editor. */
     getCurrentPaste(text='') {
-        return SourceSnapshot.getCurrentPaste({ docId: Store.curr().id, text });
+        return SourceSnapshot.getCurrentPaste({ docId: Store.getDocument()?.id, text });
     },
 
     scheduleAutoParse({ text='', syncToMain=false } = {}) {
@@ -224,9 +224,7 @@ const SourceController = {
         const card = Store.getCard(id);
         if(!card) return false;
         if(typeof confirm === 'function' && !confirm(`删除卡片“${card.title}”？其数据与解析设置将移除。`)) return false;
-        const result = dispatch('card:remove', { id });
-        if(result === 'last_card') Toast.show('工程至少保留一张卡片', true);
-        return result === true;
+        return dispatch('card:remove', { id }) === true;
     },
 
     /** 卡片重命名：双击/F2 在卡片内就地编辑（与页签栏一致），不用全局弹窗 */
@@ -269,8 +267,7 @@ const SourceController = {
         const container = $('cardList');
         if(!container) return;
         const project = Store.getActiveProject();
-        if(!project) { container.innerHTML = ''; return; }
-        const cards = project.cardIds.map(id => Store.getCard(id)).filter(Boolean);
+        const cards = (project?.cardIds || []).map(id => Store.getCard(id)).filter(Boolean);
         container.innerHTML = cards.map((card, idx) => {
             const active = card.id === project.activeCardId;
             const visible = card.visible !== false;
@@ -314,10 +311,13 @@ const SourceController = {
             };
         });
         const addBtn = $('addCardBtn');
-        if(addBtn) addBtn.onclick = (e) => {
-            e.preventDefault();
-            dispatch('card:create', {});
-        };
+        if(addBtn) {
+            addBtn.disabled = !project;
+            addBtn.onclick = (e) => {
+                e.preventDefault();
+                dispatch('card:create', {});
+            };
+        }
         const poolCount = $('poolCount');
         if(poolCount) {
             const visibleCount = cards.filter(card => card.visible !== false).length;
@@ -400,6 +400,11 @@ const SourceController = {
      */
     loadFile(file) {
         if (!file) return;
+        const targetDocId = Store.getDocument()?.id;
+        if(!targetDocId) {
+            Toast.show('请先新增卡片，再导入文件', true);
+            return;
+        }
         this.clearAutoParse();
         if (file.size > MAX_IMPORT_BYTES) {
             Toast.show('文件超过 128 MiB 安全限制', true);
@@ -408,7 +413,6 @@ const SourceController = {
 
         // Update lastPaste for HTML files
         const detected = SourceController.detectFormat(file.name);
-        const targetDocId = Store.curr().id;
 
         const reader = new FileReader();
         reader.onerror = () => Toast.show('无法读取该文件', true);
@@ -420,12 +424,12 @@ const SourceController = {
                 return;
             }
 
-            if (Store.curr().id === targetDocId) {
+            if (Store.getDocument()?.id === targetDocId) {
                 SourceSnapshot.captureFile({ docId: targetDocId, fileName: file.name, text, format: detected });
                 SourceController.notifyPasteSourceChanged();
             }
 
-            if (Store.curr().id === targetDocId) {
+            if (Store.getDocument()?.id === targetDocId) {
                 // Update main editor only when the initiating tab is still active.
                 const rawInput = $('rawInput');
                 if (rawInput) SourceController.displayText(text, rawInput);

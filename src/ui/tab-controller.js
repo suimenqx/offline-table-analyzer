@@ -211,7 +211,7 @@ const TabController = {
         dispatch('project:create');
     },
 
-    /** Remove a 工程 through the canonical command path（允许删除最后一个：工作区归空后惰性重建） */
+    /** Remove a 工程 through the canonical command path, including the final project. */
     remove(id) {
         const project = Store.state.projects.find(item => item.id === id);
         if (!project) return false;
@@ -226,7 +226,7 @@ const TabController = {
 
     _persistCurrentSource() {
         const input = $('rawInput');
-        if (input) dispatch('source:replace', { text:SourceController.readText(input) });
+        if (input && Store.getDocument()) dispatch('source:replace', { text:SourceController.readText(input) });
     },
 
     // ── Internal helpers ──

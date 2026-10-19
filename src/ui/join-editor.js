@@ -672,6 +672,7 @@ const JoinEditor = {
         if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
         // Cache stats by config fingerprint to avoid redundant recalc
         const doc=Store.getDocument();
+        if(!doc) { el.textContent = '预览: 当前工程没有卡片'; return; }
         const cacheKey=JSON.stringify([doc.id,doc.sourceRevision,doc.ui.cellEdits,Store.getViews(),cfg]);
         if (!this._statsCache) this._statsCache = { key: null, value: null };
         if (this._statsCache.key !== cacheKey) {

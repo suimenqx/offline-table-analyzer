@@ -1812,7 +1812,7 @@ const Store = {
     _storageTouched:false,
     _rawSnapshot:null,
     getState() { return this.state; },
-    /** 当前选中卡片（v22 起文档升级为工程+卡片，docs 数组即卡片列表） */
+    /** 当前选中卡片；空工程/空工作区返回 null，读取不自动创建内容。 */
     getCard(id) {
         if(!id) return this.curr();
         return (this.state.docs || []).find(card => card.id === id) || null;
@@ -1833,7 +1833,6 @@ const Store = {
             this.state.projects.push({ id:doc.id, title:doc.title || 'Analysis', cardIds:[doc.id], activeCardId:doc.id,
                 enabledViews:Array.isArray(doc.ui && doc.ui.enabledViews) ? doc.ui.enabledViews.slice() : [], views:[] });
         }
-        this.state.projects = this.state.projects.filter(p => p.cardIds.length > 0 || p.id === this.state.activeProjectId);
         if(this.state.projects.length === 0 && this.state.docs.length > 0) {
             const doc = this.state.docs[0];
             this.state.projects.push({ id:doc.id, title:doc.title || 'Analysis', cardIds:[doc.id], activeCardId:doc.id,
@@ -1870,7 +1869,7 @@ const Store = {
     getActiveUI() {
         const card = this.curr();
         const project = this.getActiveProject();
-        return Object.assign({}, card.ui, { enabledViews:(project && project.enabledViews) || [] });
+        return Object.assign(this.createDefaultUI(), card?.ui, { enabledViews:(project && project.enabledViews) || [] });
     },
     init() {
         this._rawSnapshot=null;
@@ -1904,7 +1903,7 @@ const Store = {
         if(typeof this.state.persistRaw !== 'boolean') this.state.persistRaw = true;
         if(!Number.isFinite(this.state.nextAnalysisSeq) || this.state.nextAnalysisSeq < 1) this.state.nextAnalysisSeq = 1;
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
-        if(this.state.projects.length===0) {
+        if(!loaded && this.state.projects.length===0) {
             if(this.loadFailed) {
                 const card = this.normalizeDoc({ id:this.generateDocId(), title:'Analysis 1', raw:'', visible:true, ui:{} }, 0);
                 this.state.docs.push(card);
@@ -1928,17 +1927,13 @@ const Store = {
             if(project === this.state.projects[0]) {
                 orphans.forEach(orphan => { if(!project.cardIds.includes(orphan.id)) project.cardIds.push(orphan.id); });
             }
-            if(project.cardIds.length === 0) {
-                const card = this.normalizeDoc({ id:this.generateDocId(), title:'数据段 1', raw:'', visible:true, ui:{} }, this.state.docs.length);
-                this.state.docs.push(card);
-                project.cardIds.push(card.id);
-            }
-            if(!project.cardIds.includes(project.activeCardId)) project.activeCardId = project.cardIds[0];
+            if(!project.cardIds.includes(project.activeCardId)) project.activeCardId = project.cardIds[0] || null;
             if(!Array.isArray(project.enabledViews)) project.enabledViews = [];
             if(!Array.isArray(project.views)) project.views = [];
         });
         this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq, this.getMaxAnalysisNumber() + 1);
-        if(!this.state.projects.some(p => p.id === this.state.activeProjectId)) this.state.activeProjectId = this.state.projects[0].id;
+        if(!this.state.projects.some(p => p.id === this.state.activeProjectId)) this.state.activeProjectId = this.state.projects[0]?.id || null;
+        if(this.state.projects.length === 0) this.state.nextAnalysisSeq = 1;
         this.applyTheme();
         if(this.loadFailed) this.notifyStorage(false, this.lastSaveError);
         else if(loaded && loaded.rawExternal) {
@@ -2131,17 +2126,18 @@ const Store = {
     importWorkspace(payload, merge=false) {
         if(!payload || typeof payload !== 'object' || !this.isSafePayload(payload)) throw new Error('工作区文件包含不安全或过深的数据结构');
         if(!['ota-workspace','table-tool-tabs'].includes(payload.kind)) throw new Error('不是受支持的工作区文件');
+        if(!Array.isArray(payload.docs)) throw new Error('工作区卡片数量无效');
         payload = migrateWorkspacePayload(payload);
-        if(!Array.isArray(payload.docs) || payload.docs.length === 0 || payload.docs.length > 100) throw new Error('工作区卡片数量无效');
-        const projects = Array.isArray(payload.projects) && payload.projects.length > 0
-            ? payload.projects
-            : [{ title:null, cardIds: payload.docs.map(d => d && d.id).filter(Boolean), enabledViews:[], views:[] }];
+        if(!Array.isArray(payload.docs) || payload.docs.length > 100) throw new Error('工作区卡片数量无效');
+        const projects = Array.isArray(payload.projects) ? payload.projects
+            : payload.docs.length ? [{ title:null, cardIds: payload.docs.map(d => d && d.id).filter(Boolean), enabledViews:[], views:[] }] : [];
+        if(projects.length > 100) throw new Error('工作区超过 100 个工程或卡片预算');
         const newCards = [];
         const newProjects = [];
         for(const project of projects) {
-            const cards = (Array.isArray(project.cardIds) ? project.cardIds : [])
-                .map(cid => payload.docs.find(d => d && d.id === cid)).filter(Boolean);
-            if(cards.length === 0) continue;
+            if(!project || !Array.isArray(project.cardIds)) throw new Error('工作区工程结构无效');
+            const cards = project.cardIds.map(cid => payload.docs.find(d => d && d.id === cid)).filter(Boolean);
+            if(cards.length !== project.cardIds.length) throw new Error('工作区工程引用了缺失的卡片');
             const importedProject = { id:this.generateProjectId(),
                 title: this.makeUniqueTitle(typeof project.title === 'string' && project.title ? project.title : 'Analysis'),
                 cardIds:[], activeCardId:null,
@@ -2159,10 +2155,10 @@ const Store = {
                 newCards.push(card);
                 importedProject.cardIds.push(card.id);
             }
-            importedProject.activeCardId = importedProject.cardIds[0];
+            importedProject.activeCardId = importedProject.cardIds[0] || null;
             newProjects.push(importedProject);
         }
-        if(newProjects.length === 0) throw new Error('工作区不包含有效卡片');
+        if(newCards.length < payload.docs.length) throw new Error('工作区包含未归属工程的卡片');
         const baseProjects = merge ? this.state.projects.slice() : [];
         const baseCards = merge ? this.state.docs.slice() : [];
         const nextProjects = baseProjects.concat(newProjects);
@@ -2172,8 +2168,8 @@ const Store = {
         this.state.projects = nextProjects;
         this.state.docs = nextCards;
         this.state.docs.forEach((doc, idx) => this.normalizeDoc(doc, idx));
-        this.state.activeProjectId = newProjects[0].id;
-        this.state.nextAnalysisSeq = Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1);
+        this.state.activeProjectId = newProjects[0]?.id || (merge ? this.state.activeProjectId : null);
+        this.state.nextAnalysisSeq = nextProjects.length ? Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1) : 1;
         this.loadFailed = false;
         this.save();
         return newCards.length;
@@ -2227,7 +2223,7 @@ const Store = {
         return m ? parseInt(m[1], 10) : 0;
     },
     getMaxAnalysisNumber() {
-        return Math.max(0, ...(this.state.docs || []).map(d => this.getAnalysisNumber(d && d.title)));
+        return Math.max(0, ...[...(this.state.projects || []), ...(this.state.docs || [])].map(item => this.getAnalysisNumber(item && item.title)));
     },
     makeUniqueTitle(title, excludeId=null) {
         const clean = String(title || 'Analysis').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim() || 'Analysis';
@@ -2281,12 +2277,11 @@ const Store = {
     removeCard(id) {
         const project = this.ensureProjects().find(p => p.cardIds.includes(id));
         if(!project) return false;
-        if(project.cardIds.length<=1) return 'last_card';
         const idx = this.state.docs.findIndex(d=>d.id===id);
         if(idx < 0) return false;
         this.state.docs.splice(idx,1);
         project.cardIds = project.cardIds.filter(cid => cid !== id);
-        if(project.activeCardId===id) project.activeCardId = project.cardIds[0];
+        if(project.activeCardId===id) project.activeCardId = project.cardIds[0] || null;
         this.save();
         return true;
     },
@@ -2342,7 +2337,7 @@ const Store = {
         this.state.projects.splice(idx,1);
         this.state.docs = this.state.docs.filter(d => !project.cardIds.includes(d.id));
         if(this.state.activeProjectId===id) this.state.activeProjectId = this.state.projects[Math.max(0,idx-1)]?.id ?? null;
-        // 允许删除最后一个工程：工作区归空，curr() 会惰性创建新的空工程
+        if(this.state.projects.length === 0) this.state.nextAnalysisSeq = 1;
         this.save();
         return true;
     },
@@ -2364,12 +2359,7 @@ const Store = {
             this.state.docs.push(copy);
             project.cardIds.push(copy.id);
         }
-        if(project.cardIds.length===0) {
-            const card = this.normalizeDoc({ id:this.generateDocId(), title:'数据段 1', raw:'', visible:true, ui:{} }, this.state.docs.length);
-            this.state.docs.push(card);
-            project.cardIds.push(card.id);
-        }
-        project.activeCardId = project.cardIds[0];
+        project.activeCardId = project.cardIds[0] || null;
         this.save();
         return project;
     },
@@ -2410,21 +2400,28 @@ const Store = {
         this.save();
         return true;
     },
-    curr() { 
+    curr() {
         if(!Array.isArray(this.state.docs)) this.state.docs = [];
         if(!Array.isArray(this.state.projects)) this.state.projects = [];
         const project = this.getActiveProject();
-        if(!project) { this.addProject(); return this.curr(); }
-        let card = this.state.docs.find(d=>d.id===project.activeCardId) || this.state.docs.find(d => project.cardIds.includes(d.id));
-        if(!card) { this.addCard({}, project.id); return this.curr(); }
-        return this.normalizeDoc(card, this.state.docs.indexOf(card));
+        if(!project) return null;
+        const card = this.state.docs.find(d=>d.id===project.activeCardId) || this.state.docs.find(d => project.cardIds.includes(d.id));
+        return card ? this.normalizeDoc(card, this.state.docs.indexOf(card)) : null;
     },
-    updateUI(k, v) { this.curr().ui[k]=v; this.scheduleSave(); },
+    updateUI(k, v) {
+        const card = this.curr();
+        if(!card) return false;
+        card.ui[k]=v; this.scheduleSave();
+    },
     updateRule(table, field, value) {
-        const ui = this.curr().ui; if(!ui.rules[table]) ui.rules[table] = {}; ui.rules[table][field] = value; this.scheduleSave();
+        const card = this.curr();
+        if(!card) return false;
+        const ui = card.ui; if(!ui.rules[table]) ui.rules[table] = {}; ui.rules[table][field] = value; this.scheduleSave();
     },
     clearCellEdits() {
-        const ui = this.curr().ui;
+        const card = this.curr();
+        if(!card) return false;
+        const ui = card.ui;
         const edits = ui.cellEdits && typeof ui.cellEdits === 'object' ? ui.cellEdits : {};
         const hadEdits = Object.keys(edits).length > 0;
         ui.cellEdits = {};
@@ -2551,9 +2548,11 @@ const Store = {
             }
             case 'project:remove': case 'tab:remove': {
                 const previousActiveId = this.state.activeProjectId;
-                const result = this.removeProject(payload && payload.id);
+                const id = this.resolveProjectId(payload && payload.id);
+                const cardIds = this.state.projects.find(project => project.id === id)?.cardIds.slice() || [];
+                const result = this.removeProject(id);
                 if (result === true) {
-                    this._notify('project:removed', { id:payload.id, previousActiveId, activeProjectId:this.state.activeProjectId, activeChanged:previousActiveId !== this.state.activeProjectId });
+                    this._notify('project:removed', { id, cardIds, previousActiveId, activeProjectId:this.state.activeProjectId, activeChanged:previousActiveId !== this.state.activeProjectId });
                     this._notify('state:changed', {});
                 }
                 return result;
@@ -2615,9 +2614,11 @@ const Store = {
                 return true;
             }
             case 'card:remove': {
+                const previousActiveId = this.curr()?.id || null;
                 const result = this.removeCard(payload && payload.id);
                 if (result === true) {
-                    this._notify('card:removed', { id:payload.id });
+                    const activeCardId = this.curr()?.id || null;
+                    this._notify('card:removed', { id:payload.id, activeCardId, activeChanged:previousActiveId !== activeCardId });
                     this._notify('state:changed', {});
                 }
                 return result;
@@ -2674,7 +2675,8 @@ const Store = {
                 // Payload: { text, docId?, format?, headerMode?, preservePaste? }
                 // preservePaste is a compatibility hint for source listeners; they still
                 // validate the current snapshot against the emitted text.
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const next = payload && typeof payload.text === 'string' ? payload.text : '';
                 const format = payload && typeof payload.format === 'string' ? payload.format : null;
@@ -2710,7 +2712,8 @@ const Store = {
             case 'parse:completed': {
                 // Emitted by App.run() after a parse attempt settles, including failures.
                 // Payload: { tables, elapsed, diagnostics, format }
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 const parsePayload = payload || {};
                 const resultRevision = Number.isInteger(parsePayload.sourceRevision) ? parsePayload.sourceRevision : doc.sourceRevision;
                 if(resultRevision !== doc.sourceRevision) {
@@ -2730,7 +2733,8 @@ const Store = {
 
             // ── Generic document state ──
             case 'ui:set': {
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const key = payload && payload.key;
                 if(!key || key === 'cellEdits') return false;
@@ -2741,7 +2745,8 @@ const Store = {
                 return doc.ui[key];
             }
             case 'rule:set': {
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const table = payload && payload.table;
                 const field = payload && payload.field;
@@ -2774,7 +2779,9 @@ const Store = {
                 const column = payload && payload.column;
                 if (!table || !column) return false;
                 const val = (payload.value || '').trim();
-                const current = this.curr().ui.columnFilters || {};
+                const doc = this.curr();
+                if(!doc) return false;
+                const current = doc.ui.columnFilters || {};
                 const nextFilters = JSON.parse(JSON.stringify(current));
                 if(!nextFilters[table]) nextFilters[table] = {};
                 if(val) nextFilters[table][column] = val;
@@ -2793,6 +2800,7 @@ const Store = {
                 const colIdx = payload && payload.col;
                 if (!tableName || !Number.isInteger(rowIdx) || !Number.isInteger(colIdx)) return false;
                 const doc = this.curr();
+                if(!doc) return false;
                 if (!doc.ui.cellEdits) doc.ui.cellEdits = {};
                 const tableKey = `$${tableName}`;
                 if (!doc.ui.cellEdits[tableKey]) doc.ui.cellEdits[tableKey] = {};
@@ -2810,7 +2818,9 @@ const Store = {
                 // Payload: { table }
                 const table = payload && payload.table;
                 if (!table) return false;
-                const nextFilters = JSON.parse(JSON.stringify(this.curr().ui.columnFilters || {}));
+                const doc = this.curr();
+                if(!doc) return false;
+                const nextFilters = JSON.parse(JSON.stringify(doc.ui.columnFilters || {}));
                 delete nextFilters[table];
                 this.transition('ui:set', { key:'columnFilters', value:nextFilters });
                 this._notify('filter:changed', { scope: 'column', table, column: null, value: '' });
@@ -2826,6 +2836,7 @@ const Store = {
             }
             case 'preview:tableCollapse': {
                 const doc = this.curr();
+                if(!doc) return false;
                 if (!doc.ui.collapsedTables) doc.ui.collapsedTables = {};
                 doc.ui.collapsedTables[payload.table] = !doc.ui.collapsedTables[payload.table];
                 this.save();
@@ -2835,6 +2846,7 @@ const Store = {
             }
             case 'preview:tablePage': {
                 const doc = this.curr();
+                if(!doc) return false;
                 if (!doc.ui.tablePages) doc.ui.tablePages = {};
                 doc.ui.tablePages[payload.table] = Math.max(1, Number(payload.page) || 1);
                 this.save();
@@ -2850,13 +2862,15 @@ const Store = {
                 return true;
             }
             case 'ui:autoParse': {
+                if(!this.curr()) return false;
                 this.transition('ui:set', { key:'autoParse', value:payload && payload.enabled !== false });
                 this._notify('ui:autoParseChanged', { enabled: this.curr().ui.autoParse });
                 return true;
             }
             case 'import:setFormat': {
                 // Parse/UI option only — not a source content mutation.
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const format = payload && typeof payload.format === 'string' && payload.format
                     ? payload.format
@@ -2872,7 +2886,8 @@ const Store = {
             }
             case 'import:setHeaderMode': {
                 // Parse/UI option only — not a source content mutation.
-                const doc = this.getDocument(payload && payload.docId) || this.curr();
+                const doc = this.getDocument(payload && payload.docId);
+                if(!doc) return false;
                 this.normalizeDoc(doc, this.state.docs.indexOf(doc));
                 const mode = payload && typeof payload.mode === 'string' && payload.mode
                     ? payload.mode
@@ -6941,7 +6956,7 @@ const TableRegistry = {
     },
     getBackgroundInput() {
         const doc=Store.getDocument();
-        if(doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
+        if(!doc || doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
         const project=Store.getActiveProject() || {};
         const visible=(project.cardIds || [])
             .map(id => Store.getCard(id))
@@ -8848,6 +8863,7 @@ const JoinEditor = {
         if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
         // Cache stats by config fingerprint to avoid redundant recalc
         const doc=Store.getDocument();
+        if(!doc) { el.textContent = '预览: 当前工程没有卡片'; return; }
         const cacheKey=JSON.stringify([doc.id,doc.sourceRevision,doc.ui.cellEdits,Store.getViews(),cfg]);
         if (!this._statsCache) this._statsCache = { key: null, value: null };
         if (this._statsCache.key !== cacheKey) {
@@ -9193,7 +9209,7 @@ const SourceController = {
     },
 
     isAutoParseEnabled() {
-        return Store.curr().ui.autoParse !== false;
+        return !!Store.getDocument() && Store.getActiveUI().autoParse !== false;
     },
 
     getAutoParseState(text='') {
@@ -9238,8 +9254,8 @@ const SourceController = {
      * Only bounded previews of non-parser formats are retained; text/plain
      * and text/html remain available in full for the existing parse path.
      */
-    captureClipboard(data, docId=Store.curr().id) {
-        if (!data) return this.setPasteSnapshot(null);
+    captureClipboard(data, docId=Store.getDocument()?.id) {
+        if (!docId || !data) return this.setPasteSnapshot(null);
         const declaredTypes = Array.from(data.types || []).map(type => String(type || '')).filter(Boolean);
         const candidateTypes = new Set([...declaredTypes, ...this.CLIPBOARD_KNOWN_TYPES]);
         const formats = [];
@@ -9271,7 +9287,7 @@ const SourceController = {
 
     /** Return the current source snapshot only when it still matches the editor. */
     getCurrentPaste(text='') {
-        return SourceSnapshot.getCurrentPaste({ docId: Store.curr().id, text });
+        return SourceSnapshot.getCurrentPaste({ docId: Store.getDocument()?.id, text });
     },
 
     scheduleAutoParse({ text='', syncToMain=false } = {}) {
@@ -9336,9 +9352,7 @@ const SourceController = {
         const card = Store.getCard(id);
         if(!card) return false;
         if(typeof confirm === 'function' && !confirm(`删除卡片“${card.title}”？其数据与解析设置将移除。`)) return false;
-        const result = dispatch('card:remove', { id });
-        if(result === 'last_card') Toast.show('工程至少保留一张卡片', true);
-        return result === true;
+        return dispatch('card:remove', { id }) === true;
     },
 
     /** 卡片重命名：双击/F2 在卡片内就地编辑（与页签栏一致），不用全局弹窗 */
@@ -9381,8 +9395,7 @@ const SourceController = {
         const container = $('cardList');
         if(!container) return;
         const project = Store.getActiveProject();
-        if(!project) { container.innerHTML = ''; return; }
-        const cards = project.cardIds.map(id => Store.getCard(id)).filter(Boolean);
+        const cards = (project?.cardIds || []).map(id => Store.getCard(id)).filter(Boolean);
         container.innerHTML = cards.map((card, idx) => {
             const active = card.id === project.activeCardId;
             const visible = card.visible !== false;
@@ -9426,10 +9439,13 @@ const SourceController = {
             };
         });
         const addBtn = $('addCardBtn');
-        if(addBtn) addBtn.onclick = (e) => {
-            e.preventDefault();
-            dispatch('card:create', {});
-        };
+        if(addBtn) {
+            addBtn.disabled = !project;
+            addBtn.onclick = (e) => {
+                e.preventDefault();
+                dispatch('card:create', {});
+            };
+        }
         const poolCount = $('poolCount');
         if(poolCount) {
             const visibleCount = cards.filter(card => card.visible !== false).length;
@@ -9512,6 +9528,11 @@ const SourceController = {
      */
     loadFile(file) {
         if (!file) return;
+        const targetDocId = Store.getDocument()?.id;
+        if(!targetDocId) {
+            Toast.show('请先新增卡片，再导入文件', true);
+            return;
+        }
         this.clearAutoParse();
         if (file.size > MAX_IMPORT_BYTES) {
             Toast.show('文件超过 128 MiB 安全限制', true);
@@ -9520,7 +9541,6 @@ const SourceController = {
 
         // Update lastPaste for HTML files
         const detected = SourceController.detectFormat(file.name);
-        const targetDocId = Store.curr().id;
 
         const reader = new FileReader();
         reader.onerror = () => Toast.show('无法读取该文件', true);
@@ -9532,12 +9552,12 @@ const SourceController = {
                 return;
             }
 
-            if (Store.curr().id === targetDocId) {
+            if (Store.getDocument()?.id === targetDocId) {
                 SourceSnapshot.captureFile({ docId: targetDocId, fileName: file.name, text, format: detected });
                 SourceController.notifyPasteSourceChanged();
             }
 
-            if (Store.curr().id === targetDocId) {
+            if (Store.getDocument()?.id === targetDocId) {
                 // Update main editor only when the initiating tab is still active.
                 const rawInput = $('rawInput');
                 if (rawInput) SourceController.displayText(text, rawInput);
@@ -9931,7 +9951,8 @@ const FilterController = {
         const title = FilterController.title;
         if (!pop || !input || !title) return;
 
-        const doc = Store.curr();
+        const doc = Store.getDocument();
+        if(!doc) return;
         const prev = ((doc.ui.columnFilters && doc.ui.columnFilters[tableName] && doc.ui.columnFilters[tableName][colName]) || '').toString();
         input.value = prev;
         title.textContent = `${tableName}.${colName}`;
@@ -10200,7 +10221,7 @@ const TabController = {
         dispatch('project:create');
     },
 
-    /** Remove a 工程 through the canonical command path（允许删除最后一个：工作区归空后惰性重建） */
+    /** Remove a 工程 through the canonical command path, including the final project. */
     remove(id) {
         const project = Store.state.projects.find(item => item.id === id);
         if (!project) return false;
@@ -10215,7 +10236,7 @@ const TabController = {
 
     _persistCurrentSource() {
         const input = $('rawInput');
-        if (input) dispatch('source:replace', { text:SourceController.readText(input) });
+        if (input && Store.getDocument()) dispatch('source:replace', { text:SourceController.readText(input) });
     },
 
     // ── Internal helpers ──
@@ -10446,7 +10467,10 @@ const ExportController = {
             schemaVersion: WORKSPACE_SCHEMA_VERSION,
             appVersion: APP_VERSION,
             exportedAt: new Date().toISOString(),
-            docs: Store.state.docs,
+            docs: Store.getState().docs,
+            projects: Store.getState().projects,
+            activeProjectId: Store.getState().activeProjectId,
+            nextAnalysisSeq: Store.getState().nextAnalysisSeq,
             globalViews: Store.getViews(),
             preferences: {
                 theme: Store.state.theme,
@@ -10512,7 +10536,7 @@ const ExportController = {
     // ── Export helpers (used by App.renderPreview and other methods) ──
 
     _getPrefix(kind) {
-        const title = Store.curr().title || 'Analysis';
+        const title = Store.getDocument()?.title || Store.getActiveProject()?.title || 'Analysis';
         return Exporter.sanitizeFilePrefix(`${title}_${kind}`);
     },
 
@@ -10530,7 +10554,7 @@ const ExportController = {
     },
 
     _projectTableForExport(table, shownOnly) {
-        const focus=shownOnly?Store.curr().ui.rules?.[table.name]?.focus:[];
+        const focus=shownOnly?Store.getActiveUI().rules?.[table.name]?.focus:[];
         return TableUtils.projectColumns(table,focus);
     },
 
@@ -10547,7 +10571,8 @@ const ExportController = {
     },
 
     _getPreviewProcessedTables() {
-        const doc = Store.curr();
+        const doc = Store.getDocument();
+        if(!doc) return [];
         return QueryService.getPreview({
             rawTables:TableRegistry.getRaw(),
             globalViews:Store.getViews(),
@@ -10716,13 +10741,19 @@ const App = {
                     this.updateStorageStatus();
                     break;
                 case 'project:created':
+                case 'project:duplicated':
                 case 'project:activated':
                     this.renderTabs();
                     this.loadDoc();
                     break;
                 case 'project:removed':
+                    for(const id of payload?.cardIds || []) BackgroundService.removeCard(id).catch(error => Toast.show(`卡片数据释放失败：${error.message}`, true));
                     this.renderTabs();
-                    if (payload && payload.activeChanged) this.loadDoc();
+                    if (payload && payload.activeChanged) {
+                        this.loadDoc();
+                        const tab = Array.from(document.querySelectorAll('.doc-tab')).find(el => el.dataset.id === Store.getState().activeProjectId);
+                        (tab || $('addTabBtn'))?.focus();
+                    }
                     break;
                 case 'project:reordered':
                     this.renderTabs();
@@ -10735,6 +10766,17 @@ const App = {
                     this.requestRender();
                     break;
                 case 'card:removed':
+                    BackgroundService.removeCard(payload.id).catch(error => Toast.show(`卡片数据释放失败：${error.message}`, true));
+                    QueryService.clearCache();
+                    if(payload.activeChanged) {
+                        this.loadDoc();
+                        const card = Array.from(document.querySelectorAll('.data-card')).find(el => el.dataset.cardId === Store.getDocument()?.id);
+                        (card || $('addCardBtn'))?.focus();
+                    } else {
+                        SourceController.renderCards();
+                        this.requestRender();
+                    }
+                    break;
                 case 'card:renamed':
                 case 'card:reordered':
                     SourceController.renderCards();
@@ -10746,16 +10788,13 @@ const App = {
                     this.updChips();
                     this.requestRender();
                     break;
-                case 'card:removed':
-                    if(payload && payload.id) BackgroundService.removeCard(payload.id);
-                    break;
                 case 'card:activated':
                     SourceController.renderCards();
                     this.loadDoc();
                     break;
                 case 'source:textChanged':
-                    if (!payload || payload.docId === Store.curr().id) {
-                        if(payload && payload.sourceRevision!==Store.getDocument().sourceRevision)break;
+                    if (!payload || payload.docId === Store.getDocument()?.id) {
+                        if(payload && payload.sourceRevision!==Store.getDocument()?.sourceRevision)break;
                         this._regionSelection=null;
                         this._headerModeConfirmation=null;
                         if(this._parseToken && this._parseToken.sourceRevision!==payload.sourceRevision) {
@@ -10905,12 +10944,12 @@ const App = {
     },
 
     getTablePreviewMode(tableName) {
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         return (ui.previewModes && ui.previewModes[tableName]) === 'row-header' ? 'row-header' : 'column-header';
     },
 
     setTablePreviewMode(tableName, mode) {
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         const previewModes = Object.assign({}, ui.previewModes || {});
         previewModes[tableName] = mode === 'row-header' ? 'row-header' : 'column-header';
         dispatch('ui:set', { key:'previewModes', value:previewModes });
@@ -10947,7 +10986,7 @@ const App = {
         picker.classList.toggle('active', singleTableView && tables.length > 0);
         select.innerHTML = '';
         if(!singleTableView || !tables.length) return '';
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         const selected = tables.some(table => table.name === ui.previewTable) ? ui.previewTable : tables[0].name;
         if(ui.previewTable !== selected) dispatch('ui:set', { key:'previewTable', value:selected });
         tables.forEach(table => {
@@ -10966,7 +11005,7 @@ const App = {
     updateWorkspaceSummary() {
         const title = $('workspaceTitle');
         const summary = $('datasetSummary');
-        if(title) title.textContent = Store.curr().title || 'Analysis';
+        if(title) title.textContent = Store.getDocument()?.title || Store.getActiveProject()?.title || '工作区为空';
         const tableCount = TableRegistry.getRaw().length;
         const rows = TableRegistry.getRaw().reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
         const maxCols = TableRegistry.getRaw().reduce((max, table) => Math.max(max, (table.headers || []).length), 0);
@@ -10986,7 +11025,7 @@ const App = {
     updateAnalysisState() {
         const el = $('analysisState');
         if(!el) return;
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         const filterCount = (ui.globalFilter ? 1 : 0)
             + Object.values(ui.rules || {}).reduce((sum, rules) => sum + ['filter','hl','focus'].filter(key => {
                 const value = rules && rules[key];
@@ -11004,7 +11043,7 @@ const App = {
         if(!container) return;
         if(typeof container.replaceChildren === 'function') container.replaceChildren();
         else container.innerHTML = '';
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         const add = (label, clear) => {
             const button = document.createElement('button');
             button.type = 'button';
@@ -11059,7 +11098,8 @@ const App = {
         const rowCount = (result.tables || []).reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
-            if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
+            if(!Store.getDocument()) text.textContent = Store.getActiveProject() ? '当前工程没有卡片 · 点击“新增卡片”' : '工作区为空 · 点击“新建页签”';
+            else if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
             else if(result.format==='ambiguous'){text.textContent='解析结果需要确认 · 请在详情中选择候选';if(typeof console!=='undefined'){const ui=Store.curr().ui;console.error('[ambiguous]',(result.diagnostics||[]).map(d=>d.code).join(','),'format=',ui.importFormat,'header=',ui.importHeaderMode);}}
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
             else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
@@ -11098,25 +11138,26 @@ const App = {
     },
 
     syncImportControls() {
-        const d = Store.curr();
+        const ui = Store.getActiveUI();
         const formatSelect = $('formatSelect');
         const headerSelect = $('headerModeSelect');
-        if(formatSelect) formatSelect.value = (d.ui && d.ui.importFormat) || 'auto';
+        if(formatSelect) formatSelect.value = ui.importFormat || 'auto';
         if(headerSelect) {
-            headerSelect.value = (d.ui && d.ui.importHeaderMode) || 'auto';
+            headerSelect.value = ui.importHeaderMode || 'auto';
             const manualFormat = formatSelect ? formatSelect.value : 'auto';
             const parsedFormat = TableRegistry.getLastResult() && TableRegistry.getLastResult().format;
             const isCli = ['cli-table-data', 'cli-multi-block'].includes(manualFormat) || (manualFormat === 'auto' && ['cli-table-data', 'cli-multi-block'].includes(parsedFormat));
-            headerSelect.disabled = isCli;
+            headerSelect.disabled = !Store.getDocument() || isCli;
         }
         const autoParseToggle = $('autoParseToggle');
-        if (autoParseToggle) autoParseToggle.checked = d.ui.autoParse !== false;
+        if (autoParseToggle) autoParseToggle.checked = ui.autoParse !== false;
         if (SourceController._syncControls) SourceController._syncControls();
     },
 
     setHeaderMode(mode) {
+        if(!Store.getDocument()) return false;
         this._headerModeConfirmation=null;
-        const current = Store.curr().ui.importHeaderMode || 'auto';
+        const current = Store.getActiveUI().importHeaderMode || 'auto';
         if(current !== mode) this.invalidateCellEdits();
         dispatch('import:setHeaderMode', { mode });
         this.syncImportControls();
@@ -11124,6 +11165,7 @@ const App = {
     },
 
     setImportFormat(format) {
+        if(!Store.getDocument()) return false;
         this._regionSelection=null;
         this._headerModeConfirmation=null;
         const next = format || 'auto';
@@ -11181,19 +11223,20 @@ const App = {
     },
 
     getParseOptions() {
-        const d = Store.curr();
+        const d = Store.getDocument();
+        const ui = Store.getActiveUI();
         const text = SourceController.readText();
         const last = SourceController.getCurrentPaste(text) || {};
         const html = last.html || '';
         const formatEl = $('formatSelect');
         const headerEl = $('headerModeSelect');
-        const format = (formatEl && formatEl.value) || (d.ui && d.ui.importFormat) || 'auto';
-        const storedHeaderMode=(headerEl && headerEl.value) || (d.ui && d.ui.importHeaderMode) || 'auto';
+        const format = (formatEl && formatEl.value) || ui.importFormat || 'auto';
+        const storedHeaderMode=(headerEl && headerEl.value) || ui.importHeaderMode || 'auto';
         const confirmation=this._headerModeConfirmation;
-        const confirmationMatches=confirmation && confirmation.docId===d.id && confirmation.sourceRevision===d.sourceRevision && confirmation.text===text;
+        const confirmationMatches=d && confirmation && confirmation.docId===d.id && confirmation.sourceRevision===d.sourceRevision && confirmation.text===text;
         const headerMode=confirmationMatches?confirmation.mode:storedHeaderMode;
         const selectedRegion=this._regionSelection;
-        const regionSelection=selectedRegion && selectedRegion.docId===d.id && selectedRegion.sourceRevision===d.sourceRevision && selectedRegion.text===text
+        const regionSelection=d && selectedRegion && selectedRegion.docId===d.id && selectedRegion.sourceRevision===d.sourceRevision && selectedRegion.text===text
             ? selectedRegion.selection
             : null;
         return { html, format, headerMode, regionSelection };
@@ -11201,6 +11244,7 @@ const App = {
 
     getSourceContext(text=SourceController.readText()) {
         const doc=Store.getDocument();
+        if(!doc) return null;
         return {docId:doc.id,sourceRevision:doc.sourceRevision,text,options:this.getParseOptions()};
     },
 
@@ -11212,6 +11256,7 @@ const App = {
 
     /** Resolve the current parse and return a validator for the eventual download. */
     async prepareExport() {
+        if(!Store.getDocument()) { Toast.show('请先新增卡片并导入数据', true); return null; }
         SourceController.clearAutoParse();
         const text=SourceController.readText();
         if(Store.getDocument().raw!==text)dispatch('source:replace',{text});
@@ -11283,8 +11328,8 @@ const App = {
             rawTables: TableRegistry.getRaw(),
             globalViews: Store.getViews(),
             ui: Store.getActiveUI(),
-            docId: doc.id,
-            sourceRevision: doc.sourceRevision,
+            docId: doc?.id,
+            sourceRevision: doc?.sourceRevision,
             stateRevision: Store.revision,
             viewRevision: Store.viewRevision,
             queryRevision: Store.queryRevision,
@@ -11365,7 +11410,7 @@ const App = {
             btn.removeAttribute('disabled');
             btn.setAttribute('type', 'button');
         });
-        this.applySidebarTab((Store.curr().ui && Store.curr().ui.sidebarTab) || 'data', false);
+        this.applySidebarTab(Store.getActiveUI().sidebarTab || 'data', false);
     },
 
     bindAccordions() {
@@ -11565,26 +11610,43 @@ validflag Time      Level   Message                 Code
     },
 
     loadDoc() {
-        const d = Store.curr();
+        const d = Store.getDocument();
+        const ui = Store.getActiveUI();
         SourceController.resetPendingInput();
         SourceController.clearLastPaste();
         CellEditController.reset();
-        SourceController.displayText(d.raw || '');
-        $('globalFilter').value = d.ui.globalFilter || '';
-        const formatSelect = $('formatSelect'); if(formatSelect) formatSelect.value = d.ui.importFormat || 'auto';
-        const headerModeSelect = $('headerModeSelect'); if(headerModeSelect) headerModeSelect.value = d.ui.importHeaderMode || 'auto';
-        $('checkHl').checked = d.ui.enableHighlight !== false;
-        $('checkOnlyHl').checked = d.ui.onlyHighlighted || false;
-        $('checkExpSelected').checked = d.ui.exportOnlyChecked || false;
-        $('expColSelect').value = d.ui.exportCols || 'all';
-        if($('pageSizeSelect')) $('pageSizeSelect').value = String(d.ui.pageSize || 100);
+        SourceController.displayText(d?.raw || '');
+        // 没有选中卡片时保留空状态，禁止编辑/解析旧内容；新增与备份恢复仍可用。
+        for(const id of ['rawInput','parseBtn','clearBtn','importSourceBtn','sourceFileInput','formatSelect','headerModeSelect','autoParseToggle','exportSourceBtn','exportRawBtn','exportFullBtn','exportPrevBtn','sampleLink','sampleBtn','globalFilter','hlInput','filterInput','focusColsInput','targetTableSelect','selectColsBtn','checkHl','checkOnlyHl','checkExpSelected','expColSelect','pageSizeSelect']) {
+            const control = $(id);
+            if(control) control.disabled = !d;
+        }
+        $('globalFilter').value = ui.globalFilter || '';
+        const formatSelect = $('formatSelect'); if(formatSelect) formatSelect.value = ui.importFormat || 'auto';
+        const headerModeSelect = $('headerModeSelect'); if(headerModeSelect) headerModeSelect.value = ui.importHeaderMode || 'auto';
+        $('checkHl').checked = ui.enableHighlight !== false;
+        $('checkOnlyHl').checked = ui.onlyHighlighted || false;
+        $('checkExpSelected').checked = ui.exportOnlyChecked || false;
+        $('expColSelect').value = ui.exportCols || 'all';
+        if($('pageSizeSelect')) $('pageSizeSelect').value = String(ui.pageSize || 100);
         if($('persistRawToggle')) $('persistRawToggle').checked = Store.state.persistRaw !== false;
         if($('checkFormulaSafe')) $('checkFormulaSafe').checked = Store.state.spreadsheetSafe !== false;
-        if($('sidebar')) this.applySidebarTab(d.ui.sidebarTab || 'data',false);
+        if($('sidebar')) this.applySidebarTab(ui.sidebarTab || 'data',false);
         this.syncCopyFormatControl();
         this.syncCopyHeaderControl();
         this.updatePasteSourceButton();
         SourceController.renderCards();
+        if(!d) {
+            this._parseGeneration++;
+            this._pendingParse=null;this._parseToken=null;
+            this._regionSelection=null;this._headerModeConfirmation=null;
+            BackgroundService.cancelQueries();BackgroundService.cancelParses();
+            QueryService.clearCache();TableRegistry.setResult(null);
+            if($('backgroundJob')) $('backgroundJob').hidden=true;
+            this.updSelects();this.updChips();this.updateImportSummary();
+            this.renderPreview();this.updateStorageStatus();
+            return;
+        }
         if(Store.restoring) {
             if($('previewArea'))$('previewArea').textContent='正在恢复完整原文…';
             this.updateStorageStatus();return;
@@ -11596,7 +11658,7 @@ validflag Time      Level   Message                 Code
 
     applyStoredCellEdits() {
         if(TableRegistry.isBackground())return;
-        const edits = Store.curr().ui.cellEdits || {};
+        const edits = Store.getActiveUI().cellEdits || {};
         TableRegistry.getRaw().forEach(table => {
             const tableEdits = edits[`$${table.name}`];
             if(!tableEdits) return;
@@ -11645,11 +11707,13 @@ validflag Time      Level   Message                 Code
     rememberRegionSelection(selection) {
         if(!selection){this._regionSelection=null;return;}
         const doc=Store.getDocument();
+        if(!doc) return;
         this._regionSelection={docId:doc.id,sourceRevision:doc.sourceRevision,text:SourceController.readText(),selection};
     },
 
     rememberHeaderMode(mode) {
         const doc=Store.getDocument();
+        if(!doc) return;
         this._headerModeConfirmation={docId:doc.id,sourceRevision:doc.sourceRevision,text:SourceController.readText(),mode};
     },
 
@@ -11666,6 +11730,7 @@ validflag Time      Level   Message                 Code
     },
 
     run(render=true) {
+        if(!Store.getDocument()) return false;
         let parseContext = null;
         try {
             SourceController.clearAutoParse();
@@ -11798,14 +11863,14 @@ validflag Time      Level   Message                 Code
 
     syncRules() {
         const t = $('targetTableSelect').value;
-        const r = Store.curr().ui.rules[t] || {};
+        const r = Store.getActiveUI().rules[t] || {};
         $('hlInput').value = r.hl || '';
         $('filterInput').value = r.filter || '';
         $('focusColsInput').value = (r.focus || []).join(', ');
     },
 
     updChips() {
-        const ui = Store.curr().ui;
+        const ui = Store.getActiveUI();
         // 只显示表/视图名称，过滤掉误保存的字段名
         const tableNames = TableRegistry.getRaw().map(t => t.name);
         const tsRaw = ui.displayTables;
@@ -11848,6 +11913,7 @@ validflag Time      Level   Message                 Code
 
     renderPreview(processedOverride=null) {
         const generation=++this._renderGeneration;
+        if(!Store.getDocument()) TableRegistry.setResult(null);
         if(TableRegistry.isBackground() && !processedOverride) {
             const doc=Store.getDocument();const revision=Store.revision;
             const job=this.showJob('正在后台更新筛选与 JOIN…');
@@ -11855,7 +11921,7 @@ validflag Time      Level   Message                 Code
             let input;
             try {input=TableRegistry.getBackgroundInput();} catch(error) {this.finishJob(job);Toast.show(error.message,true);return;}
             QueryService.getPreviewAsync(input,BackgroundService).then(result=>{
-                if(generation!==this._renderGeneration || Store.getDocument().id!==doc.id || Store.getDocument().sourceRevision!==input.sourceRevision)return;
+                if(generation!==this._renderGeneration || Store.getDocument()?.id!==doc.id || Store.getDocument()?.sourceRevision!==input.sourceRevision)return;
                 if(revision!==Store.revision){this.requestRender();return;}
                 TableRegistry.setPoolNames(result.tables.map(({table})=>table.name));
                 this.renderPreview(result.tables);
@@ -11871,6 +11937,19 @@ validflag Time      Level   Message                 Code
         const div = $('previewArea'); div.innerHTML = '';
         this.rendered = []; Select.clear();
         this.syncPreviewTablePicker([], false);
+        if(!Store.getDocument()) {
+            const hasProject = !!Store.getActiveProject();
+            div.innerHTML = `<div class="empty">
+                <div style="font-weight:700; color:var(--text-strong);">${hasProject ? '当前工程没有卡片' : '工作区为空'}</div>
+                <div class="muted">${hasProject ? '新增卡片后，再粘贴或导入数据。' : '新建页签后开始；页签编号从 1 开始。'}</div>
+            </div>`;
+            const button = createEl('button', 'tonal');
+            button.type = 'button';
+            button.textContent = hasProject ? '新增卡片' : '新建页签';
+            button.onclick = () => hasProject ? dispatch('card:create', {}) : TabController.createNew();
+            div.querySelector('.empty')?.appendChild(button);
+            return;
+        }
         if(!TableRegistry.getRaw().length) { 
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
@@ -12013,7 +12092,7 @@ validflag Time      Level   Message                 Code
     closeModal() { ModalController.close(); },
     modal(title, html) { ModalController.show(title, html); },
 
-    modTables() { ModalController.showTableSelector(TableRegistry.getRaw().map(t => t.name), Store.curr().ui.displayTables); },
+    modTables() { ModalController.showTableSelector(TableRegistry.getRaw().map(t => t.name), Store.getActiveUI().displayTables); },
     modViews() { ModalController.showViewSelector(Store.getViews(), Store.getEnabledViews()); },
     
     modCols() {
@@ -12029,7 +12108,7 @@ validflag Time      Level   Message                 Code
         }
         if (!all || !all.length) { const rt = this.rendered.find(x => x.name === tName); if (rt) all = rt.headers; }
         if (!all || !all.length) { if (typeof alert === 'function') alert('无法获取列信息'); return; }
-        ModalController.showColumnSelector(tName, all, Store.curr().ui.rules[tName] || {});
+        ModalController.showColumnSelector(tName, all, Store.getActiveUI().rules[tName] || {});
     }
 
 };
