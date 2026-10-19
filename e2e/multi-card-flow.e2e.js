@@ -9,7 +9,10 @@ import {readSheet} from 'read-excel-file/node';
 const grant = async context => context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:4173'});
 const paste = async (page, text) => {
   await page.evaluate(async t=>navigator.clipboard.writeText(t), text);
-  await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
+  await page.locator('#rawInput').click();
+  // 小文本粘贴是原生光标插入语义：全选后再粘贴 = 替换（大文本由 handlePaste 直接替换）
+  await page.locator('#rawInput').press('Control+A');
+  await page.locator('#rawInput').press('Control+V');
 };
 const cardList = page => page.locator('.data-card');
 const watchConsole = page => { page.on('console', m => { if(m.type()==='error') console.log('PAGE-CONSOLE-ERROR:', m.text()); }); };

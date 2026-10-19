@@ -95,8 +95,13 @@ const App = {
                 case 'card:removed':
                 case 'card:renamed':
                 case 'card:reordered':
-                case 'card:visibilityChanged':
                     SourceController.renderCards();
+                    this.requestRender();
+                    break;
+                case 'card:visibilityChanged':
+                    // 表池成员变化：显隐既改卡片区，也改 view 引用可用性标记与查询结果
+                    SourceController.renderCards();
+                    this.updChips();
                     this.requestRender();
                     break;
                 case 'card:removed':
