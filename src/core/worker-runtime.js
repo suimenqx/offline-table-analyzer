@@ -64,7 +64,10 @@ const WorkerRuntime = {
                 const cells=result.tables.reduce((sum,table)=>sum+table.rows.length*table.headers.length,0);
                 if(cells>QueryService.MAX_CELLS)throw new Error('解析结果超过 800 万单元格预算，请拆分数据；原文仍保留');
                 let total=cells;
-                for(const ds of datasets.values()) total += ds.tables.reduce((s,t)=>s+t.rows.length*t.headers.length,0);
+                for(const [cardId,ds] of datasets) {
+                    if(cardId === payload.cardId) continue; // 重解析覆盖同一卡，不重复计
+                    total += ds.tables.reduce((s,t)=>s+t.rows.length*t.headers.length,0);
+                }
                 if(total>QueryService.MAX_CELLS)throw new Error('会话内多卡片数据集合计超过 800 万单元格预算，请隐藏或删除部分卡片；原文仍保留');
                 datasets.set(payload.cardId,{ tables:result.tables, previousEdits:[] });
                 poolCache={ sig:null, pool:null, tables:null };

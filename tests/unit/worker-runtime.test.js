@@ -27,6 +27,22 @@ describe('background dataset session',()=>{
     assert.ok(session.excel({...input,mode:'raw'}).byteLength>100);
   });
 
+  it('re-parsing the same card replaces its dataset instead of double-counting the session budget',()=>{
+    const {OTA}=loadModules(['worker-runtime','query-service']);const {WorkerRuntime}=OTA.require('worker-runtime');const {QueryService}=OTA.require('query-service');
+    const session=WorkerRuntime.createSession();
+    const prev=QueryService.MAX_CELLS;
+    try {
+      QueryService.MAX_CELLS=4;
+      const small='id,name\n1,甲';
+      const options={format:'csv',headerMode:'auto',html:''};
+      session.parse({text:small,options,cardId:'a'});          // 2 cells
+      session.parse({text:small,options,cardId:'b'});          // 2+2=4，边界内
+      session.parse({text:small,options,cardId:'a'});          // 重解析 a：2+2=4，不重复计 → 不报错
+      assert.throws(()=>session.parse({text:small,options,cardId:'c'}),/合计超过/); // 2+2+2=6>4
+      session.removeCard({cardId:'a'});                        // 释放后可再入
+      assert.doesNotThrow(()=>session.parse({text:small,options,cardId:'c'}));
+    } finally { QueryService.MAX_CELLS=prev; }
+  });
   it('limits all selected tables and JOINs together before allocating another result',()=>{
     const {OTA}=loadModules(['query-service']);const {QueryService}=OTA.require('query-service');
     QueryService.MAX_CELLS=7;
