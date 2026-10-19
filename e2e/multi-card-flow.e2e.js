@@ -15,8 +15,9 @@ const cardList = page => page.locator('.data-card');
 const watchConsole = page => { page.on('console', m => { if(m.type()==='error') console.log('PAGE-CONSOLE-ERROR:', m.text()); }); };
 const prepare = async page => { await page.locator('#autoParseToggle').uncheck(); watchConsole(page); };
 const parse = async page => {
-  // 固定格式：小样本 CSV 的自动识别会歧义（“请在详情中选择候选”）
+  // 固定格式与表头：小样本 CSV 的自动识别/表头证据不足会要求人工确认
   await page.locator('#formatSelect').selectOption('csv');
+  await page.locator('#headerModeSelect').selectOption('first-row');
   await page.locator('#parseBtn').click();
   await expect(page.locator('#parseStatusText')).toContainText(/\d[\d,]* 行/, {timeout:60000});
 };
