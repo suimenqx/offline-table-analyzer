@@ -65,6 +65,28 @@ describe('QueryService.computePool — 表池派生', () => {
     assert.equal(pool.every(p => p.kind !== 'concat'), true, '换序列不拼接');
   });
 
+  it('隐藏首来源只移除其记录，不使异结构来源失去限定名', () => {
+    const pool = QueryService.computePool([
+      {cardId:'a',cardName:'A',visible:false,table:table('data',['id','name'],[['1','A']])},
+      {cardId:'b',cardName:'B',visible:true,table:table('data',['id','label'],[['2','B']])},
+    ]);
+    assert.deepEqual(pool.map(entry=>entry.displayName),['data (B)']);
+    assert.deepEqual(pool[0].rows,[['2','B']]);
+    assert.deepEqual(pool[0].sourceCardIds,['b']);
+  });
+
+  it('隐藏同结构首来源后，剩余来源保持基础表名及单来源语义', () => {
+    const remaining=table('data',['id'],[['2']]);
+    const pool=QueryService.computePool([
+      {cardId:'a',visible:false,table:table('data',['id'],[['1']])},
+      {cardId:'b',table:remaining},
+    ]);
+    assert.equal(pool.length,1);
+    assert.equal(pool[0].displayName,'data');
+    assert.equal(pool[0].kind,'single');
+    assert.equal(pool[0].rows,remaining.rows);
+  });
+
   it('单来源直通：行数组为原表同一引用（可修正语义）', () => {
     const t = table('data', ['id'], [['1']]);
     const pool = QueryService.computePool([{ cardId: 'c1', cardName: 'A', table: t }]);

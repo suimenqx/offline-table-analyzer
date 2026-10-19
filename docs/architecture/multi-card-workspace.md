@@ -39,6 +39,7 @@
 
 - SourceController 持有按卡片 id 复用的 DOM 节点，以及短生命周期的焦点/拖拽状态；显隐、解析摘要和名称刷新不重建整个列表，不打断输入。所有领域修改仍经 dispatch → Store；拖拽与 Alt+↑↓ 共用 `card:reorder`，顺序即拼接顺序。
 - TableRegistry 增加 `recordParse` / `getCardSummary` 和 `setPreview` / `getPreviewSummary`：解析摘要仅保存格式、表数、行数，绑定来源修订和配置策略；结果统计使用完整筛选结果而非页行数。摘要留在会话内，恢复后重新解析，不增加持久化结果计数。
+- Worker 查询同时携带工程完整卡片顺序的 id/名称清单（不含隐藏原文），以已驻留来源结构保持异结构表的限定名；`visible` 仍是唯一的记录参与清单。隐藏已解析的基准来源不重解析、不将其记录纳入结果，也不把异结构来源误改为基础表名。
 - SourceController 新增依赖较早的 TableRegistry；TableRegistry 新增依赖较早的 TableUtils 以共享 Window/Worker 行数契约。无新增模块、无 manifest 重排。BackgroundService 只补充已有解析消息中的有界描述信息，仍不发布完整 Worker 表；以来源修订/配置策略检查驻留数据集，避免摘要或数据复用过期来源。
 - 为使“统一卡名”和“旧导出前缀兼容”同时成立，新默认主卡明确保存可选布尔 `exportTitleFromProject: true`。缺失/非 true 均按旧卡名语义；自定义改名、复制关闭该策略，备份显式往返该字段。不能从“数据段 N”文本猜测策略，否则旧卡或用户同名卡的导出前缀会被误改。此为 schema 22 的向后兼容可选字段，不改变旧字段；旧版 fixture 和备份回归覆盖缺失字段，原文快照继续只含 id/revision/raw。
 - 新默认卡使用工作区内唯一的“数据段 N”，历史名称不重写；工程名在工程命名空间内唯一。列表紧凑、参与开关与编辑状态独立、明确粘贴落点及表池结果范围，具体契约见[交互验收基线](../testing/card-interaction-baseline.md)。

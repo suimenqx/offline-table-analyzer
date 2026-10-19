@@ -71,6 +71,7 @@ test('场景3：同名不同结构卡并列显示，互不合并',async({page,co
   await expect(first.locator('.meta-tag').filter({hasText:/^Show:/})).toHaveText('Show: 2');
   // 隐藏基础卡 → 限定名表仍在（范围控制只影响来源）
   await cardList(page).nth(0).locator('[data-card-act="visible"]').click();
+  await expect(page.locator('.table-container')).toHaveCount(1); // 等待表池完成更新，而非读取旧 DOM
   await expect(page.locator('.table-title',{hasText:'CSV Table 1 (数据段 2)'})).toBeVisible();
 });
 

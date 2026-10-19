@@ -54,6 +54,19 @@ describe('background dataset session',()=>{
     assert.equal(renamed[1].res.totalRows,1);
   });
 
+  it('keeps a known hidden source as the naming baseline without including its records', () => {
+    const {OTA}=loadModules(['worker-runtime']);
+    const session=OTA.require('worker-runtime').WorkerRuntime.createSession();
+    session.parse({cardId:'a',text:'id,name\n1,A',options:{format:'csv',headerMode:'first-row'}});
+    session.parse({cardId:'b',text:'id,label\n2,B',options:{format:'csv',headerMode:'first-row'}});
+    const sources=[{id:'a',name:'Base'},{id:'b',name:'Other'}];
+    session.preview({sources,visible:sources,ui:{},cardUis:{}});
+    const hidden=session.preview({sources,visible:[sources[1]],ui:{},cardUis:{}});
+    assert.deepEqual(hidden.map(item=>item.table.name),['CSV Table 1 (Other)']);
+    assert.deepEqual(hidden[0].res.rows.map(row=>row.d),[['2','B']]);
+    assert.equal(hidden[0].res.totalRows,1);
+  });
+
   it('re-parsing the same card replaces its dataset instead of double-counting the session budget',()=>{
     const {OTA}=loadModules(['worker-runtime','query-service']);const {WorkerRuntime}=OTA.require('worker-runtime');const {QueryService}=OTA.require('query-service');
     const session=WorkerRuntime.createSession();

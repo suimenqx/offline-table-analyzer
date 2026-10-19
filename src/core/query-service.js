@@ -57,7 +57,8 @@ function cloneForResult(table) {
 const QueryService = {
     MAX_CELLS:8000000,
     /**
-     * 表池派生（纯函数，无 DOM）：entries = [{cardId, table}] 按可见卡片顺序。
+     * 表池派生（纯函数，无 DOM）：entries = [{cardId, table, visible?}] 按工程卡片顺序。
+     * 已知但隐藏的来源仅提供命名/结构基准，不贡献记录。
      * 规则（多卡片工作区 ADR）：与首张卡结构（列名+顺序）一致的同名表直接拼接
      * （不去重、重复保留）；结构不同的同名表并列，显示名加卡片限定；单来源直通。
      * @returns {Array<{displayName:string, kind:'single'|'concat'|'side', sourceCardId:string, sourceCardIds:string[], columns:string[], rows:Array<Array<string>>}>}
@@ -68,20 +69,20 @@ const QueryService = {
             if(!entry || !entry.table) continue;
             const name = entry.table.name;
             if(!byName.has(name)) byName.set(name, []);
-            byName.get(name).push({ cardId:entry.cardId, cardName:entry.cardName || entry.cardId, table:entry.table });
+            byName.get(name).push({ cardId:entry.cardId, cardName:entry.cardName || entry.cardId, table:entry.table, visible:entry.visible !== false });
         }
         const pool = [];
         for(const [name, group] of byName) {
             const first = group[0].table;
             const sameStructure = (a, b) => a.headers.length === b.headers.length && a.headers.every((h, i) => h === b.headers[i]);
-            const same = group.filter(e => sameStructure(first, e.table));
-            const others = group.filter(e => !sameStructure(first, e.table));
+            const same = group.filter(e => e.visible && sameStructure(first, e.table));
+            const others = group.filter(e => e.visible && !sameStructure(first, e.table));
             if(same.length > 1) {
                 pool.push({ displayName:name, kind:'concat', sourceCardId:null, sourceCardIds:same.map(e => e.cardId),
                     columns:first.headers, rows:[].concat(...same.map(e => e.table.rows)) });
-            } else {
+            } else if(same.length) {
                 pool.push({ displayName:name, kind:'single', sourceCardId:same[0].cardId, sourceCardIds:[same[0].cardId],
-                    columns:first.headers, rows:first.rows });
+                    columns:same[0].table.headers, rows:same[0].table.rows });
             }
             for(const e of others) {
                 pool.push({ displayName:`${name} (${e.cardName})`, kind:'side', sourceCardId:e.cardId, sourceCardIds:[e.cardId],
@@ -166,8 +167,8 @@ const QueryService = {
         // 缓存键必须含可见清单：显隐只改表池成员，不改 ui/来源修订。
         const key=querySignature(input.ui || {}, {...input,rawToken:objectIdentity(input.rawTables)})
             + JSON.stringify(stableValue({pageSize:input.ui?.pageSize,tablePages:input.ui?.tablePages,previewTable:input.ui?.previewTable,
-                collapsedTables:input.ui?.collapsedTables, visible:input.visible || [], cardUis:input.cardUis || {},
-                sources:(input.cards || []).map(card => ({id:card.id, sourceRevision:card.sourceRevision,
+                collapsedTables:input.ui?.collapsedTables, visible:input.visible || [], sourceOrder:input.sources || input.visible || [], cardUis:input.cardUis || {},
+                sourceVersions:(input.cards || []).map(card => ({id:card.id, sourceRevision:card.sourceRevision,
                     config:card.config || {format:card.options?.format, headerMode:card.options?.headerMode}}))}));
         if(asyncCache.has(key)) return asyncCache.get(key);
         executor.cancelQueries?.();

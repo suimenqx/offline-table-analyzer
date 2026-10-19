@@ -9,16 +9,19 @@ const WorkerRuntime = {
         let datasets=new Map(); // cardId -> { tables, previousEdits }
         let poolCache={ sig:null, pool:null, tables:null };
         let previousEditSignature = null;
-        const sigOf = visible => JSON.stringify((visible || []).map(v => [v.id, v.name || v.id]));
+        const sourceIds = list => (list || []).map(card => [card.id, card.name || card.id]);
+        const sigOf = (visible, sources=visible) => JSON.stringify([sourceIds(visible), sourceIds(sources)]);
         const poolToTables = pool => pool.map(entry => ({ name:entry.displayName, headers:entry.columns.slice(), rows:entry.rows, isView:false }));
-        const buildPool = visible => {
-            const sig = sigOf(visible);
+        const buildPool = (visible, sources=visible) => {
+            const sig = sigOf(visible, sources);
             if(poolCache.sig === sig) return poolCache;
             const entries=[];
-            for(const v of visible || []) {
-                const ds=datasets.get(v.id);
+            const participating = new Set((visible || []).map(card => card.id));
+            for(const source of sources || []) {
+                const ds=datasets.get(source.id);
                 if(!ds) continue;
-                for(const table of ds.tables) entries.push({ cardId:v.id, cardName:v.name || v.id, table });
+                for(const table of ds.tables) entries.push({ cardId:source.id, cardName:source.name || source.id,
+                    visible:participating.has(source.id), table });
             }
             const pool = QueryService.computePool(entries);
             poolCache = { sig, pool, tables:poolToTables(pool) };
@@ -35,7 +38,7 @@ const WorkerRuntime = {
                 for(const [row,col,value] of ds.previousEdits) row[col]=value;
                 ds.previousEdits=[];
             }
-            const { pool } = buildPool(payload.visible);
+            const { pool } = buildPool(payload.visible, payload.sources);
             for(const entry of pool) {
                 if(entry.kind !== 'single') continue;
                 const ui = payload.cardUis && payload.cardUis[entry.sourceCardId];
@@ -52,8 +55,8 @@ const WorkerRuntime = {
             }
         };
         const queryInput = payload => {
-            const { tables } = buildPool(payload.visible);
-            return { rawTables:tables, globalViews:payload.globalViews || [], ui:payload.ui || {}, docId:sigOf(payload.visible), sourceRevision:1 };
+            const { tables } = buildPool(payload.visible, payload.sources);
+            return { rawTables:tables, globalViews:payload.globalViews || [], ui:payload.ui || {}, docId:sigOf(payload.visible,payload.sources), sourceRevision:1 };
         };
         const query = payload => {
             applyEdits(payload);
@@ -90,13 +93,13 @@ const WorkerRuntime = {
             preview,
             stats(payload) {
                 applyEdits(payload);
-                const { tables } = buildPool(payload.visible);
+                const { tables } = buildPool(payload.visible, payload.sources);
                 return Joiner.stats(tables,payload.cfg,payload.globalViews || []);
             },
             excel(payload) {
                 applyEdits(payload);
                 const ui=payload.ui || {};
-                const { tables } = buildPool(payload.visible);
+                const { tables } = buildPool(payload.visible, payload.sources);
                 let out;
                 if(payload.mode==='preview')out=query(payload).map(({table,res})=>({name:table.name,headers:res.headers,rows:res.rows.map(row=>row.d)}));
                 else {

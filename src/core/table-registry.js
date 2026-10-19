@@ -115,10 +115,9 @@ const TableRegistry = {
         const doc=Store.getDocument();
         if(!doc || doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
         const project=Store.getActiveProject() || {};
-        const visible=(project.cardIds || [])
-            .map(id => Store.getCard(id))
-            .filter(card => card && card.visible !== false)
-            .map(card => ({ id:card.id, name:card.title || card.id }));
+        const sources=(project.cardIds || []).map(id => Store.getCard(id)).filter(Boolean)
+            .map(card => ({id:card.id, name:card.title || card.id}));
+        const visible=sources.filter(source => Store.getCard(source.id).visible !== false);
         const cards=[];
         for(const v of visible) {
             const card=Store.getCard(v.id);
@@ -133,7 +132,7 @@ const TableRegistry = {
             if(card) cardUis[v.id]=Object.assign({}, card.ui, { enabledViews:project.enabledViews || [] });
         }
         const ui=Object.assign({}, doc.ui, { enabledViews:project.enabledViews || [] });
-        return { rawTables:this._raw, ui, globalViews:project.views || [], visible, cardUis, cards,
+        return { rawTables:this._raw, ui, globalViews:project.views || [], sources, visible, cardUis, cards,
             text:doc.raw, options:this._parseOptions, datasetKey:this._datasetKey, docId:doc.id, sourceRevision:doc.sourceRevision };
     },
     getJoinStats(cfg) {return BackgroundService.stats(this.getBackgroundInput(),cfg);},

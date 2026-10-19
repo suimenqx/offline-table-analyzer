@@ -14,9 +14,9 @@ const BackgroundService = {
     canUse() { return typeof Worker !== 'undefined' && typeof URL.createObjectURL === 'function'; },
     isLarge(text) { return text.length>this.THRESHOLD; },
     hasDataset(cardId) { return this.datasetKeys.has(cardId); },
-    /** 统一的多卡会话消息载荷（visible/cardUis/ui/globalViews 只在这里组装） */
+    /** 统一的多卡会话消息载荷（sources/visible/cardUis/ui/globalViews 只在这里组装） */
     workerPayload(input) {
-        return { visible:input.visible || [], cardUis:input.cardUis || {}, ui:input.ui || {}, globalViews:input.globalViews || [] };
+        return { sources:input.sources || input.visible || [], visible:input.visible || [], cardUis:input.cardUis || {}, ui:input.ui || {}, globalViews:input.globalViews || [] };
     },
     /** 作业级取消：只拒绝指定类型的在途/排队作业，不终止 Worker、不丢其他卡的数据集 */
     cancelJobs(kinds) {
