@@ -423,6 +423,18 @@ describe('Runtime API surface', () => {
       assert.equal(typeof Store[method], 'function', `Store.${method} should be callable`);
     }
   });
+  it('card:create switches the editor to the new card instead of appending into the old one', async () => {
+    setupDOM();
+    OTA.start('app');
+    const { Store } = OTA.require('store');
+    Store.transition('source:replace', { text:'id,name\n1,甲' });
+    const editor = document.getElementById('rawInput');
+    editor.value = 'id,name\n1,甲';
+    const card = Store.transition('card:create', {});
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(editor.value, '', '新卡编辑器应为空（不会把粘贴追加到旧卡文本）');
+    assert.equal(Store.curr().id, card.id);
+  });
 });
 
 describe('Paste source diagnostics', () => {

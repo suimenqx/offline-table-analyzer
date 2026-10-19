@@ -86,8 +86,13 @@ const App = {
                     this.renderTabs();
                     break;
                 case 'card:created':
-                case 'card:removed':
                 case 'card:duplicated':
+                    // 新卡自动选中：左侧编辑器必须切换到新卡内容（否则粘贴会追加到旧卡文本）
+                    SourceController.renderCards();
+                    this.loadDoc();
+                    this.requestRender();
+                    break;
+                case 'card:removed':
                 case 'card:renamed':
                 case 'card:reordered':
                 case 'card:visibilityChanged':
@@ -408,7 +413,7 @@ const App = {
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
             if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
-            else if(result.format==='ambiguous'){text.textContent='解析结果需要确认 · 请在详情中选择候选';if(typeof console!=='undefined'){const ui=Store.curr().ui;const srcText=SourceController.readText();console.error('[ambiguous]',(result.diagnostics||[]).map(d=>d.code).join(','),'format=',ui.importFormat,'header=',ui.importHeaderMode,'srcLen=',srcText.length,'src=',JSON.stringify(srcText.slice(0,80)),'candidates:',(result.candidates||[]).map(c=>c.id+':'+c.kind).join(','));}}
+            else if(result.format==='ambiguous'){text.textContent='解析结果需要确认 · 请在详情中选择候选';if(typeof console!=='undefined'){const ui=Store.curr().ui;console.error('[ambiguous]',(result.diagnostics||[]).map(d=>d.code).join(','),'format=',ui.importFormat,'header=',ui.importHeaderMode);}}
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
             else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
