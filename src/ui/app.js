@@ -408,7 +408,7 @@ const App = {
         if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
             if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
-            else if(result.format==='ambiguous')text.textContent='解析结果需要确认 · 请在详情中选择候选';
+            else if(result.format==='ambiguous'){text.textContent='解析结果需要确认 · 请在详情中选择候选';if(typeof console!=='undefined')console.log('[ambiguous]',(result.diagnostics||[]).map(d=>d.code).join(','),'candidates:',(result.candidates||[]).map(c=>c.id+':'+c.kind).join(','));}
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
             else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
