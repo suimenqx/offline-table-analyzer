@@ -46,7 +46,8 @@ describe('Card parse and preview UI metadata', () => {
     assert.equal(cardElement['aria-busy'],'true');
     held.shift()();
     assert.equal(await pending,true);
-    assert.match(SourceController.getCardStatus(Store.curr().id).text,/1 行 · 已解析/);
+    assert.equal(SourceController.getCardStatus(Store.curr().id).label,'解析完成');
+    assert.match(SourceController.getCardStatus(Store.curr().id).text,/1 行/);
     assert.equal(cardElement['aria-busy'],'false');
   });
 
@@ -84,7 +85,8 @@ describe('Card parse and preview UI metadata', () => {
     SourceController.displayText('[{"id":"1"},{"id":"2"}]');
     assert.equal(App.run(false),true);
     App.renderPreview();
-    assert.match(SourceController.getCardStatus(Store.curr().id).text,/2 行 · 已解析/);
+    assert.equal(SourceController.getCardStatus(Store.curr().id).label,'解析完成');
+    assert.match(SourceController.getCardStatus(Store.curr().id).text,/2 行/);
     assert.match(dom.getElementById('datasetSummary').textContent,/表池 1\/1 张卡片.*1 表.*2 行/);
     Store.transition('source:replace',{text:'changed'});
     assert.equal(SourceController.getCardStatus(Store.curr().id).state,'pending');

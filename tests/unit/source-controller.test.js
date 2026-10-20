@@ -90,11 +90,11 @@ describe('SourceController card status', () => {
     const context={docId:card.id,sourceRevision:card.sourceRevision,config:{format:'auto',headerMode:'auto'}};
     const before=JSON.stringify(Store.serializeState());
     assert.equal(SourceController.setCardParsing(context,true),true);
-    assert.deepEqual(SourceController.getCardStatus(card.id),{state:'parsing',text:'解析中…'});
+    assert.deepEqual(SourceController.getCardStatus(card.id),{state:'parsing',label:'解析中',text:'正在读取原文…'});
     assert.equal(JSON.stringify(Store.serializeState()),before);
     OTA.require('table-registry').TableRegistry.recordParse(context,{format:'json',label:'JSON 表格',tables:[{headers:['id'],rows:[['1']]}]});
     assert.equal(SourceController.setCardParsing(context,false),true);
-    assert.deepEqual(SourceController.getCardStatus(card.id),{state:'ready',text:'JSON 表格 · 1 行 · 已解析'});
+    assert.deepEqual(SourceController.getCardStatus(card.id),{state:'ready',label:'解析完成',text:'JSON 表格 · 1 行'});
   });
 
   it('does not let obsolete completion or a changed source retain or clear another parse status', () => {
@@ -117,7 +117,7 @@ describe('SourceController card status', () => {
     const card = Store.curr();
     const context = {docId:card.id, sourceRevision:card.sourceRevision, options:{format:'auto', headerMode:'auto'}};
     TableRegistry.recordParse(context, {format:'csv', label:'CSV', tables:[{headers:['id'], rows:[], rowCount:200000, remote:true}]});
-    assert.deepEqual(SourceController.getCardStatus('a'), {state:'ready', text:'CSV · 200,000 行 · 已解析'});
+    assert.deepEqual(SourceController.getCardStatus('a'), {state:'ready', label:'解析完成', text:'CSV · 200,000 行'});
     TableRegistry.recordParse(context, {format:'ambiguous', tables:[]});
     assert.equal(SourceController.getCardStatus('a').state, 'confirm');
     TableRegistry.recordParse(context, {format:'error', tables:[]});

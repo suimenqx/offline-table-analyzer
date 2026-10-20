@@ -436,16 +436,20 @@ const App = {
         this.sourceParseState = 'ready';
         const diagnostics = result.diagnostics || [];
         const rowCount = (result.tables || []).reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
-        if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
+        const needsConfirmation = result.format === 'ambiguous';
+        if(status) status.className = `parse-status ${needsConfirmation ? 'confirm' : result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
             if(!Store.getDocument()) text.textContent = Store.getActiveProject() ? '当前工程没有卡片 · 点击“新增卡片”' : '工作区为空 · 点击“新建页签”';
             else if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
-            else if(result.format==='ambiguous'){text.textContent='解析结果需要确认 · 请在详情中选择候选';if(typeof console!=='undefined'){const ui=Store.curr().ui;console.error('[ambiguous]',(result.diagnostics||[]).map(d=>d.code).join(','),'format=',ui.importFormat,'header=',ui.importHeaderMode);}}
+            else if(needsConfirmation) text.textContent = '待确认 · 确认解析方式后生成表格';
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
             else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
         }
-        if(details) details.classList.toggle('hidden', !(result.candidates && result.candidates.length) && diagnostics.length === 0);
+        if(details) {
+            details.textContent = needsConfirmation && result.candidates?.length ? '确认候选' : '详情';
+            details.classList.toggle('hidden', !needsConfirmation && !(result.candidates && result.candidates.length) && diagnostics.length === 0);
+        }
         this.updatePasteSourceButton();
         this.updateWorkspaceSummary();
     },
@@ -1033,6 +1037,7 @@ validflag Time      Level   Message                 Code
 
     showDiagnostics() {
         const result = TableRegistry.getLastResult();
+        const fromPreview = Boolean(document.activeElement?.closest?.('.parse-feedback'));
         const candidates = (result.candidates || []).map((item,index) => {
             const score = Number.isFinite(item.score) ? `候选排序参考 ${item.score.toFixed(2)}` : '';
             const reason = item.reason || item.explanation || '依据解析器特征进行判断';
@@ -1050,6 +1055,7 @@ validflag Time      Level   Message                 Code
                 const candidate=(result.candidates||[])[Number(button.dataset.candidateIndex)];
                 if(!candidate)return;
                 this.closeModal();
+                if(fromPreview) $('parseBtn')?.focus({preventScroll:true});
                 if(candidate.kind==='header-mode') {
                     this.rememberRegionSelection(candidate.regionSelection);
                     this.rememberHeaderMode(candidate.headerMode);
@@ -1280,6 +1286,45 @@ validflag Time      Level   Message                 Code
         );
     },
 
+    appendParseConfirmation(container) {
+        const active = Store.getDocument();
+        const result = TableRegistry.getLastResult();
+        const current = result.format === 'ambiguous';
+        const unresolved = (Store.getActiveProject()?.cardIds || []).map(id => Store.getCard(id))
+            .filter(card => card && card.visible !== false && TableRegistry.getCardSummary(card.id)?.format === 'ambiguous');
+        const card = current ? active : unresolved.find(item => item.id !== active?.id);
+        if(!card) return null;
+        const notice = createEl('section', 'parse-feedback is-empty');
+        notice.setAttribute('aria-labelledby', 'parseFeedbackTitle');
+        const icon = createEl('span', 'parse-feedback-icon');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16h.01"/></svg>';
+        const body = createEl('div', 'parse-feedback-body');
+        const title = createEl('h2', 'parse-feedback-title');
+        title.id = 'parseFeedbackTitle';
+        title.textContent = current && !result.candidates.length ? '解析方式待确认' : '有候选结果待确认';
+        const source = createEl('p', 'parse-feedback-source');
+        const others = unresolved.filter(item => item.id !== card.id).length;
+        source.textContent = `${current ? '当前卡片' : '待确认卡片'}：${card.title}${others ? ` · 另有 ${others} 张卡片待确认` : ''}`;
+        const description = createEl('p', 'parse-feedback-description');
+        description.textContent = card.visible === false
+            ? '此卡片未参与分析。可先确认解析方式；勾选“参与分析”后才会显示表格，原文已保留。'
+            : current && !result.candidates.length
+                ? '自动识别还不能确定解析方式。请查看详情，或手动选择格式后再生成表格，原文已保留。'
+                : '检测到多种可能的解析方式。确认候选后才会显示这张卡片的表格，原文已保留。';
+        const button = createEl('button', 'primary parse-feedback-action');
+        button.type = 'button';
+        button.textContent = current ? (result.candidates.length ? '查看并确认候选' : '查看解析详情') : '选中卡片并确认';
+        if(current) button.setAttribute('aria-haspopup', 'dialog');
+        button.onclick = () => {
+            if(current) this.showDiagnostics();
+            else if(this.activateCard(card.id)) SourceController.focusCard(card.id);
+        };
+        body.appendChild(title); body.appendChild(source); body.appendChild(description); body.appendChild(button);
+        notice.appendChild(icon); notice.appendChild(body); container.appendChild(notice);
+        return notice;
+    },
+
     renderPreview(processedOverride=null) {
         const generation=++this._renderGeneration;
         if(!Store.getDocument()) TableRegistry.setResult(null);
@@ -1322,7 +1367,9 @@ validflag Time      Level   Message                 Code
             div.querySelector('.empty')?.appendChild(button);
             return;
         }
+        const confirmation = this.appendParseConfirmation(div);
         if(!TableRegistry.getRaw().length && !processedOverride) {
+            if(confirmation) return;
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
                 <div style="font-weight:800; color:var(--text-strong);">把杂乱数据变成可分析表格</div>
@@ -1339,6 +1386,7 @@ validflag Time      Level   Message                 Code
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         const combined = processedTables.map(({ table }) => table);
         if(!combined.length) {
+            if(confirmation) return;
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
                 <div style="font-weight:700;">当前筛选下无可见表</div>
@@ -1346,6 +1394,8 @@ validflag Time      Level   Message                 Code
             </div>`;
             return;
         }
+
+        if(confirmation) confirmation.className = 'parse-feedback';
 
         // Keep filtered results for full preview export and column configuration,
         // while only materializing one table's DOM in large-table mode.

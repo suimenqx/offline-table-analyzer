@@ -352,6 +352,24 @@
         .empty-visual { width: 84px; height: 70px; border: 1px solid var(--border-strong); border-radius: 16px; background: linear-gradient(135deg, var(--bg-card), var(--bg-elevated)); box-shadow: var(--shadow-xs); display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 13px; transform: rotate(-2deg); }
         .empty-visual span { border-radius: 4px; background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 18%, transparent); }
 
+        .parse-feedback { display: flex; align-items: flex-start; gap: 14px; padding: 20px; border: 1px solid color-mix(in srgb, var(--warning) 40%, var(--border)); border-radius: 12px; background: color-mix(in srgb, var(--warning) 5%, var(--bg-card)); color: var(--text-strong); flex: none; }
+        .parse-feedback.is-empty { width: 100%; max-width: 560px; margin: auto; padding: 28px; }
+        .parse-feedback-icon { display: inline-flex; flex: none; color: color-mix(in srgb, var(--warning) 80%, var(--text-strong)); }
+        .parse-feedback-icon svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+        .parse-feedback-body { min-width: 0; flex: 1; }
+        .parse-feedback-title { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.5; }
+        .parse-feedback-source { margin: 6px 0 0; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+        .parse-feedback-description { margin: 8px 0 16px; max-width: 65ch; color: color-mix(in srgb, var(--text-strong) 75%, var(--warning)); font-size: 13px; line-height: 1.8; }
+        .parse-feedback-action { height: auto; min-height: 34px; padding: 7px 12px; white-space: normal; text-align: left; }
+        .parse-feedback-action.primary { --feedback-action: color-mix(in srgb, var(--primary) 82%, var(--text-strong)); background: var(--feedback-action); border-color: var(--feedback-action); color: var(--bg-card); }
+        .parse-feedback-action.primary:hover { background: color-mix(in srgb, var(--primary) 65%, var(--text-strong)); }
+        @media (min-width: 1101px) {
+            .parse-feedback:not(.is-empty) .parse-feedback-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; }
+            .parse-feedback:not(.is-empty) .parse-feedback-title, .parse-feedback:not(.is-empty) .parse-feedback-source, .parse-feedback:not(.is-empty) .parse-feedback-description { grid-column: 1; }
+            .parse-feedback:not(.is-empty) .parse-feedback-description { margin-bottom: 0; }
+            .parse-feedback:not(.is-empty) .parse-feedback-action { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+        }
+
         /* --- v20 Workbench --- */
         :root {
             --primary: #a66a4c;
@@ -443,7 +461,10 @@
         .parse-status { display: flex; align-items: center; gap: 7px; min-height: 30px; margin-top: 8px; padding: 6px 8px; border-radius: 8px; background: var(--bg-elevated); color: var(--text-mid); font-size: 11px; }
         .parse-status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-weak); flex: 0 0 auto; }
         .parse-status.ready .parse-status-dot { background: var(--success); }
-        .parse-status.warning .parse-status-dot { background: var(--warning); }
+        .parse-status.warning .parse-status-dot, .parse-status.confirm .parse-status-dot { background: var(--warning); }
+        .parse-status.confirm { flex-wrap: wrap; border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); background: color-mix(in srgb, var(--warning) 7%, var(--bg-card)); }
+        .parse-status.confirm .parse-status-text { flex-basis: 150px; white-space: normal; color: var(--text-strong); font-weight: 600; }
+        .parse-status.confirm #diagnosticsBtn { border-color: color-mix(in srgb, var(--warning) 40%, var(--border)); background: var(--bg-card); color: var(--text-strong); }
         .parse-status.error .parse-status-dot { background: var(--danger); }
         .parse-status-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .privacy-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 9px; background: var(--accent-soft); color: var(--text-mid); margin-top: 8px; font-size: 11px; }
@@ -564,6 +585,7 @@
             #previewTableSelect { min-width: 120px; max-width: 180px; }
             #toggleSidebarMobileBtn { display: inline-flex; }
             .preview-area { padding: 9px; }
+            .parse-feedback, .parse-feedback.is-empty { padding: 18px; gap: 10px; }
             .table-meta { top: auto; }
             .statusbar { padding: 4px 9px; }
             .statusbar .status-secondary { display: none; }
@@ -613,14 +635,24 @@
 .card-participation { display:flex; align-items:center; gap:5px; margin:0; min-height:24px; color:var(--text-mid); font-size:11px; font-weight:400; cursor:pointer; flex:none; }
 .card-participation input { width:14px; height:14px; margin:0; accent-color:var(--accent); cursor:pointer; }
 .card-status { display:flex; align-items:center; gap:6px; min-width:0; }
-.card-status-dot { width:6px; height:6px; border:1px solid var(--border-strong); border-radius:50%; flex:none; }
-.card-status-dot[data-state="pending"] { background:var(--text-mid); border-color:var(--text-mid); }
-.card-status-dot[data-state="ready"] { background:var(--success); border-color:var(--success); }
-.card-status-dot[data-state="confirm"] { background:var(--warning); border-color:var(--warning); }
-.card-status-dot[data-state="error"] { background:var(--danger); border-color:var(--danger); }
-.card-status-dot[data-state="parsing"] { width:8px; height:8px; border-color:var(--primary); border-right-color:transparent; animation:card-parsing 800ms linear infinite; }
+.card-status-badge { --status-color:var(--text-mid); display:inline-flex; align-items:center; gap:5px; flex:none; padding:1px 5px; border:1px solid color-mix(in srgb, var(--status-color) 26%, var(--border)); border-radius:4px; background:color-mix(in srgb, var(--status-color) 7%, var(--bg-card)); color:color-mix(in srgb, var(--status-color) 82%, var(--text-strong)); font-size:11px; font-weight:650; line-height:18px; white-space:nowrap; }
+.card-status-badge[data-state="ready"] { --status-color:var(--success); }
+.card-status-badge[data-state="confirm"], .card-status-badge[data-state="unrecognized"] { --status-color:var(--warning); }
+.card-status-badge[data-state="error"] { --status-color:var(--danger); }
+.card-status-badge[data-state="parsing"] { --status-color:var(--primary); }
+.card-status-dot { position:relative; width:10px; height:10px; border:1.5px solid currentColor; border-radius:50%; flex:none; }
+.card-status-dot[data-state="pending"] { border-style:dashed; }
+.card-status-dot[data-state="ready"] { border:0; }
+.card-status-dot[data-state="ready"]::after { content:''; position:absolute; left:1px; top:1px; width:8px; height:5px; border-left:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(-45deg); }
+.card-status-dot[data-state="confirm"] { border-radius:2px; }
+.card-status-dot[data-state="confirm"]::before { content:''; position:absolute; left:3px; top:1px; height:3px; border-left:1.5px solid currentColor; }
+.card-status-dot[data-state="confirm"]::after { content:''; position:absolute; left:3px; bottom:1px; width:1.5px; height:1.5px; background:currentColor; }
+.card-status-dot[data-state="error"] { border:0; }
+.card-status-dot[data-state="error"]::before, .card-status-dot[data-state="error"]::after { content:''; position:absolute; left:0; top:4px; width:10px; border-top:1.5px solid currentColor; transform:rotate(45deg); }
+.card-status-dot[data-state="error"]::after { transform:rotate(-45deg); }
+.card-status-dot[data-state="unrecognized"] { border-style:dotted; }
+.card-status-dot[data-state="parsing"] { border-right-color:transparent; animation:card-parsing 800ms linear infinite; }
 .data-card-summary { color:var(--text-mid); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.data-card-summary[data-state="error"] { color:var(--danger); }
 .data-card-summary[data-state="confirm"] { color:var(--text-strong); font-weight:600; }
 .view-unavailable { background:#fee2e2; border-color:#fca5a5; color:var(--danger,#b91c1c); }
 .data-card-title-input { width:100%; height:26px; font:inherit; border:1px solid var(--primary); border-radius:5px; padding:1px 5px; background:var(--bg-card); color:var(--text-main); caret-color:var(--primary); }
@@ -716,11 +748,11 @@
                             <span>自动解析</span>
                             <span class="muted">输入稳定后刷新预览</span>
                         </label>
-                        <div class="parse-status" id="parseStatus" role="status" aria-live="polite">
+                        <div class="parse-status" id="parseStatus" role="status" aria-live="polite" aria-atomic="true">
                             <span class="parse-status-dot" aria-hidden="true"></span>
                             <span class="parse-status-text" id="parseStatusText">等待输入数据</span>
                             <button class="sm text-button hidden" id="pasteSourceBtn" type="button" title="查看粘贴源">粘贴源</button>
-                            <button class="sm text-button hidden" id="diagnosticsBtn" type="button">详情</button>
+                            <button class="sm text-button hidden" id="diagnosticsBtn" type="button" aria-haspopup="dialog">详情</button>
                         </div>
                         <div class="privacy-toggle">
                             <input type="checkbox" id="persistRawToggle" checked>
@@ -9450,14 +9482,14 @@ const SourceController = {
         const config = parsing && (parsing.config || parsing.options || {});
         if(card && parsing && card.sourceRevision === parsing.sourceRevision
             && (card.ui.importFormat || 'auto') === (config.format || 'auto')
-            && (card.ui.importHeaderMode || 'auto') === (config.headerMode || 'auto')) return {state:'parsing', text:'解析中…'};
-        if(!card?.raw) return {state:'empty', text:'空卡片'};
+            && (card.ui.importHeaderMode || 'auto') === (config.headerMode || 'auto')) return {state:'parsing', label:'解析中', text:'正在读取原文…'};
+        if(!card?.raw) return {state:'empty', label:'空卡片', text:'粘贴或导入数据'};
         const summary = TableRegistry.getCardSummary(id);
-        if(!summary) return {state:'pending', text:`待解析 · ${card.raw.length.toLocaleString()} 字符`};
-        if(summary.format === 'ambiguous') return {state:'confirm', text:'待确认 · 选中后查看解析详情'};
-        if(summary.format === 'error') return {state:'error', text:'解析失败 · 选中后查看详情'};
-        if(!summary.tableCount) return {state:'confirm', text:'未识别出表格 · 请检查格式'};
-        return {state:'ready', text:`${summary.label} · ${summary.rowCount.toLocaleString()} 行 · 已解析`};
+        if(!summary) return {state:'pending', label:'待解析', text:`${card.raw.length.toLocaleString()} 字符`};
+        if(summary.format === 'ambiguous') return {state:'confirm', label:'待确认', text:'需确认候选后继续'};
+        if(summary.format === 'error') return {state:'error', label:'解析失败', text:'请检查格式或原文'};
+        if(!summary.tableCount) return {state:'unrecognized', label:'未识别表格', text:'请检查解析设置'};
+        return {state:'ready', label:'解析完成', text:`${summary.label} · ${summary.rowCount.toLocaleString()} 行`};
     },
 
     /** 选中卡片（左侧面板显示其内容，解析作用于它） */
@@ -9693,10 +9725,13 @@ const SourceController = {
         const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
         participation.appendChild(visible); participation.appendChild(visibleLabel);
         const statusGroup = createEl('span', 'card-status');
+        const statusBadge = createEl('span', 'card-status-badge');
         const statusDot = createEl('span', 'card-status-dot');
         statusDot.setAttribute('aria-hidden', 'true');
+        const statusLabel = createEl('span', 'card-status-label');
+        statusBadge.appendChild(statusDot); statusBadge.appendChild(statusLabel);
         const summary = createEl('span', 'data-card-summary');
-        statusGroup.appendChild(statusDot); statusGroup.appendChild(summary);
+        statusGroup.appendChild(statusBadge); statusGroup.appendChild(summary);
         detail.appendChild(participation); detail.appendChild(statusGroup);
         root.appendChild(head); root.appendChild(detail);
         root.onclick = event => {
@@ -9737,7 +9772,7 @@ const SourceController = {
         drag.onclick = event => event.stopPropagation();
         drag.ondragstart = event => { event.stopPropagation(); this._startCardDrag(id, event); };
         drag.ondragend = () => { if(this._clearCardDrag()) this.announceCardChange('排序已取消，拼接顺序未改变'); };
-        return {root, title, badge, remove, visible, summary, statusDot, drag};
+        return {root, title, badge, remove, visible, summary, statusBadge, statusDot, statusLabel, drag};
     },
 
     syncEditorContext() {
@@ -9777,10 +9812,11 @@ const SourceController = {
             let nodes = this._cardNodes.get(card.id);
             if(!nodes) { nodes = this._createCard(card.id); this._cardNodes.set(card.id, nodes); }
             const active = card.id === project.activeCardId;
+            const status = this.getCardStatus(card.id);
             nodes.root.className = `data-card${active ? ' active' : ''}${card.visible === false ? ' excluded-card' : ''}${card.id === this._dragCardId ? ' dragging' : ''}`;
             nodes.root.tabIndex = active ? 0 : -1;
             nodes.root.setAttribute('aria-current', String(active));
-            nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '未参与分析' : '参与分析'}`);
+            nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '未参与分析' : '参与分析'}，${status.label}，${status.text}`);
             if(!nodes.title.querySelector('input')) nodes.title.textContent = card.title;
             nodes.title.title = `${card.title} · 双击或 F2 重命名`;
             nodes.badge.hidden = !active;
@@ -9788,13 +9824,14 @@ const SourceController = {
             nodes.visible.setAttribute('aria-label', `${card.title}：参与分析`);
             nodes.remove.title = `删除卡片 ${card.title}`;
             nodes.remove.setAttribute('aria-label', nodes.remove.title);
-            const status = this.getCardStatus(card.id);
             nodes.root.dataset.parseState = status.state;
             nodes.root.setAttribute('aria-busy', String(status.state === 'parsing'));
+            nodes.statusBadge.dataset.state = status.state;
             nodes.statusDot.dataset.state = status.state;
+            nodes.statusLabel.textContent = status.label;
             nodes.summary.textContent = status.text;
             nodes.summary.dataset.state = status.state;
-            nodes.summary.title = status.text;
+            nodes.summary.title = `${status.label} · ${status.text}`;
             if(container.children[index] !== nodes.root) {
                 if(container.insertBefore) container.insertBefore(nodes.root, container.children[index] || null);
                 else { if(nodes.root.parentNode === container) container.removeChild(nodes.root); container.appendChild(nodes.root); }
@@ -11467,16 +11504,20 @@ const App = {
         this.sourceParseState = 'ready';
         const diagnostics = result.diagnostics || [];
         const rowCount = (result.tables || []).reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
-        if(status) status.className = `parse-status ${result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
+        const needsConfirmation = result.format === 'ambiguous';
+        if(status) status.className = `parse-status ${needsConfirmation ? 'confirm' : result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
         if(text) {
             if(!Store.getDocument()) text.textContent = Store.getActiveProject() ? '当前工程没有卡片 · 点击“新增卡片”' : '工作区为空 · 点击“新建页签”';
             else if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
-            else if(result.format==='ambiguous'){text.textContent='解析结果需要确认 · 请在详情中选择候选';if(typeof console!=='undefined'){const ui=Store.curr().ui;console.error('[ambiguous]',(result.diagnostics||[]).map(d=>d.code).join(','),'format=',ui.importFormat,'header=',ui.importHeaderMode);}}
+            else if(needsConfirmation) text.textContent = '待确认 · 确认解析方式后生成表格';
             else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
             else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
             else text.textContent = '等待输入数据';
         }
-        if(details) details.classList.toggle('hidden', !(result.candidates && result.candidates.length) && diagnostics.length === 0);
+        if(details) {
+            details.textContent = needsConfirmation && result.candidates?.length ? '确认候选' : '详情';
+            details.classList.toggle('hidden', !needsConfirmation && !(result.candidates && result.candidates.length) && diagnostics.length === 0);
+        }
         this.updatePasteSourceButton();
         this.updateWorkspaceSummary();
     },
@@ -12052,6 +12093,7 @@ validflag Time      Level   Message                 Code
 
     showDiagnostics() {
         const result = TableRegistry.getLastResult();
+        const fromPreview = Boolean(document.activeElement?.closest?.('.parse-feedback'));
         const candidates = (result.candidates || []).map((item,index) => {
             const score = Number.isFinite(item.score) ? `候选排序参考 ${item.score.toFixed(2)}` : '';
             const reason = item.reason || item.explanation || '依据解析器特征进行判断';
@@ -12069,6 +12111,7 @@ validflag Time      Level   Message                 Code
                 const candidate=(result.candidates||[])[Number(button.dataset.candidateIndex)];
                 if(!candidate)return;
                 this.closeModal();
+                if(fromPreview) $('parseBtn')?.focus({preventScroll:true});
                 if(candidate.kind==='header-mode') {
                     this.rememberRegionSelection(candidate.regionSelection);
                     this.rememberHeaderMode(candidate.headerMode);
@@ -12299,6 +12342,45 @@ validflag Time      Level   Message                 Code
         );
     },
 
+    appendParseConfirmation(container) {
+        const active = Store.getDocument();
+        const result = TableRegistry.getLastResult();
+        const current = result.format === 'ambiguous';
+        const unresolved = (Store.getActiveProject()?.cardIds || []).map(id => Store.getCard(id))
+            .filter(card => card && card.visible !== false && TableRegistry.getCardSummary(card.id)?.format === 'ambiguous');
+        const card = current ? active : unresolved.find(item => item.id !== active?.id);
+        if(!card) return null;
+        const notice = createEl('section', 'parse-feedback is-empty');
+        notice.setAttribute('aria-labelledby', 'parseFeedbackTitle');
+        const icon = createEl('span', 'parse-feedback-icon');
+        icon.setAttribute('aria-hidden', 'true');
+        icon.innerHTML = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16h.01"/></svg>';
+        const body = createEl('div', 'parse-feedback-body');
+        const title = createEl('h2', 'parse-feedback-title');
+        title.id = 'parseFeedbackTitle';
+        title.textContent = current && !result.candidates.length ? '解析方式待确认' : '有候选结果待确认';
+        const source = createEl('p', 'parse-feedback-source');
+        const others = unresolved.filter(item => item.id !== card.id).length;
+        source.textContent = `${current ? '当前卡片' : '待确认卡片'}：${card.title}${others ? ` · 另有 ${others} 张卡片待确认` : ''}`;
+        const description = createEl('p', 'parse-feedback-description');
+        description.textContent = card.visible === false
+            ? '此卡片未参与分析。可先确认解析方式；勾选“参与分析”后才会显示表格，原文已保留。'
+            : current && !result.candidates.length
+                ? '自动识别还不能确定解析方式。请查看详情，或手动选择格式后再生成表格，原文已保留。'
+                : '检测到多种可能的解析方式。确认候选后才会显示这张卡片的表格，原文已保留。';
+        const button = createEl('button', 'primary parse-feedback-action');
+        button.type = 'button';
+        button.textContent = current ? (result.candidates.length ? '查看并确认候选' : '查看解析详情') : '选中卡片并确认';
+        if(current) button.setAttribute('aria-haspopup', 'dialog');
+        button.onclick = () => {
+            if(current) this.showDiagnostics();
+            else if(this.activateCard(card.id)) SourceController.focusCard(card.id);
+        };
+        body.appendChild(title); body.appendChild(source); body.appendChild(description); body.appendChild(button);
+        notice.appendChild(icon); notice.appendChild(body); container.appendChild(notice);
+        return notice;
+    },
+
     renderPreview(processedOverride=null) {
         const generation=++this._renderGeneration;
         if(!Store.getDocument()) TableRegistry.setResult(null);
@@ -12341,7 +12423,9 @@ validflag Time      Level   Message                 Code
             div.querySelector('.empty')?.appendChild(button);
             return;
         }
+        const confirmation = this.appendParseConfirmation(div);
         if(!TableRegistry.getRaw().length && !processedOverride) {
+            if(confirmation) return;
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
                 <div style="font-weight:800; color:var(--text-strong);">把杂乱数据变成可分析表格</div>
@@ -12358,6 +12442,7 @@ validflag Time      Level   Message                 Code
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         const combined = processedTables.map(({ table }) => table);
         if(!combined.length) {
+            if(confirmation) return;
             div.innerHTML = `<div class="empty">
                 <div class="empty-visual" aria-hidden="true">${'<span></span>'.repeat(9)}</div>
                 <div style="font-weight:700;">当前筛选下无可见表</div>
@@ -12365,6 +12450,8 @@ validflag Time      Level   Message                 Code
             </div>`;
             return;
         }
+
+        if(confirmation) confirmation.className = 'parse-feedback';
 
         // Keep filtered results for full preview export and column configuration,
         // while only materializing one table's DOM in large-table mode.

@@ -50,11 +50,11 @@ test('解析失败与待确认状态显示在对应卡片上，原文保留', as
   await page.locator('#formatSelect').selectOption('json');
   await page.locator('#rawInput').fill('{broken');
   await page.locator('#parseBtn').click();
-  await expect(cards(page).first().locator('.data-card-summary')).toContainText('解析失败');
+  await expect(cards(page).first().locator('.card-status-label')).toHaveText('解析失败');
   await expect(page.locator('#rawInput')).toHaveValue('{broken');
   await page.locator('#rawInput').fill('alpha,beta\none,two\nthree,four');
   await page.locator('#formatSelect').selectOption('csv');
-  await expect(cards(page).first().locator('.data-card-summary')).toContainText('待确认');
+  await expect(cards(page).first().locator('.card-status-label')).toHaveText('待确认');
   await expect(page.locator('#rawInput')).toHaveValue('alpha,beta\none,two\nthree,four');
 });
 
@@ -63,8 +63,10 @@ test('卡片显示解析摘要，结果栏统计整个筛选结果；编辑退�
   await page.locator('#addCardBtn').click();
   const b = JSON.stringify([{id:'1',name:'B'},{id:'2',name:'B'},{id:'3',name:'B'}]);
   await parse(page, b);
-  await expect(cards(page).first().locator('.data-card-summary')).toContainText('2 行 · 已解析');
-  await expect(cards(page).last().locator('.data-card-summary')).toContainText('3 行 · 已解析');
+  await expect(cards(page).first().locator('.card-status-label')).toHaveText('解析完成');
+  await expect(cards(page).last().locator('.card-status-label')).toHaveText('解析完成');
+  await expect(cards(page).first().locator('.data-card-summary')).toContainText('2 行');
+  await expect(cards(page).last().locator('.data-card-summary')).toContainText('3 行');
   await expect(page.locator('#datasetSummary')).toContainText('表池 2/2 张卡片 · 1 表 · 5 行');
   await cards(page).last().locator('[data-card-act="visible"]').uncheck();
   await expect(shown(page)).toHaveText('Show: 2');
@@ -77,7 +79,7 @@ test('卡片显示解析摘要，结果栏统计整个筛选结果；编辑退�
   await page.locator('#formatSelect').selectOption('json');
   await page.locator('#rawInput').fill('{broken');
   await page.locator('#parseBtn').click();
-  await expect(cards(page).last().locator('.data-card-summary')).toContainText('解析失败');
+  await expect(cards(page).last().locator('.card-status-label')).toHaveText('解析失败');
   await expect(shown(page)).toHaveText('Show: 2');
   const pending=page.waitForEvent('download');
   await page.locator('#exportFullBtn').click();

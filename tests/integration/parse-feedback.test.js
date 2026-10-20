@@ -1,0 +1,131 @@
+import {afterEach, describe, it} from 'node:test';
+import assert from 'node:assert/strict';
+import {loadModules} from '../helpers/load-modules.mjs';
+import {createDOMSandbox} from '../mocks/dom.js';
+import {createStorageMock} from '../mocks/storage.js';
+
+let Store, SourceController;
+afterEach(() => { clearTimeout(Store?.saveTimer); SourceController?.resetPendingInput(); });
+function setup() {
+  const dom = createDOMSandbox();
+  const target = dom.getElementById('targetTableSelect');
+  target.options = []; target.add = option => target.options.push(option);
+  const {OTA} = loadModules(['app'], {document:dom.document, window:dom.window,
+    localStorage:createStorageMock(), CustomEvent:dom.MockCustomEvent});
+  ({Store} = OTA.require('store')); ({SourceController} = OTA.require('source-controller'));
+  Store.init();
+  return {App:OTA.require('app').App, TableRegistry:OTA.require('table-registry').TableRegistry, dom};
+}
+const byClass = (root, name) => {
+  if(root.className?.split(' ').includes(name)) return root;
+  for(const child of root.children || []) { const found = byClass(child, name); if(found) return found; }
+  return null;
+};
+const headerText = 'alpha,beta\none,two\nthree,four';
+
+describe('Visible parse status and confirmation feedback', () => {
+  it('keeps a separate, readable status label beside the light in every card state', () => {
+    const {TableRegistry, dom} = setup();
+    const id = Store.curr().id;
+    const label = () => byClass(dom.getElementById('cardList'), 'card-status-label')?.textContent;
+    SourceController.renderCards();
+    assert.equal(label(), '空卡片');
+    Store.transition('source:replace', {text:headerText});
+    SourceController.renderCards();
+    assert.equal(label(), '待解析');
+    const context = {docId:id, sourceRevision:Store.curr().sourceRevision};
+    SourceController.setCardParsing(context, true);
+    assert.equal(label(), '解析中');
+    SourceController.setCardParsing(context, false);
+    for(const [result, expected] of [
+      [{format:'ambiguous', tables:[]}, '待确认'],
+      [{format:'error', tables:[]}, '解析失败'],
+      [{format:'empty', tables:[]}, '未识别表格'],
+      [{format:'csv', label:'CSV', tables:[{headers:['id'], rows:[['1']]}]}, '解析完成'],
+    ]) {
+      TableRegistry.recordParse(context, result);
+      SourceController.renderCards();
+      assert.equal(label(), expected);
+      assert.ok(byClass(dom.getElementById('cardList'), 'card-status-badge'));
+    }
+  });
+
+  for(const text of [headerText, 'id,name;state\n1,Alice;ok', '报告\nid,name\n1,Alice\nbad,too,many,fields\n2,Bob\n结束']) {
+    it(`explains the withheld preview and opens existing confirmation choices for ${text.split('\n')[0]}`, () => {
+      const {App, TableRegistry, dom} = setup();
+      SourceController.displayText(text);
+      assert.equal(App.run(false), true);
+      assert.equal(TableRegistry.getFormat(), 'ambiguous');
+      App.renderPreview();
+      const notice = byClass(dom.getElementById('previewArea'), 'parse-feedback');
+      assert.ok(notice, 'ambiguity must not look like a broken or first-use empty preview');
+      assert.match(byClass(notice, 'parse-feedback-title').textContent, /待确认/);
+      assert.match(byClass(notice, 'parse-feedback-description').textContent, /确认.*表格/);
+      assert.match(byClass(notice, 'parse-feedback-description').textContent, /原文已保留/);
+      assert.equal(dom.getElementById('diagnosticsBtn').textContent, '确认候选');
+      assert.match(dom.getElementById('parseStatus').className, /confirm/);
+      let shown;
+      App.modal = (title, content) => { shown = {title, content}; };
+      notice.querySelector('button').onclick();
+      assert.equal(shown.title, '解析详情');
+      assert.match(shown.content, /diagnostic-candidate-btn/);
+      assert.equal(Store.curr().raw, text);
+    });
+  }
+
+  it('offers diagnostics rather than promising a choice when no candidates are available', () => {
+    const {App, TableRegistry, dom} = setup();
+    TableRegistry.setResult({format:'ambiguous', tables:[], candidates:[], diagnostics:[]});
+    App.updateImportSummary();
+    App.renderPreview();
+    const notice = byClass(dom.getElementById('previewArea'), 'parse-feedback');
+    assert.equal(byClass(notice, 'parse-feedback-title').textContent, '解析方式待确认');
+    assert.equal(notice.querySelector('button').textContent, '查看解析详情');
+    assert.match(byClass(notice, 'parse-feedback-description').textContent, /手动选择格式/);
+    assert.equal(dom.getElementById('diagnosticsBtn').classList.contains('hidden'), false);
+  });
+
+  it('retains already-parsed pool tables below the confirmation notice', () => {
+    const {App, dom} = setup();
+    SourceController.displayText('[{"id":"001","name":"Alice"}]');
+    App.run(false);
+    const tables = App.getPreviewProcessedTables();
+    SourceController.displayText(headerText);
+    App.run(false);
+    App.renderPreview(tables);
+    const preview = dom.getElementById('previewArea');
+    assert.ok(byClass(preview, 'parse-feedback'));
+    assert.ok(byClass(preview, 'table-container'));
+    assert.equal(App.rendered[0].rows[0].d[1], 'Alice');
+  });
+
+  it('points to an unresolved participating card even when another card is active', () => {
+    const {App, TableRegistry, dom} = setup();
+    Store.transition('source:replace', {text:headerText});
+    const unresolved = Store.curr();
+    TableRegistry.recordParse({docId:unresolved.id, sourceRevision:unresolved.sourceRevision}, {format:'ambiguous', tables:[]});
+    Store.transition('card:create', {});
+    TableRegistry.setResult(null);
+    App.renderPreview();
+    const notice = byClass(dom.getElementById('previewArea'), 'parse-feedback');
+    assert.ok(notice);
+    assert.match(byClass(notice, 'parse-feedback-source').textContent, new RegExp(unresolved.title));
+    notice.querySelector('button').onclick();
+    assert.equal(Store.curr().id, unresolved.id);
+  });
+
+  it('does not use a stale or excluded other-card summary as a confirmation blocker', () => {
+    const {App, TableRegistry, dom} = setup();
+    Store.transition('source:replace', {text:headerText});
+    const card = Store.curr();
+    TableRegistry.recordParse({docId:card.id, sourceRevision:card.sourceRevision}, {format:'ambiguous', tables:[]});
+    Store.transition('card:visible', {id:card.id, visible:false});
+    Store.transition('card:create', {});
+    App.renderPreview();
+    assert.equal(byClass(dom.getElementById('previewArea'), 'parse-feedback'), null);
+    Store.transition('card:visible', {id:card.id, visible:true});
+    Store.transition('source:replace', {docId:card.id, text:'new source'});
+    App.renderPreview();
+    assert.equal(byClass(dom.getElementById('previewArea'), 'parse-feedback'), null);
+  });
+});
