@@ -201,8 +201,28 @@ const SourceController = {
 
     // ── 卡片列表（数据段区由 SourceController 拥有：选中/显隐/删除/重命名/新增） ──
 
+    _parsingCards: new Map(),
+    /** Session-only presentation, matched by context identity so late jobs cannot clear newer feedback. */
+    setCardParsing(context, active) {
+        const card = Store.getCard(context?.docId);
+        if(active) {
+            if(!card || card.sourceRevision !== context.sourceRevision) return false;
+            this._parsingCards.set(card.id, context);
+        } else {
+            if(this._parsingCards.get(context?.docId) !== context) return false;
+            this._parsingCards.delete(context.docId);
+        }
+        this.renderCards();
+        return true;
+    },
+
     getCardStatus(id) {
         const card = Store.getCard(id);
+        const parsing = this._parsingCards.get(id);
+        const config = parsing && (parsing.config || parsing.options || {});
+        if(card && parsing && card.sourceRevision === parsing.sourceRevision
+            && (card.ui.importFormat || 'auto') === (config.format || 'auto')
+            && (card.ui.importHeaderMode || 'auto') === (config.headerMode || 'auto')) return {state:'parsing', text:'解析中…'};
         if(!card?.raw) return {state:'empty', text:'空卡片'};
         const summary = TableRegistry.getCardSummary(id);
         if(!summary) return {state:'pending', text:`待解析 · ${card.raw.length.toLocaleString()} 字符`};
@@ -268,18 +288,104 @@ const SourceController = {
     },
 
     reorderCard(sourceId, targetId, place) {
+        const before = this._cardRects();
+        this._clearCardDrag(false);
         const moved = dispatch('card:reorder', {sourceId, targetId, place});
         if(moved) {
             this.renderCards(); this.focusCard(sourceId);
             const index = Store.getActiveProject().cardIds.indexOf(sourceId) + 1;
             this.announceCardChange(`${Store.getCard(sourceId).title}已移至第 ${index} 位，拼接顺序已更新`);
         }
+        this._animateCardPositions(before);
         return moved;
     },
 
-    _clearCardDrag() {
-        for(const {root} of this._cardNodes.values()) root.classList.remove('drag-before', 'drag-after', 'dragging');
-        this._dragCardId = null;
+    _cardMoves: new Map(),
+    _cardRects() {
+        const list = $('cardList');
+        if(!list) return new Map();
+        const origin = list.getBoundingClientRect().top - (list.scrollTop || 0);
+        return new Map(Array.from(this._cardNodes, ([id, {root}]) => {
+            const rect = root.getBoundingClientRect();
+            return [id, {top:rect.top - origin, height:rect.height}];
+        }));
+    },
+    _stopCardMotion() {
+        for(const animation of this._cardMoves.values()) animation.cancel();
+        this._cardMoves.clear();
+    },
+    _animateCardPositions(before) {
+        this._stopCardMotion();
+        if(document.hidden || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+        const after = this._cardRects();
+        for(const [id, from] of before) {
+            const root = this._cardNodes.get(id)?.root, to = after.get(id);
+            if(!root?.animate || !to || Math.abs(from.top - to.top) < .5) continue;
+            const offset = this._cardDrag?.offsets.get(id) || 0;
+            const animation = root.animate([
+                {transform:`translateY(${offset + from.top - to.top}px)`},
+                {transform:`translateY(${offset}px)`}
+            ], {duration:180, easing:'cubic-bezier(0.16, 1, 0.3, 1)'});
+            this._cardMoves.set(id, animation);
+            const clear = () => { if(this._cardMoves.get(id) === animation) this._cardMoves.delete(id); };
+            animation.onfinish = clear; animation.oncancel = clear;
+        }
+    },
+    _startCardDrag(id, event) {
+        this._clearCardDrag(false); this._stopCardMotion();
+        const order = (Store.getActiveProject()?.cardIds || []).slice();
+        if(!order.includes(id)) return;
+        this._dragCardId = id;
+        this._cardDrag = {order, rects:this._cardRects(), offsets:new Map(), preview:order.join('\u0001'), target:null};
+        const root = this._cardNodes.get(id).root;
+        if(event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', id);
+            event.dataTransfer.setDragImage?.(root, 12, 12);
+        }
+        root.classList.add('dragging');
+        $('cardList').classList.add('card-list-dragging');
+    },
+    /** Visual-only insertion preview. Store order changes once, on an accepted drop. */
+    _previewCardDrag(event) {
+        const drag = this._cardDrag;
+        if(!drag) return;
+        event.preventDefault(); event.stopPropagation();
+        if(event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        const list = $('cardList');
+        const y = event.clientY - list.getBoundingClientRect().top + (list.scrollTop || 0);
+        const others = drag.order.filter(id => id !== this._dragCardId);
+        let index = others.findIndex(id => y < drag.rects.get(id).top + drag.rects.get(id).height / 2);
+        if(index < 0) index = others.length;
+        const preview = others.slice(); preview.splice(index, 0, this._dragCardId);
+        const signature = preview.join('\u0001');
+        if(signature === drag.preview) return;
+        const before = this._cardRects();
+        const gap = parseFloat(window.getComputedStyle(list).gap) || 0;
+        let top = drag.rects.get(drag.order[0]).top;
+        for(const id of preview) {
+            const rect = drag.rects.get(id), offset = top - rect.top;
+            drag.offsets.set(id, offset);
+            this._cardNodes.get(id).root.style.transform = offset ? `translateY(${offset}px)` : '';
+            top += rect.height + gap;
+        }
+        drag.preview = signature;
+        drag.target = signature === drag.order.join('\u0001') ? null
+            : {id:others[index] || others[others.length - 1], place:index < others.length ? 'before' : 'after'};
+        this._animateCardPositions(before);
+        this.announceCardChange(`放置到第 ${index + 1} 位以调整拼接顺序`);
+    },
+    _clearCardDrag(animate=true) {
+        if(!this._cardDrag) return false;
+        const before = animate ? this._cardRects() : null;
+        this._stopCardMotion();
+        for(const {root} of this._cardNodes.values()) {
+            root.classList.remove('dragging'); root.style.transform = '';
+        }
+        $('cardList')?.classList.remove('card-list-dragging');
+        this._cardDrag = null; this._dragCardId = null;
+        if(before) this._animateCardPositions(before);
+        return true;
     },
 
     /** 卡片删除（经确认） */
@@ -342,21 +448,28 @@ const SourceController = {
         drag.title = '拖拽调整拼接顺序，也可按 Alt+↑/↓';
         drag.setAttribute('aria-label', '调整卡片拼接顺序');
         drag.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h.01M10 3h.01M6 8h.01M10 8h.01M6 13h.01M10 13h.01"/></svg>';
+        const symbol = createEl('span', 'card-source-symbol');
+        symbol.setAttribute('aria-hidden', 'true');
+        symbol.innerHTML = '<svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M2.5 6.5h11M6.5 6.5v7"/></svg>';
         const title = createEl('span', 'data-card-title');
         const badge = createEl('span', 'card-editing-badge');
         badge.textContent = '编辑中';
         const remove = createEl('button', 'card-remove');
         remove.type = 'button'; remove.dataset.cardAct = 'remove';
         remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
-        head.appendChild(drag); head.appendChild(title); head.appendChild(badge); head.appendChild(remove);
+        head.appendChild(drag); head.appendChild(symbol); head.appendChild(title); head.appendChild(badge); head.appendChild(remove);
         const detail = createEl('div', 'data-card-detail');
         const participation = createEl('label', 'card-participation');
         const visible = document.createElement('input');
         visible.type = 'checkbox'; visible.dataset.cardAct = 'visible';
         const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
         participation.appendChild(visible); participation.appendChild(visibleLabel);
+        const statusGroup = createEl('span', 'card-status');
+        const statusDot = createEl('span', 'card-status-dot');
+        statusDot.setAttribute('aria-hidden', 'true');
         const summary = createEl('span', 'data-card-summary');
-        detail.appendChild(participation); detail.appendChild(summary);
+        statusGroup.appendChild(statusDot); statusGroup.appendChild(summary);
+        detail.appendChild(participation); detail.appendChild(statusGroup);
         root.appendChild(head); root.appendChild(detail);
         root.onclick = event => {
             if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
@@ -394,36 +507,9 @@ const SourceController = {
         visible.onchange = () => this.toggleCardVisible(id, visible.checked);
         remove.onclick = event => { event.stopPropagation(); this.removeCard(id); };
         drag.onclick = event => event.stopPropagation();
-        drag.ondragstart = event => {
-            event.stopPropagation();
-            this._dragCardId = id;
-            root.classList.add('dragging');
-            if(event.dataTransfer) {
-                event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData('text/plain', id);
-                event.dataTransfer.setDragImage?.(root, 10, 10);
-            }
-        };
-        drag.ondragend = () => this._clearCardDrag();
-        root.ondragover = event => {
-            if(!this._dragCardId || this._dragCardId === id) return;
-            event.preventDefault(); event.stopPropagation();
-            const rect = root.getBoundingClientRect();
-            const after = event.clientY > rect.top + rect.height / 2;
-            root.classList.toggle('drag-before', !after); root.classList.toggle('drag-after', after);
-            if(event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-        };
-        root.ondragleave = event => {
-            if(!root.contains(event.relatedTarget)) root.classList.remove('drag-before', 'drag-after');
-        };
-        root.ondrop = event => {
-            if(!this._dragCardId) return;
-            event.preventDefault(); event.stopPropagation();
-            const sourceId = this._dragCardId, rect = root.getBoundingClientRect();
-            const place = event.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
-            this._clearCardDrag(); this.reorderCard(sourceId, id, place);
-        };
-        return {root, title, badge, remove, visible, summary, drag};
+        drag.ondragstart = event => { event.stopPropagation(); this._startCardDrag(id, event); };
+        drag.ondragend = () => { if(this._clearCardDrag()) this.announceCardChange('排序已取消，拼接顺序未改变'); };
+        return {root, title, badge, remove, visible, summary, statusDot, drag};
     },
 
     syncEditorContext() {
@@ -444,15 +530,26 @@ const SourceController = {
         const cards = (project?.cardIds || []).map(id => Store.getCard(id)).filter(Boolean);
         const focused = document.activeElement;
         const ids = new Set(cards.map(card => card.id));
+        if(this._cardDrag && this._cardDrag.order.join('\u0001') !== cards.map(card => card.id).join('\u0001')) this._clearCardDrag(false);
+        for(const id of this._parsingCards.keys()) if(!Store.getCard(id)) this._parsingCards.delete(id);
         for(const [id, nodes] of this._cardNodes) if(!ids.has(id) || nodes.root.parentNode !== container) {
+            this._cardMoves.get(id)?.cancel(); this._cardMoves.delete(id);
             if(nodes.root.parentNode === container) container.removeChild(nodes.root);
             this._cardNodes.delete(id);
         }
+        container.ondragover = event => this._previewCardDrag(event);
+        container.ondrop = event => {
+            if(!this._cardDrag) return;
+            event.preventDefault(); event.stopPropagation();
+            const target = this._cardDrag.target;
+            if(target) this.reorderCard(this._dragCardId, target.id, target.place);
+            else this._clearCardDrag();
+        };
         cards.forEach((card, index) => {
             let nodes = this._cardNodes.get(card.id);
             if(!nodes) { nodes = this._createCard(card.id); this._cardNodes.set(card.id, nodes); }
             const active = card.id === project.activeCardId;
-            nodes.root.className = `data-card${active ? ' active' : ''}${card.visible === false ? ' excluded-card' : ''}`;
+            nodes.root.className = `data-card${active ? ' active' : ''}${card.visible === false ? ' excluded-card' : ''}${card.id === this._dragCardId ? ' dragging' : ''}`;
             nodes.root.tabIndex = active ? 0 : -1;
             nodes.root.setAttribute('aria-current', String(active));
             nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '未参与分析' : '参与分析'}`);
@@ -464,6 +561,9 @@ const SourceController = {
             nodes.remove.title = `删除卡片 ${card.title}`;
             nodes.remove.setAttribute('aria-label', nodes.remove.title);
             const status = this.getCardStatus(card.id);
+            nodes.root.dataset.parseState = status.state;
+            nodes.root.setAttribute('aria-busy', String(status.state === 'parsing'));
+            nodes.statusDot.dataset.state = status.state;
             nodes.summary.textContent = status.text;
             nodes.summary.dataset.state = status.state;
             nodes.summary.title = status.text;

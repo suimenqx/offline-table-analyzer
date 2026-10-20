@@ -587,32 +587,54 @@
 .source-actions { margin-bottom:8px; }
 .card-list-toolbar { margin:8px 0 4px; justify-content:space-between; }
 #poolCount { color:var(--text-mid); font-size:12px; }
-.data-card-list { display:flex; flex-direction:column; gap:6px; max-height:min(220px, 28vh); overflow-y:auto; overscroll-behavior:contain; padding:3px; margin:-3px; scrollbar-gutter:stable; }
-.data-card { border:1px solid var(--border); border-radius:12px; padding:5px 8px; background:var(--bg-card); cursor:pointer; flex:none; color:var(--text-strong); }
-.data-card:hover { border-color:var(--border-strong); }
-.data-card.active { border-color:var(--accent); background:var(--accent-soft); }
+.data-card-list { position:relative; display:flex; flex-direction:column; gap:8px; max-height:min(220px, 28vh); overflow-y:auto; overscroll-behavior:contain; padding:3px; margin:-3px; scrollbar-gutter:stable; }
+.data-card { position:relative; border:1px solid var(--border); border-radius:10px; padding:6px 9px; background:var(--bg-card); cursor:pointer; flex:none; color:var(--text-strong); box-shadow:inset 0 1px 0 color-mix(in srgb, var(--text-strong) 4%, transparent); transition:border-color 140ms ease, background-color 140ms ease; }
+.data-card::before { content:''; position:absolute; left:4px; top:12px; bottom:12px; width:1px; border-radius:1px; background:var(--accent); opacity:0; transform:scaleY(.65); transition:opacity 140ms ease, transform 160ms cubic-bezier(0.16, 1, 0.3, 1); }
+.data-card:hover { border-color:var(--border-strong); background:var(--bg-elevated); }
+.data-card.active { border-color:color-mix(in srgb, var(--accent) 65%, var(--border)); background:color-mix(in srgb, var(--accent-soft) 38%, var(--bg-card)); }
+.data-card.active::before { opacity:1; transform:scaleY(1); }
 .data-card.excluded-card { border-style:dashed; }
 .data-card-head { display:flex; align-items:center; gap:6px; min-height:28px; }
-.data-card-title { font-weight:650; font-size:13px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:text; }
-.card-editing-badge { font-size:11px; color:var(--text-strong); flex:none; }
+.card-source-symbol { width:18px; height:22px; display:inline-flex; align-items:center; justify-content:center; color:var(--text-mid); flex:none; }
+.card-source-symbol svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
+.data-card-title { font-weight:650; font-size:14px; line-height:20px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:text; }
+.card-editing-badge { font-size:10px; line-height:18px; padding:0 5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card); color:var(--text-mid); flex:none; }
 .card-editing-badge[hidden] { display:none; }
 .card-remove { width:28px; height:28px; padding:5px; border-color:transparent; background:transparent; color:var(--text-mid); flex:none; }
-.card-remove:hover { color:var(--danger); }
+.card-remove:hover { color:var(--danger); background:var(--bg-card); }
 .card-remove svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; }
 .card-drag-handle { width:24px; height:28px; padding:2px; border:0; background:transparent; color:var(--text-mid); cursor:grab; flex:none; }
+.card-drag-handle:hover, .card-drag-handle:focus-visible { color:var(--text-strong); background:var(--bg-card); }
 .card-drag-handle:active { cursor:grabbing; }
 .card-drag-handle svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2.5; stroke-linecap:round; }
-.data-card.dragging { opacity:.7; }
-.data-card.drag-before { box-shadow:0 -2px 0 var(--accent); }
-.data-card.drag-after { box-shadow:0 2px 0 var(--accent); }
-.data-card-detail { display:flex; align-items:center; gap:10px; min-height:24px; font-size:12px; }
-.card-participation { display:flex; align-items:center; gap:4px; margin:0; min-height:24px; color:var(--text-mid); font-size:12px; font-weight:400; cursor:pointer; flex:none; }
-.card-participation input { width:15px; height:15px; margin:0; accent-color:var(--accent); cursor:pointer; }
-.data-card-summary { color:var(--text-mid); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.card-list-dragging { cursor:grabbing; }
+.data-card.dragging { opacity:.55; border-style:dashed; border-color:var(--accent); background:var(--accent-soft); }
+.data-card-detail { display:flex; align-items:center; gap:10px; min-height:22px; margin-top:2px; font-size:11px; }
+.card-participation { display:flex; align-items:center; gap:5px; margin:0; min-height:24px; color:var(--text-mid); font-size:11px; font-weight:400; cursor:pointer; flex:none; }
+.card-participation input { width:14px; height:14px; margin:0; accent-color:var(--accent); cursor:pointer; }
+.card-status { display:flex; align-items:center; gap:6px; min-width:0; }
+.card-status-dot { width:6px; height:6px; border:1px solid var(--border-strong); border-radius:50%; flex:none; }
+.card-status-dot[data-state="pending"] { background:var(--text-mid); border-color:var(--text-mid); }
+.card-status-dot[data-state="ready"] { background:var(--success); border-color:var(--success); }
+.card-status-dot[data-state="confirm"] { background:var(--warning); border-color:var(--warning); }
+.card-status-dot[data-state="error"] { background:var(--danger); border-color:var(--danger); }
+.card-status-dot[data-state="parsing"] { width:8px; height:8px; border-color:var(--primary); border-right-color:transparent; animation:card-parsing 800ms linear infinite; }
+.data-card-summary { color:var(--text-mid); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .data-card-summary[data-state="error"] { color:var(--danger); }
 .data-card-summary[data-state="confirm"] { color:var(--text-strong); font-weight:600; }
 .view-unavailable { background:#fee2e2; border-color:#fca5a5; color:var(--danger,#b91c1c); }
-.data-card-title-input { width:100%; height:26px; font:inherit; border:1px solid var(--accent); border-radius:5px; padding:1px 5px; background:var(--bg-card); color:var(--text-main); }
+.data-card-title-input { width:100%; height:26px; font:inherit; border:1px solid var(--primary); border-radius:5px; padding:1px 5px; background:var(--bg-card); color:var(--text-main); caret-color:var(--primary); }
+@keyframes card-parsing { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+    .data-card, .data-card::before { transition:none; }
+    .card-status-dot[data-state="parsing"] { animation:none; }
+}
+@media (forced-colors: active) {
+    .data-card { border-color:CanvasText; box-shadow:none; }
+    .data-card.active { border-color:Highlight; }
+    .data-card.active::before { background:Highlight; }
+    .card-status-dot { forced-color-adjust:auto; }
+}
     </style>
 </head>
 <body>
@@ -9407,8 +9429,28 @@ const SourceController = {
 
     // ── 卡片列表（数据段区由 SourceController 拥有：选中/显隐/删除/重命名/新增） ──
 
+    _parsingCards: new Map(),
+    /** Session-only presentation, matched by context identity so late jobs cannot clear newer feedback. */
+    setCardParsing(context, active) {
+        const card = Store.getCard(context?.docId);
+        if(active) {
+            if(!card || card.sourceRevision !== context.sourceRevision) return false;
+            this._parsingCards.set(card.id, context);
+        } else {
+            if(this._parsingCards.get(context?.docId) !== context) return false;
+            this._parsingCards.delete(context.docId);
+        }
+        this.renderCards();
+        return true;
+    },
+
     getCardStatus(id) {
         const card = Store.getCard(id);
+        const parsing = this._parsingCards.get(id);
+        const config = parsing && (parsing.config || parsing.options || {});
+        if(card && parsing && card.sourceRevision === parsing.sourceRevision
+            && (card.ui.importFormat || 'auto') === (config.format || 'auto')
+            && (card.ui.importHeaderMode || 'auto') === (config.headerMode || 'auto')) return {state:'parsing', text:'解析中…'};
         if(!card?.raw) return {state:'empty', text:'空卡片'};
         const summary = TableRegistry.getCardSummary(id);
         if(!summary) return {state:'pending', text:`待解析 · ${card.raw.length.toLocaleString()} 字符`};
@@ -9474,18 +9516,104 @@ const SourceController = {
     },
 
     reorderCard(sourceId, targetId, place) {
+        const before = this._cardRects();
+        this._clearCardDrag(false);
         const moved = dispatch('card:reorder', {sourceId, targetId, place});
         if(moved) {
             this.renderCards(); this.focusCard(sourceId);
             const index = Store.getActiveProject().cardIds.indexOf(sourceId) + 1;
             this.announceCardChange(`${Store.getCard(sourceId).title}已移至第 ${index} 位，拼接顺序已更新`);
         }
+        this._animateCardPositions(before);
         return moved;
     },
 
-    _clearCardDrag() {
-        for(const {root} of this._cardNodes.values()) root.classList.remove('drag-before', 'drag-after', 'dragging');
-        this._dragCardId = null;
+    _cardMoves: new Map(),
+    _cardRects() {
+        const list = $('cardList');
+        if(!list) return new Map();
+        const origin = list.getBoundingClientRect().top - (list.scrollTop || 0);
+        return new Map(Array.from(this._cardNodes, ([id, {root}]) => {
+            const rect = root.getBoundingClientRect();
+            return [id, {top:rect.top - origin, height:rect.height}];
+        }));
+    },
+    _stopCardMotion() {
+        for(const animation of this._cardMoves.values()) animation.cancel();
+        this._cardMoves.clear();
+    },
+    _animateCardPositions(before) {
+        this._stopCardMotion();
+        if(document.hidden || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+        const after = this._cardRects();
+        for(const [id, from] of before) {
+            const root = this._cardNodes.get(id)?.root, to = after.get(id);
+            if(!root?.animate || !to || Math.abs(from.top - to.top) < .5) continue;
+            const offset = this._cardDrag?.offsets.get(id) || 0;
+            const animation = root.animate([
+                {transform:`translateY(${offset + from.top - to.top}px)`},
+                {transform:`translateY(${offset}px)`}
+            ], {duration:180, easing:'cubic-bezier(0.16, 1, 0.3, 1)'});
+            this._cardMoves.set(id, animation);
+            const clear = () => { if(this._cardMoves.get(id) === animation) this._cardMoves.delete(id); };
+            animation.onfinish = clear; animation.oncancel = clear;
+        }
+    },
+    _startCardDrag(id, event) {
+        this._clearCardDrag(false); this._stopCardMotion();
+        const order = (Store.getActiveProject()?.cardIds || []).slice();
+        if(!order.includes(id)) return;
+        this._dragCardId = id;
+        this._cardDrag = {order, rects:this._cardRects(), offsets:new Map(), preview:order.join('\u0001'), target:null};
+        const root = this._cardNodes.get(id).root;
+        if(event.dataTransfer) {
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', id);
+            event.dataTransfer.setDragImage?.(root, 12, 12);
+        }
+        root.classList.add('dragging');
+        $('cardList').classList.add('card-list-dragging');
+    },
+    /** Visual-only insertion preview. Store order changes once, on an accepted drop. */
+    _previewCardDrag(event) {
+        const drag = this._cardDrag;
+        if(!drag) return;
+        event.preventDefault(); event.stopPropagation();
+        if(event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+        const list = $('cardList');
+        const y = event.clientY - list.getBoundingClientRect().top + (list.scrollTop || 0);
+        const others = drag.order.filter(id => id !== this._dragCardId);
+        let index = others.findIndex(id => y < drag.rects.get(id).top + drag.rects.get(id).height / 2);
+        if(index < 0) index = others.length;
+        const preview = others.slice(); preview.splice(index, 0, this._dragCardId);
+        const signature = preview.join('\u0001');
+        if(signature === drag.preview) return;
+        const before = this._cardRects();
+        const gap = parseFloat(window.getComputedStyle(list).gap) || 0;
+        let top = drag.rects.get(drag.order[0]).top;
+        for(const id of preview) {
+            const rect = drag.rects.get(id), offset = top - rect.top;
+            drag.offsets.set(id, offset);
+            this._cardNodes.get(id).root.style.transform = offset ? `translateY(${offset}px)` : '';
+            top += rect.height + gap;
+        }
+        drag.preview = signature;
+        drag.target = signature === drag.order.join('\u0001') ? null
+            : {id:others[index] || others[others.length - 1], place:index < others.length ? 'before' : 'after'};
+        this._animateCardPositions(before);
+        this.announceCardChange(`放置到第 ${index + 1} 位以调整拼接顺序`);
+    },
+    _clearCardDrag(animate=true) {
+        if(!this._cardDrag) return false;
+        const before = animate ? this._cardRects() : null;
+        this._stopCardMotion();
+        for(const {root} of this._cardNodes.values()) {
+            root.classList.remove('dragging'); root.style.transform = '';
+        }
+        $('cardList')?.classList.remove('card-list-dragging');
+        this._cardDrag = null; this._dragCardId = null;
+        if(before) this._animateCardPositions(before);
+        return true;
     },
 
     /** 卡片删除（经确认） */
@@ -9548,21 +9676,28 @@ const SourceController = {
         drag.title = '拖拽调整拼接顺序，也可按 Alt+↑/↓';
         drag.setAttribute('aria-label', '调整卡片拼接顺序');
         drag.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h.01M10 3h.01M6 8h.01M10 8h.01M6 13h.01M10 13h.01"/></svg>';
+        const symbol = createEl('span', 'card-source-symbol');
+        symbol.setAttribute('aria-hidden', 'true');
+        symbol.innerHTML = '<svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M2.5 6.5h11M6.5 6.5v7"/></svg>';
         const title = createEl('span', 'data-card-title');
         const badge = createEl('span', 'card-editing-badge');
         badge.textContent = '编辑中';
         const remove = createEl('button', 'card-remove');
         remove.type = 'button'; remove.dataset.cardAct = 'remove';
         remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
-        head.appendChild(drag); head.appendChild(title); head.appendChild(badge); head.appendChild(remove);
+        head.appendChild(drag); head.appendChild(symbol); head.appendChild(title); head.appendChild(badge); head.appendChild(remove);
         const detail = createEl('div', 'data-card-detail');
         const participation = createEl('label', 'card-participation');
         const visible = document.createElement('input');
         visible.type = 'checkbox'; visible.dataset.cardAct = 'visible';
         const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
         participation.appendChild(visible); participation.appendChild(visibleLabel);
+        const statusGroup = createEl('span', 'card-status');
+        const statusDot = createEl('span', 'card-status-dot');
+        statusDot.setAttribute('aria-hidden', 'true');
         const summary = createEl('span', 'data-card-summary');
-        detail.appendChild(participation); detail.appendChild(summary);
+        statusGroup.appendChild(statusDot); statusGroup.appendChild(summary);
+        detail.appendChild(participation); detail.appendChild(statusGroup);
         root.appendChild(head); root.appendChild(detail);
         root.onclick = event => {
             if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
@@ -9600,36 +9735,9 @@ const SourceController = {
         visible.onchange = () => this.toggleCardVisible(id, visible.checked);
         remove.onclick = event => { event.stopPropagation(); this.removeCard(id); };
         drag.onclick = event => event.stopPropagation();
-        drag.ondragstart = event => {
-            event.stopPropagation();
-            this._dragCardId = id;
-            root.classList.add('dragging');
-            if(event.dataTransfer) {
-                event.dataTransfer.effectAllowed = 'move';
-                event.dataTransfer.setData('text/plain', id);
-                event.dataTransfer.setDragImage?.(root, 10, 10);
-            }
-        };
-        drag.ondragend = () => this._clearCardDrag();
-        root.ondragover = event => {
-            if(!this._dragCardId || this._dragCardId === id) return;
-            event.preventDefault(); event.stopPropagation();
-            const rect = root.getBoundingClientRect();
-            const after = event.clientY > rect.top + rect.height / 2;
-            root.classList.toggle('drag-before', !after); root.classList.toggle('drag-after', after);
-            if(event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-        };
-        root.ondragleave = event => {
-            if(!root.contains(event.relatedTarget)) root.classList.remove('drag-before', 'drag-after');
-        };
-        root.ondrop = event => {
-            if(!this._dragCardId) return;
-            event.preventDefault(); event.stopPropagation();
-            const sourceId = this._dragCardId, rect = root.getBoundingClientRect();
-            const place = event.clientY > rect.top + rect.height / 2 ? 'after' : 'before';
-            this._clearCardDrag(); this.reorderCard(sourceId, id, place);
-        };
-        return {root, title, badge, remove, visible, summary, drag};
+        drag.ondragstart = event => { event.stopPropagation(); this._startCardDrag(id, event); };
+        drag.ondragend = () => { if(this._clearCardDrag()) this.announceCardChange('排序已取消，拼接顺序未改变'); };
+        return {root, title, badge, remove, visible, summary, statusDot, drag};
     },
 
     syncEditorContext() {
@@ -9650,15 +9758,26 @@ const SourceController = {
         const cards = (project?.cardIds || []).map(id => Store.getCard(id)).filter(Boolean);
         const focused = document.activeElement;
         const ids = new Set(cards.map(card => card.id));
+        if(this._cardDrag && this._cardDrag.order.join('\u0001') !== cards.map(card => card.id).join('\u0001')) this._clearCardDrag(false);
+        for(const id of this._parsingCards.keys()) if(!Store.getCard(id)) this._parsingCards.delete(id);
         for(const [id, nodes] of this._cardNodes) if(!ids.has(id) || nodes.root.parentNode !== container) {
+            this._cardMoves.get(id)?.cancel(); this._cardMoves.delete(id);
             if(nodes.root.parentNode === container) container.removeChild(nodes.root);
             this._cardNodes.delete(id);
         }
+        container.ondragover = event => this._previewCardDrag(event);
+        container.ondrop = event => {
+            if(!this._cardDrag) return;
+            event.preventDefault(); event.stopPropagation();
+            const target = this._cardDrag.target;
+            if(target) this.reorderCard(this._dragCardId, target.id, target.place);
+            else this._clearCardDrag();
+        };
         cards.forEach((card, index) => {
             let nodes = this._cardNodes.get(card.id);
             if(!nodes) { nodes = this._createCard(card.id); this._cardNodes.set(card.id, nodes); }
             const active = card.id === project.activeCardId;
-            nodes.root.className = `data-card${active ? ' active' : ''}${card.visible === false ? ' excluded-card' : ''}`;
+            nodes.root.className = `data-card${active ? ' active' : ''}${card.visible === false ? ' excluded-card' : ''}${card.id === this._dragCardId ? ' dragging' : ''}`;
             nodes.root.tabIndex = active ? 0 : -1;
             nodes.root.setAttribute('aria-current', String(active));
             nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '未参与分析' : '参与分析'}`);
@@ -9670,6 +9789,9 @@ const SourceController = {
             nodes.remove.title = `删除卡片 ${card.title}`;
             nodes.remove.setAttribute('aria-label', nodes.remove.title);
             const status = this.getCardStatus(card.id);
+            nodes.root.dataset.parseState = status.state;
+            nodes.root.setAttribute('aria-busy', String(status.state === 'parsing'));
+            nodes.statusDot.dataset.state = status.state;
             nodes.summary.textContent = status.text;
             nodes.summary.dataset.state = status.state;
             nodes.summary.title = status.text;
@@ -12079,6 +12201,7 @@ validflag Time      Level   Message                 Code
         const generation=++this._parseGeneration;this._parseToken=context;
         const job=this.showJob('正在后台解析完整原文…');
         TableRegistry.setResult(null);
+        SourceController.setCardParsing(context,true);
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','true');
         const key=`${context.docId}:${context.sourceRevision}:${JSON.stringify(options)}`;
         try {
@@ -12109,6 +12232,7 @@ validflag Time      Level   Message                 Code
             Toast.show(error.message,true);this.updateImportSummary();this.requestRender();
             return false;
         } finally {
+            SourceController.setCardParsing(context,false);
             if(this._pendingParse?.context===context)this._pendingParse=null;
             this.finishJob(job);
             if(generation===this._parseGeneration && $('previewArea'))$('previewArea').setAttribute('aria-busy','false');

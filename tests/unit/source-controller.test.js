@@ -85,6 +85,32 @@ describe('SourceController.detectFormat', () => {
 });
 
 describe('SourceController card status', () => {
+  it('shows actual in-flight parsing without persisting a busy flag, then restores the summary', () => {
+    const card=Store.curr();
+    const context={docId:card.id,sourceRevision:card.sourceRevision,config:{format:'auto',headerMode:'auto'}};
+    const before=JSON.stringify(Store.serializeState());
+    assert.equal(SourceController.setCardParsing(context,true),true);
+    assert.deepEqual(SourceController.getCardStatus(card.id),{state:'parsing',text:'解析中…'});
+    assert.equal(JSON.stringify(Store.serializeState()),before);
+    OTA.require('table-registry').TableRegistry.recordParse(context,{format:'json',label:'JSON 表格',tables:[{headers:['id'],rows:[['1']]}]});
+    assert.equal(SourceController.setCardParsing(context,false),true);
+    assert.deepEqual(SourceController.getCardStatus(card.id),{state:'ready',text:'JSON 表格 · 1 行 · 已解析'});
+  });
+
+  it('does not let obsolete completion or a changed source retain or clear another parse status', () => {
+    const card=Store.curr();
+    const first={docId:card.id,sourceRevision:card.sourceRevision};
+    const next={...first};
+    SourceController.setCardParsing(first,true);
+    SourceController.setCardParsing(next,true);
+    assert.equal(SourceController.setCardParsing(first,false),false);
+    assert.equal(SourceController.getCardStatus(card.id).state,'parsing');
+    Store.transition('source:replace',{text:'new source'});
+    assert.equal(SourceController.getCardStatus(card.id).state,'pending');
+    assert.equal(SourceController.setCardParsing(first,true),false);
+    SourceController.setCardParsing(next,false);
+  });
+
   it('distinguishes empty, pending, successful, ambiguous and failed parses without reparsing data', () => {
     const {TableRegistry} = OTA.require('table-registry');
     assert.equal(SourceController.getCardStatus('a').state, 'pending');

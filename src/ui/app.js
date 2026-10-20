@@ -1182,6 +1182,7 @@ validflag Time      Level   Message                 Code
         const generation=++this._parseGeneration;this._parseToken=context;
         const job=this.showJob('正在后台解析完整原文…');
         TableRegistry.setResult(null);
+        SourceController.setCardParsing(context,true);
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','true');
         const key=`${context.docId}:${context.sourceRevision}:${JSON.stringify(options)}`;
         try {
@@ -1212,6 +1213,7 @@ validflag Time      Level   Message                 Code
             Toast.show(error.message,true);this.updateImportSummary();this.requestRender();
             return false;
         } finally {
+            SourceController.setCardParsing(context,false);
             if(this._pendingParse?.context===context)this._pendingParse=null;
             this.finishJob(job);
             if(generation===this._parseGeneration && $('previewArea'))$('previewArea').setAttribute('aria-busy','false');

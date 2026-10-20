@@ -13,10 +13,43 @@ function setup() {
     CustomEvent:dom.MockCustomEvent,Option:function(text,value){return {text,value};}});
   const {App}=OTA.start('app');
   ({Store}=OTA.require('store'));({SourceController}=OTA.require('source-controller'));
-  return {App,Store,SourceController,TableRegistry:OTA.require('table-registry').TableRegistry,dom};
+  return {App,Store,SourceController,TableRegistry:OTA.require('table-registry').TableRegistry,dom,OTA};
 }
 
 describe('Card parse and preview UI metadata', () => {
+  it('connects the card busy state to a real background parse, not to arbitrary queries', async t => {
+    const {App,Store,SourceController,OTA,dom}=setup();
+    const {WorkerRuntime}=OTA.require('worker-runtime');
+    const {BackgroundService}=OTA.require('background-service');
+    const previousWorker=globalThis.Worker;
+    const held=[];
+    globalThis.Worker=class WorkerAdapter {
+      constructor() {
+        this.port={postMessage:message=>queueMicrotask(()=>{if(!this.closed)this.onmessage?.({data:message});})};
+        WorkerRuntime.start(this.port);
+      }
+      postMessage(message) {
+        if(message.kind==='parse') held.push(()=>this.port.onmessage({data:message}));
+        else this.port.onmessage({data:message});
+      }
+      terminate(){this.closed=true;}
+    };
+    t.after(()=>{BackgroundService.cancel();if(previousWorker===undefined)delete globalThis.Worker;else globalThis.Worker=previousWorker;});
+    SourceController.displayText(JSON.stringify([{value:'x'.repeat(132*1024)}]));
+    // displayText uses Store.raw in large-preview mode, exactly as real large paste does.
+    Store.transition('source:replace',{text:JSON.stringify([{value:'x'.repeat(132*1024)}])});
+    const pending=App.run(false);
+    for(let i=0;i<50 && !held.length;i++)await new Promise(resolve=>setTimeout(resolve,2));
+    assert.equal(held.length,1);
+    assert.equal(SourceController.getCardStatus(Store.curr().id).state,'parsing');
+    const cardElement=dom.getElementById('cardList').children.find(node=>node.dataset.cardId===Store.curr().id);
+    assert.equal(cardElement['aria-busy'],'true');
+    held.shift()();
+    assert.equal(await pending,true);
+    assert.match(SourceController.getCardStatus(Store.curr().id).text,/1 行 · 已解析/);
+    assert.equal(cardElement['aria-busy'],'false');
+  });
+
   it('updates the legacy linked card label immediately when its project is renamed', async () => {
     const {Store,dom}=setup();
     Store.transition('card:rename',{id:Store.curr().id,title:Store.getActiveProject().title});

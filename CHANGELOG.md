@@ -6,6 +6,8 @@ All notable changes are documented here. The project follows semantic versioning
 
 ### 卡片式数据源工作区
 
+- Refine card edges, typography, source symbols and status indicators within the existing warm-white/brown/teal and graphite palettes; retain compact layout, native participation controls and visible keyboard focus.
+- Preview drag insertion with smooth neighbor movement without changing persisted order until drop; animate committed keyboard ordering, restore cancelled previews and respect reduced motion. Report real in-flight background parsing with stale-job-safe, session-only card feedback.
 - Compact the source-card list into two-line, independently scrollable items; separate editing state from the native participation checkbox, name the editor's paste target, and explain caret/selection versus whole-card replacement.
 - Preserve card DOM/focus across status, rename and visibility updates; add arrow/Home/End navigation and drag-handle/Alt+arrow reordering with concatenation-order feedback.
 - Use consistent default data-segment names without rewriting historical names, with an explicit optional export-prefix policy to retain project-based default downloads and custom/legacy card naming.
