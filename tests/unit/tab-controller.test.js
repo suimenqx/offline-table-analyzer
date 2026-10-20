@@ -105,10 +105,11 @@ describe('TabController — startRename', () => {
 
 // ---------------------------------------------------------------------------
 describe('TabController — canonical mutations', () => {
-  it('removes through tab:remove and activates the adjacent tab', () => {
+  it('removes immediately through project:remove and activates the adjacent tab', () => {
     const previousConfirm = globalThis.confirm;
     globalThis.confirm = () => true;
     try {
+      globalThis.confirm = () => assert.fail('Tab deletion must not request confirmation');
       const result = TabController.remove('b');
       assert.equal(result, true);
       assert.equal(Store.state.docs.map(doc => doc.id).join(''), 'ac');
@@ -127,6 +128,7 @@ describe('TabController — canonical mutations', () => {
       Store.state.projects = [{ id: 'only', title: 'Only', cardIds: ['only'], activeCardId: 'only', enabledViews: [], views: [] }];
       Store.state.activeProjectId = 'only';
       Store.state.activeId = 'only';
+      globalThis.confirm = () => assert.fail('Final tab deletion must not request confirmation');
       assert.equal(TabController.remove('only'), true);
       assert.equal(Store.state.projects.length, 0);
       assert.equal(Store.state.docs.length, 0);

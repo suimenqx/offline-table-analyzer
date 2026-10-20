@@ -12,13 +12,24 @@ async function parse(page, text) {
   await expect(page.locator('#parseStatusText')).toContainText(/\d[\d,]* 行/);
 }
 
+function dismissUnexpectedDialogs(page) {
+  const messages = [];
+  page.on('dialog', async dialog => {
+    // Navigation's pending-save guard is separate from deleting a card/tab.
+    if (dialog.type() === 'beforeunload') { await dialog.accept(); return; }
+    messages.push(dialog.message());
+    await dialog.dismiss();
+  });
+  return messages;
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/index.html');
-  page.on('dialog', dialog => dialog.accept());
   await page.locator('#autoParseToggle').uncheck();
 });
 
-test('全部页签可删除：空状态刷新后保留，再新增从 Analysis 1 开始', async ({ page }) => {
+test('点击直接删除页签：空状态刷新后保留，再新增从 Analysis 1 开始', async ({ page }) => {
+  const dialogs = dismissUnexpectedDialogs(page);
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
   await parse(page, source('old'));
@@ -45,9 +56,11 @@ test('全部页签可删除：空状态刷新后保留，再新增从 Analysis 1
   await expect(page.locator('#rawInput')).toHaveValue('');
   await expect(page.locator('.table-container')).toHaveCount(0);
   expect(errors).toEqual([]);
+  expect(dialogs).toEqual([]);
 });
 
-test('删除卡片释放其后台数据，最后一张也能删；刷新后可重新新增', async ({ page }) => {
+test('点击直接删除卡片并释放其后台数据，最后一张也能删；刷新后可重新新增', async ({ page }) => {
+  const dialogs = dismissUnexpectedDialogs(page);
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
   await parse(page, source('A'));
@@ -72,6 +85,7 @@ test('删除卡片释放其后台数据，最后一张也能删；刷新后可�
   await expect(page.locator('.table-container')).toHaveCount(0);
   await expect(page.locator('#poolCount')).toHaveText('表池 0/0 张卡片');
   await expect(page.locator('#addCardBtn')).toBeFocused();
+  await page.keyboard.press('Control+s');
   await page.reload();
   await expect(cards(page)).toHaveCount(0);
   await expect(tabs(page)).toHaveCount(1);
@@ -82,6 +96,29 @@ test('删除卡片释放其后台数据，最后一张也能删；刷新后可�
   await parse(page, source('fresh'));
   await expect(shown(page)).toHaveText('Show: 1');
   expect(errors).toEqual([]);
+  expect(dialogs).toEqual([]);
+});
+
+test('Delete 键直接删除卡片与页签，焦点依次回到相邻项或新增按钮', async ({ page }) => {
+  const dialogs = dismissUnexpectedDialogs(page);
+  await page.locator('#addTabBtn').click();
+  await page.locator('#addCardBtn').click();
+  await expect(cards(page)).toHaveCount(2);
+  await cards(page).last().focus();
+  await cards(page).last().press('Delete');
+  await expect(cards(page)).toHaveCount(1);
+  await expect(cards(page).first()).toBeFocused();
+  await cards(page).first().press('Delete');
+  await expect(cards(page)).toHaveCount(0);
+  await expect(page.locator('#addCardBtn')).toBeFocused();
+  await tabs(page).last().focus();
+  await tabs(page).last().press('Delete');
+  await expect(tabs(page)).toHaveCount(1);
+  await expect(tabs(page).first()).toBeFocused();
+  await tabs(page).first().press('Delete');
+  await expect(tabs(page)).toHaveCount(0);
+  await expect(page.locator('#addTabBtn')).toBeFocused();
+  expect(dialogs).toEqual([]);
 });
 
 test('无卡片工程与完全空工作区的备份均可恢复，不自动补建', async ({ page }) => {
@@ -102,6 +139,8 @@ test('无卡片工程与完全空工作区的备份均可恢复，不自动补�
     expect(payload.docs).toEqual([]);
     expect(payload.projects).toHaveLength(projectCount);
     await page.locator('#addTabBtn').click();
+    // Workspace restore still asks whether to replace or append; deletion does not.
+    page.once('dialog', dialog => dialog.accept());
     await page.locator('#fileInputTab').setInputFiles({ name:'empty-workspace.json', mimeType:'application/json', buffer });
     await expect(tabs(page)).toHaveCount(projectCount);
     await expect(cards(page)).toHaveCount(0);

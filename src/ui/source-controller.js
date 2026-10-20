@@ -388,11 +388,9 @@ const SourceController = {
         return true;
     },
 
-    /** 卡片删除（经确认） */
+    /** 点击删除或按 Delete，直接通过命令路径删除卡片。 */
     removeCard(id) {
-        const card = Store.getCard(id);
-        if(!card) return false;
-        if(typeof confirm === 'function' && !confirm(`删除卡片“${card.title}”？其数据与解析设置将移除。`)) return false;
+        if(!Store.getCard(id)) return false;
         return dispatch('card:remove', { id }) === true;
     },
 

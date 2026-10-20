@@ -211,15 +211,10 @@ const TabController = {
         dispatch('project:create');
     },
 
-    /** Remove a 工程 through the canonical command path, including the final project. */
+    /** Remove a 工程 immediately through the canonical command path, including the final project. */
     remove(id) {
         const project = Store.state.projects.find(item => item.id === id);
         if (!project) return false;
-        const isLast = Store.state.projects.length <= 1;
-        if (typeof confirm === 'function' && !confirm(isLast
-            ? `删除最后一个工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除，工作区将重置为空。`
-            : `确定关闭工程“${project.title || 'Analysis'}”？\n该工程的所有卡片与分析规则将被删除。`)) return false;
-
         TabController._persistCurrentSource();
         return dispatch('project:remove', { id });
     },

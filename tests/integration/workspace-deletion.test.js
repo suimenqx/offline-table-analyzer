@@ -13,7 +13,7 @@ function setup() {
   target.add = option => target.options.push(option);
   const { OTA } = loadModules(['app'], {
     document:dom.document, window:dom.window, localStorage:createStorageMock(),
-    CustomEvent:dom.MockCustomEvent, confirm:() => true,
+    CustomEvent:dom.MockCustomEvent, confirm:() => assert.fail('Card and tab deletion must not request confirmation'),
     Option:function(text, value) { return { text, value }; },
   });
   const { App } = OTA.start('app');
