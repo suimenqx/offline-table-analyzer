@@ -32,7 +32,12 @@ test('卡片精修保留经典明暗色板、紧凑尺寸和减少动态下的�
   await page.locator('#themeBtn').click();
   expect(await palette()).toEqual(['#b47760','#64d8c8','#17181b','#202125']);
   await page.emulateMedia({reducedMotion:'reduce'});
-  await cards(page).first().focus();
+  // Enter with an actual keyboard action: programmatic focus after a mouse
+  // theme click does not opt into Chromium's :focus-visible modality.
+  await cards(page).first().locator('[data-card-act="drag"]').focus();
+  await page.keyboard.press('Shift+Tab');
+  await expect(cards(page).first()).toBeFocused();
+  await expect(cards(page).first()).toHaveCSS('outline-style','solid');
   await cards(page).first().press('Alt+ArrowDown');
   expect(await titles(page)).toEqual(['数据段 2','数据段 1']);
   await expect(cards(page).last()).toBeFocused();
@@ -50,7 +55,13 @@ test('拖拽预览让位但不写入顺序，Escape 取消，落下才提交并�
   await page.mouse.move(start.x+start.width/2,start.y+start.height/2);
   await page.mouse.down();
   await page.mouse.move(start.x+start.width/2+8,start.y+start.height/2+8,{steps:3});
-  await page.mouse.move(end.x+40,end.y+end.height-4,{steps:8});
+  await expect(cards(page).first()).toHaveClass(/dragging/);
+  const list=await page.locator('#cardList').boundingBox();
+  // A card's full box may extend outside the scroll viewport. Aim at its
+  // visible portion, and repeat the move so native HTML dragover is delivered.
+  const x=Math.min(end.x+40,list.x+list.width-12), y=Math.min(end.y+end.height-4,list.y+list.height-8);
+  await page.mouse.move(x,y,{steps:8});
+  await page.mouse.move(x,y);
   await expect(page.locator('#cardFeedback')).toContainText('放置到第 3 位');
   await expect.poll(async()=>{const a=await cards(page).first().boundingBox(),b=await cards(page).last().boundingBox();return a.y>b.y;}).toBe(true);
   expect(await storedTitles(page)).toEqual(['数据段 1','数据段 2','数据段 3']);
