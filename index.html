@@ -9707,7 +9707,7 @@ const SourceController = {
             if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
             event.preventDefault(); this.startCardRename(id);
         };
-        root.onfocusin = () => { this._focusedCardId = id; this._syncCardTabStops(); };
+        root.addEventListener('focusin', () => { this._focusedCardId = id; this._syncCardTabStops(); });
         root.onkeydown = event => {
             if(event.target.closest('.data-card-title-input')) return;
             const control = event.target.closest('[data-card-act]');

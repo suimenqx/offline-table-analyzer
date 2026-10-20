@@ -35,6 +35,7 @@ test('卡片精修保留经典明暗色板、紧凑尺寸和减少动态下的�
   // Enter with an actual keyboard action: programmatic focus after a mouse
   // theme click does not opt into Chromium's :focus-visible modality.
   await cards(page).first().locator('[data-card-act="drag"]').focus();
+  await expect(cards(page).first()).toHaveAttribute('tabindex','0');
   await page.keyboard.press('Shift+Tab');
   await expect(cards(page).first()).toBeFocused();
   await expect(cards(page).first()).toHaveCSS('outline-style','solid');
