@@ -24,6 +24,29 @@ const byClass = (root, name) => {
 const headerText = 'alpha,beta\none,two\nthree,four';
 
 describe('Visible parse status and confirmation feedback', () => {
+  it('separates name/status from metadata/participation without duplicate editing decorations', () => {
+    const {dom} = setup();
+    SourceController.renderCards();
+    const card = dom.getElementById('cardList').children[0];
+    const head = byClass(card, 'data-card-head');
+    const detail = byClass(card, 'data-card-detail');
+    assert.equal(byClass(card, 'card-source-symbol'), null);
+    assert.equal(byClass(card, 'card-editing-badge'), null);
+    assert.deepEqual(head.children.map(node => node.className), [
+      'card-drag-handle', 'data-card-title', 'card-status-badge', 'card-remove',
+    ]);
+    assert.deepEqual(detail.children.map(node => node.className), ['data-card-summary', 'card-participation']);
+    assert.equal(card['aria-current'], 'true');
+    assert.match(card['aria-label'], /编辑中/);
+    assert.equal(dom.getElementById('sourceEditorLabel').textContent, `当前编辑：${Store.curr().title}`);
+    const status = byClass(head, 'card-status-label');
+    Store.transition('source:replace', {text:headerText});
+    SourceController.renderCards();
+    assert.equal(dom.getElementById('cardList').children[0], card, 'status updates keep the keyed card node');
+    assert.equal(byClass(head, 'card-status-label'), status);
+    assert.equal(status.textContent, '待解析');
+  });
+
   it('keeps a separate, readable status label beside the light in every card state', () => {
     const {TableRegistry, dom} = setup();
     const id = Store.curr().id;

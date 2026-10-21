@@ -446,31 +446,24 @@ const SourceController = {
         drag.title = '拖拽调整拼接顺序，也可按 Alt+↑/↓';
         drag.setAttribute('aria-label', '调整卡片拼接顺序');
         drag.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h.01M10 3h.01M6 8h.01M10 8h.01M6 13h.01M10 13h.01"/></svg>';
-        const symbol = createEl('span', 'card-source-symbol');
-        symbol.setAttribute('aria-hidden', 'true');
-        symbol.innerHTML = '<svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M2.5 6.5h11M6.5 6.5v7"/></svg>';
         const title = createEl('span', 'data-card-title');
-        const badge = createEl('span', 'card-editing-badge');
-        badge.textContent = '编辑中';
-        const remove = createEl('button', 'card-remove');
-        remove.type = 'button'; remove.dataset.cardAct = 'remove';
-        remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
-        head.appendChild(drag); head.appendChild(symbol); head.appendChild(title); head.appendChild(badge); head.appendChild(remove);
-        const detail = createEl('div', 'data-card-detail');
-        const participation = createEl('label', 'card-participation');
-        const visible = document.createElement('input');
-        visible.type = 'checkbox'; visible.dataset.cardAct = 'visible';
-        const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
-        participation.appendChild(visible); participation.appendChild(visibleLabel);
-        const statusGroup = createEl('span', 'card-status');
         const statusBadge = createEl('span', 'card-status-badge');
         const statusDot = createEl('span', 'card-status-dot');
         statusDot.setAttribute('aria-hidden', 'true');
         const statusLabel = createEl('span', 'card-status-label');
         statusBadge.appendChild(statusDot); statusBadge.appendChild(statusLabel);
+        const remove = createEl('button', 'card-remove');
+        remove.type = 'button'; remove.dataset.cardAct = 'remove';
+        remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
+        head.appendChild(drag); head.appendChild(title); head.appendChild(statusBadge); head.appendChild(remove);
+        const detail = createEl('div', 'data-card-detail');
         const summary = createEl('span', 'data-card-summary');
-        statusGroup.appendChild(statusBadge); statusGroup.appendChild(summary);
-        detail.appendChild(participation); detail.appendChild(statusGroup);
+        const participation = createEl('label', 'card-participation');
+        const visible = document.createElement('input');
+        visible.type = 'checkbox'; visible.dataset.cardAct = 'visible';
+        const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
+        participation.appendChild(visible); participation.appendChild(visibleLabel);
+        detail.appendChild(summary); detail.appendChild(participation);
         root.appendChild(head); root.appendChild(detail);
         root.onclick = event => {
             if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
@@ -510,7 +503,7 @@ const SourceController = {
         drag.onclick = event => event.stopPropagation();
         drag.ondragstart = event => { event.stopPropagation(); this._startCardDrag(id, event); };
         drag.ondragend = () => { if(this._clearCardDrag()) this.announceCardChange('排序已取消，拼接顺序未改变'); };
-        return {root, title, badge, remove, visible, summary, statusBadge, statusDot, statusLabel, drag};
+        return {root, title, remove, visible, summary, statusBadge, statusDot, statusLabel, drag};
     },
 
     syncEditorContext() {
@@ -557,7 +550,6 @@ const SourceController = {
             nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '未参与分析' : '参与分析'}，${status.label}，${status.text}`);
             if(!nodes.title.querySelector('input')) nodes.title.textContent = card.title;
             nodes.title.title = `${card.title} · 双击或 F2 重命名`;
-            nodes.badge.hidden = !active;
             nodes.visible.checked = card.visible !== false;
             nodes.visible.setAttribute('aria-label', `${card.title}：参与分析`);
             nodes.remove.title = `删除卡片 ${card.title}`;

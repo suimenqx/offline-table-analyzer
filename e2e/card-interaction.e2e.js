@@ -163,5 +163,7 @@ test('紧凑卡片列表限高，原文不重复展示，解析和当前编辑�
   expect(layout.list).toBeLessThanOrEqual(230);
   expect(layout.parse).toBeLessThan(layout.height);
   await expect(cards(page).last().locator('[data-card-act="visible"]')).toBeChecked();
-  await expect(cards(page).last().locator('.card-editing-badge')).toHaveText('编辑中');
+  await expect(cards(page).last().locator('.card-editing-badge')).toHaveCount(0);
+  await expect(cards(page).last()).toHaveAttribute('aria-current','true');
+  await expect(cards(page).last()).toHaveAccessibleName(/数据段 6，编辑中/);
 });

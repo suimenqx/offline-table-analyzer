@@ -611,17 +611,11 @@
 #poolCount { color:var(--text-mid); font-size:12px; }
 .data-card-list { position:relative; display:flex; flex-direction:column; gap:8px; max-height:min(220px, 28vh); overflow-y:auto; overscroll-behavior:contain; padding:3px; margin:-3px; scrollbar-gutter:stable; }
 .data-card { position:relative; border:1px solid var(--border); border-radius:10px; padding:6px 9px; background:var(--bg-card); cursor:pointer; flex:none; color:var(--text-strong); box-shadow:inset 0 1px 0 color-mix(in srgb, var(--text-strong) 4%, transparent); transition:border-color 140ms ease, background-color 140ms ease; }
-.data-card::before { content:''; position:absolute; left:4px; top:12px; bottom:12px; width:1px; border-radius:1px; background:var(--accent); opacity:0; transform:scaleY(.65); transition:opacity 140ms ease, transform 160ms cubic-bezier(0.16, 1, 0.3, 1); }
 .data-card:hover { border-color:var(--border-strong); background:var(--bg-elevated); }
 .data-card.active { border-color:color-mix(in srgb, var(--accent) 65%, var(--border)); background:color-mix(in srgb, var(--accent-soft) 38%, var(--bg-card)); }
-.data-card.active::before { opacity:1; transform:scaleY(1); }
 .data-card.excluded-card { border-style:dashed; }
 .data-card-head { display:flex; align-items:center; gap:6px; min-height:28px; }
-.card-source-symbol { width:18px; height:22px; display:inline-flex; align-items:center; justify-content:center; color:var(--text-mid); flex:none; }
-.card-source-symbol svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; stroke-linecap:round; stroke-linejoin:round; }
 .data-card-title { font-weight:650; font-size:14px; line-height:20px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:text; }
-.card-editing-badge { font-size:10px; line-height:18px; padding:0 5px; border:1px solid var(--border); border-radius:4px; background:var(--bg-card); color:var(--text-mid); flex:none; }
-.card-editing-badge[hidden] { display:none; }
 .card-remove { width:28px; height:28px; padding:5px; border-color:transparent; background:transparent; color:var(--text-mid); flex:none; }
 .card-remove:hover { color:var(--danger); background:var(--bg-card); }
 .card-remove svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.5; }
@@ -631,15 +625,15 @@
 .card-drag-handle svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:2.5; stroke-linecap:round; }
 .card-list-dragging { cursor:grabbing; }
 .data-card.dragging { opacity:.55; border-style:dashed; border-color:var(--accent); background:var(--accent-soft); }
-.data-card-detail { display:flex; align-items:center; gap:10px; min-height:22px; margin-top:2px; font-size:11px; }
+.data-card-detail { display:flex; align-items:center; gap:10px; min-height:22px; margin-top:2px; padding-left:30px; font-size:11px; }
 .card-participation { display:flex; align-items:center; gap:5px; margin:0; min-height:24px; color:var(--text-mid); font-size:11px; font-weight:400; cursor:pointer; flex:none; }
 .card-participation input { width:14px; height:14px; margin:0; accent-color:var(--accent); cursor:pointer; }
-.card-status { display:flex; align-items:center; gap:6px; min-width:0; }
-.card-status-badge { --status-color:var(--text-mid); display:inline-flex; align-items:center; gap:5px; flex:none; padding:1px 5px; border:1px solid color-mix(in srgb, var(--status-color) 26%, var(--border)); border-radius:4px; background:color-mix(in srgb, var(--status-color) 7%, var(--bg-card)); color:color-mix(in srgb, var(--status-color) 82%, var(--text-strong)); font-size:11px; font-weight:650; line-height:18px; white-space:nowrap; }
+.card-status-badge { --status-color:var(--text-mid); display:inline-flex; align-items:center; gap:5px; flex:none; padding:1px 5px; border:1px solid transparent; border-radius:4px; background:transparent; color:color-mix(in srgb, var(--status-color) 82%, var(--text-strong)); font-size:11px; font-weight:500; line-height:18px; white-space:nowrap; }
 .card-status-badge[data-state="ready"] { --status-color:var(--success); }
 .card-status-badge[data-state="confirm"], .card-status-badge[data-state="unrecognized"] { --status-color:var(--warning); }
 .card-status-badge[data-state="error"] { --status-color:var(--danger); }
 .card-status-badge[data-state="parsing"] { --status-color:var(--primary); }
+.card-status-badge[data-state="confirm"], .card-status-badge[data-state="error"], .card-status-badge[data-state="unrecognized"] { border-color:color-mix(in srgb, var(--status-color) 26%, var(--border)); background:color-mix(in srgb, var(--status-color) 7%, var(--bg-card)); font-weight:650; }
 .card-status-dot { position:relative; width:10px; height:10px; border:1.5px solid currentColor; border-radius:50%; flex:none; }
 .card-status-dot[data-state="pending"] { border-style:dashed; }
 .card-status-dot[data-state="ready"] { border:0; }
@@ -652,19 +646,17 @@
 .card-status-dot[data-state="error"]::after { transform:rotate(-45deg); }
 .card-status-dot[data-state="unrecognized"] { border-style:dotted; }
 .card-status-dot[data-state="parsing"] { border-right-color:transparent; animation:card-parsing 800ms linear infinite; }
-.data-card-summary { color:var(--text-mid); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-variant-numeric:tabular-nums; }
-.data-card-summary[data-state="confirm"] { color:var(--text-strong); font-weight:600; }
+.data-card-summary { flex:1; min-width:0; color:var(--text-mid); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-variant-numeric:tabular-nums; }
 .view-unavailable { background:#fee2e2; border-color:#fca5a5; color:var(--danger,#b91c1c); }
 .data-card-title-input { width:100%; height:26px; font:inherit; border:1px solid var(--primary); border-radius:5px; padding:1px 5px; background:var(--bg-card); color:var(--text-main); caret-color:var(--primary); }
 @keyframes card-parsing { to { transform:rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
-    .data-card, .data-card::before { transition:none; }
+    .data-card { transition:none; }
     .card-status-dot[data-state="parsing"] { animation:none; }
 }
 @media (forced-colors: active) {
     .data-card { border-color:CanvasText; box-shadow:none; }
     .data-card.active { border-color:Highlight; }
-    .data-card.active::before { background:Highlight; }
     .card-status-dot { forced-color-adjust:auto; }
 }
     </style>
@@ -9706,31 +9698,24 @@ const SourceController = {
         drag.title = '拖拽调整拼接顺序，也可按 Alt+↑/↓';
         drag.setAttribute('aria-label', '调整卡片拼接顺序');
         drag.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3h.01M10 3h.01M6 8h.01M10 8h.01M6 13h.01M10 13h.01"/></svg>';
-        const symbol = createEl('span', 'card-source-symbol');
-        symbol.setAttribute('aria-hidden', 'true');
-        symbol.innerHTML = '<svg viewBox="0 0 16 16"><rect x="2.5" y="2.5" width="11" height="11" rx="2"/><path d="M2.5 6.5h11M6.5 6.5v7"/></svg>';
         const title = createEl('span', 'data-card-title');
-        const badge = createEl('span', 'card-editing-badge');
-        badge.textContent = '编辑中';
-        const remove = createEl('button', 'card-remove');
-        remove.type = 'button'; remove.dataset.cardAct = 'remove';
-        remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
-        head.appendChild(drag); head.appendChild(symbol); head.appendChild(title); head.appendChild(badge); head.appendChild(remove);
-        const detail = createEl('div', 'data-card-detail');
-        const participation = createEl('label', 'card-participation');
-        const visible = document.createElement('input');
-        visible.type = 'checkbox'; visible.dataset.cardAct = 'visible';
-        const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
-        participation.appendChild(visible); participation.appendChild(visibleLabel);
-        const statusGroup = createEl('span', 'card-status');
         const statusBadge = createEl('span', 'card-status-badge');
         const statusDot = createEl('span', 'card-status-dot');
         statusDot.setAttribute('aria-hidden', 'true');
         const statusLabel = createEl('span', 'card-status-label');
         statusBadge.appendChild(statusDot); statusBadge.appendChild(statusLabel);
+        const remove = createEl('button', 'card-remove');
+        remove.type = 'button'; remove.dataset.cardAct = 'remove';
+        remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
+        head.appendChild(drag); head.appendChild(title); head.appendChild(statusBadge); head.appendChild(remove);
+        const detail = createEl('div', 'data-card-detail');
         const summary = createEl('span', 'data-card-summary');
-        statusGroup.appendChild(statusBadge); statusGroup.appendChild(summary);
-        detail.appendChild(participation); detail.appendChild(statusGroup);
+        const participation = createEl('label', 'card-participation');
+        const visible = document.createElement('input');
+        visible.type = 'checkbox'; visible.dataset.cardAct = 'visible';
+        const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
+        participation.appendChild(visible); participation.appendChild(visibleLabel);
+        detail.appendChild(summary); detail.appendChild(participation);
         root.appendChild(head); root.appendChild(detail);
         root.onclick = event => {
             if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
@@ -9770,7 +9755,7 @@ const SourceController = {
         drag.onclick = event => event.stopPropagation();
         drag.ondragstart = event => { event.stopPropagation(); this._startCardDrag(id, event); };
         drag.ondragend = () => { if(this._clearCardDrag()) this.announceCardChange('排序已取消，拼接顺序未改变'); };
-        return {root, title, badge, remove, visible, summary, statusBadge, statusDot, statusLabel, drag};
+        return {root, title, remove, visible, summary, statusBadge, statusDot, statusLabel, drag};
     },
 
     syncEditorContext() {
@@ -9817,7 +9802,6 @@ const SourceController = {
             nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '未参与分析' : '参与分析'}，${status.label}，${status.text}`);
             if(!nodes.title.querySelector('input')) nodes.title.textContent = card.title;
             nodes.title.title = `${card.title} · 双击或 F2 重命名`;
-            nodes.badge.hidden = !active;
             nodes.visible.checked = card.visible !== false;
             nodes.visible.setAttribute('aria-label', `${card.title}：参与分析`);
             nodes.remove.title = `删除卡片 ${card.title}`;

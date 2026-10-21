@@ -22,7 +22,11 @@ test('卡片精修保留经典明暗色板、紧凑尺寸和减少动态下的�
   await page.locator('#addCardBtn').click();
   const palette=()=>page.evaluate(()=>{const s=getComputedStyle(document.documentElement);return ['--primary','--accent','--bg-app','--bg-card'].map(key=>s.getPropertyValue(key).trim());});
   expect(await palette()).toEqual(['#a66a4c','#0f9f8f','#f3f3f0','#ffffff']);
-  await expect(cards(page).last().locator('.card-source-symbol svg')).toHaveCount(1);
+  await expect(cards(page).last().locator('.card-source-symbol, .card-editing-badge')).toHaveCount(0);
+  await expect(cards(page).last().locator('.card-drag-handle svg, .card-remove svg')).toHaveCount(2);
+  await expect(cards(page).last().locator('.data-card-head .card-status-label')).toHaveText('空卡片');
+  await expect(cards(page).last().locator('.data-card-detail .data-card-summary')).toHaveText('粘贴或导入数据');
+  await expect(cards(page).last().locator('.data-card-detail .card-participation')).toHaveText('参与分析');
   await expect(cards(page).last().locator('[data-card-act="visible"]')).toBeChecked();
   const first=await cards(page).first().boundingBox();
   await cards(page).first().hover();
