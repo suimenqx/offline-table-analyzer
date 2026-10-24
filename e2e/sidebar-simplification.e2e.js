@@ -72,8 +72,11 @@ test('工具菜单支持键盘、Escape 和外部点击，详情关闭后焦点�
   await expect(trigger).toBeFocused();
   await expect(page.locator('#sourceTools')).not.toHaveAttribute('open');
   await trigger.click();
-  await page.locator('#rawInput').click();
+  // The disclosure overlays the editor's center; its left edge is a real
+  // outside target, so pointer hit testing remains part of this check.
+  await page.locator('#rawInput').click({position:{x:12,y:12}});
   await expect(page.locator('#sourceTools')).not.toHaveAttribute('open');
+  await expect(page.locator('#rawInput')).toBeFocused();
 });
 
 test('原始 Excel 和备份入口属于工作区菜单，下载保留实际内容', async ({page}) => {
