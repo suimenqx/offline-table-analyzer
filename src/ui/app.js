@@ -353,10 +353,10 @@ const App = {
         const visibleCount = cards.filter(card => card.visible !== false).length;
         const preview = TableRegistry.getPreviewSummary();
         if(summary) {
-            summary.textContent = `表池 ${visibleCount}/${cards.length} 张卡片 · ` + (preview
-                ? `${preview.tableCount} 表 · ${preview.rowCount.toLocaleString()} 行（当前筛选结果，非当前页）`
+            summary.textContent = `显示 ${visibleCount}/${cards.length} 张卡片 · ` + (preview
+                ? `${preview.tableCount} 表 · ${preview.rowCount.toLocaleString()} 行`
                 : '等待解析或更新结果');
-            summary.title = summary.textContent;
+            summary.title = `${summary.textContent}。统计当前筛选结果的全部记录，包含启用的 JOIN 视图。`;
         }
         this.updateAnalysisState();
         this.renderActiveFilterChips();
@@ -414,8 +414,8 @@ const App = {
         const ok = detail.ok !== false && !Store.lastSaveError;
         const bytes = Number(detail.bytes ?? Store.storageBytes) || 0;
         if(Store.restoring || Store.saving || Store.cleaning){el.textContent=Store.restoring?'正在恢复完整原文…':Store.cleaning?'正在清理旧原文…':'正在保存完整原文…';return;}
-        const message = detail.message || (ok
-            ? (Store.state.persistRaw === false ? '临时数据模式 · 规则已保存' : `已保存 · ${this.formatBytes(bytes)}`)
+        const message = ok && Store.state.persistRaw === false ? '原文仅保留在当前页面 · 规则已保存' : detail.message || (ok
+            ? `已保存 · ${this.formatBytes(bytes)}`
             : Store.lastSaveError || '保存失败');
         el.textContent = message;
         el.style.color = ok ? '' : 'var(--danger)';
@@ -435,21 +435,25 @@ const App = {
         const result = TableRegistry.getLastResult();
         this.sourceParseState = 'ready';
         const diagnostics = result.diagnostics || [];
-        const rowCount = (result.tables || []).reduce((sum, table) => sum + TableUtils.rowCount(table), 0);
+        const issues = diagnostics.filter(item => (item.severity || item.level) !== 'info');
         const needsConfirmation = result.format === 'ambiguous';
-        if(status) status.className = `parse-status ${needsConfirmation ? 'confirm' : result.format === 'error' ? 'error' : diagnostics.length ? 'warning' : result.tables && result.tables.length ? 'ready' : ''}`;
+        const failed = result.format === 'error';
+        const unrecognized = Store.getDocument() && SourceController.readText().trim() && !result.tables?.length && !needsConfirmation && !failed;
+        const attention = Boolean(Store.getDocument() && (needsConfirmation || failed || unrecognized || issues.length || result.diagnosticCount > diagnostics.length));
+        if(status) {
+            status.className = `parse-status ${needsConfirmation ? 'confirm' : failed ? 'error' : 'warning'}`;
+            status.hidden = !attention;
+        }
         if(text) {
-            if(!Store.getDocument()) text.textContent = Store.getActiveProject() ? '当前工程没有卡片 · 点击“新增卡片”' : '工作区为空 · 点击“新建页签”';
-            else if(result.format === 'error') text.textContent = '解析失败，请检查输入格式';
-            else if(needsConfirmation) text.textContent = '待确认 · 确认解析方式后生成表格';
-            else if(result.tables && result.tables.length) text.textContent = `${result.label} · ${result.tables.length} 表 · ${rowCount.toLocaleString()} 行${diagnostics.length ? ` · ${result.diagnosticCount ?? diagnostics.length} 项提示` : ''}`;
-            else if ($('rawInput') && SourceController.readText().trim()) text.textContent = '未识别出表格 · 可尝试手动选择格式';
-            else text.textContent = '等待输入数据';
+            text.textContent = failed ? '解析失败' : needsConfirmation ? '需要确认解析方式' : unrecognized ? '未识别表格，可手动选择格式'
+                : diagnostics.length ? `${result.diagnosticCount ?? diagnostics.length} 项解析提示` : '';
         }
         if(details) {
-            details.textContent = needsConfirmation && result.candidates?.length ? '确认候选' : '详情';
-            details.classList.toggle('hidden', !needsConfirmation && !(result.candidates && result.candidates.length) && diagnostics.length === 0);
+            details.textContent = needsConfirmation && result.candidates?.length ? '确认候选' : failed ? '查看错误' : '查看详情';
+            details.classList.toggle('hidden', !attention);
         }
+        const sourceDetails = $('sourceDiagnosticsBtn');
+        if(sourceDetails) sourceDetails.disabled = !Store.getDocument() || !result.format || result.format === 'empty';
         this.updatePasteSourceButton();
         this.updateWorkspaceSummary();
     },
@@ -473,12 +477,14 @@ const App = {
         const status = $('parseStatus');
         const text = $('parseStatusText');
         const details = $('diagnosticsBtn');
-        if (status) status.className = 'parse-status warning';
+        if (status) {
+            status.className = 'parse-status pending';
+            status.hidden = state === 'manual' || !Store.getDocument() || !SourceController.readText().trim();
+        }
         if (details) details.classList.add('hidden');
+        if ($('sourceDiagnosticsBtn')) $('sourceDiagnosticsBtn').disabled = true;
         if (!text) return;
-        if (state === 'pending') text.textContent = '输入已修改 · 自动解析中…';
-        else if (state === 'large') text.textContent = '数据较大 · 点击“立即解析”或“全量 Excel”';
-        else text.textContent = '自动解析已关闭 · 点击“立即解析”';
+        text.textContent = state === 'pending' ? '等待解析' : state === 'large' ? '数据较大，请手动解析' : '';
     },
 
     syncImportControls() {
@@ -777,11 +783,43 @@ const App = {
             head.onclick = () => {
                 const item = head.parentElement;
                 item.classList.toggle('open');
+                head.setAttribute('aria-expanded', String(item.classList.contains('open')));
             };
         });
     },
 
+    /** Native disclosures keep ordinary buttons and tab navigation; close before an
+     * action runs so dialogs restore focus to a visible summary, not a hidden item. */
+    bindToolMenus() {
+        const menus = Array.from(document.querySelectorAll('details[data-menu]'));
+        const close = (menu, restore=false) => {
+            if(!menu.open) return;
+            menu.open = false;
+            if(restore) menu.querySelector('summary')?.focus();
+        };
+        for(const menu of menus) {
+            menu.addEventListener('click', event => {
+                if(event.target.closest('button')) close(menu, true);
+            }, true);
+            menu.addEventListener('keydown', event => {
+                if(event.key === 'Escape' && menu.open) {
+                    event.preventDefault(); event.stopPropagation(); close(menu, true);
+                }
+            });
+            menu.addEventListener('toggle', () => {
+                if(menu.open) for(const other of menus) if(other !== menu) close(other);
+            });
+        }
+        document.addEventListener('click', event => {
+            for(const menu of menus) if(!menu.contains(event.target)) close(menu);
+        });
+        document.addEventListener('focusin', event => {
+            for(const menu of menus) if(!menu.contains(event.target)) close(menu);
+        });
+    },
+
     bind() {
+        this.bindToolMenus();
         const addTabBtn = $('addTabBtn');
         if(addTabBtn) {
             addTabBtn.type = 'button';
@@ -804,6 +842,8 @@ const App = {
         if(pasteSourceBtn) pasteSourceBtn.onclick = () => this.showPasteSource();
         const diagnosticsBtn = $('diagnosticsBtn');
         if(diagnosticsBtn) diagnosticsBtn.onclick = () => this.showDiagnostics();
+        if($('sourceDiagnosticsBtn')) $('sourceDiagnosticsBtn').onclick = () => this.showDiagnostics();
+        if($('ruleHelpBtn')) $('ruleHelpBtn').onclick = () => this.showRuleHelp();
         const formatSelect = $('formatSelect');
         if(formatSelect) formatSelect.onchange = e => this.setImportFormat(e.target.value);
         const headerModeSelect = $('headerModeSelect');
@@ -1090,11 +1130,35 @@ validflag Time      Level   Message                 Code
             <span>撤销 / 重做单元格编辑</span><span><kbd>Ctrl/⌘ Z</kbd> <kbd>Ctrl/⌘ Y</kbd></span>
             <span>重命名当前工程</span><kbd>F2</kbd>
             <span>全选当前预览表</span><kbd>Ctrl/⌘ A</kbd>
-        </div><p class="muted" style="margin:16px 0 0;">支持 JSON、CSV、TSV、HTML、Markdown、ASCII、固定宽度文本与 CLI table-data。数据不会发送到网络。</p>`);
+            <span>聚焦上一张 / 下一张卡片</span><span><kbd>↑</kbd> <kbd>↓</kbd></span>
+            <span>聚焦首张 / 末张卡片</span><span><kbd>Home</kbd> <kbd>End</kbd></span>
+            <span>选中聚焦的卡片编辑</span><span><kbd>Enter</kbd> <kbd>Space</kbd></span>
+            <span>卡片改名 / 删除</span><span><kbd>F2</kbd> <kbd>Delete</kbd></span>
+            <span>调整卡片拼接顺序</span><kbd>Alt ↑ / ↓</kbd>
+        </div><p>卡片可双击改名，拖动手柄调整拼接顺序。眼睛按钮决定数据是否进入分析结果；隐藏的卡片仍可选中编辑。</p>
+        <p>普通粘贴按光标位置插入或替换选区；全选后粘贴替换整卡。超过 128 Ki 字符的大段粘贴，以及在只读预览中粘贴，会替换整卡原文。</p>
+        <p>“工作区”菜单提供备份、恢复和本地保存设置。关闭“本地保存原文”后，原文只保留在当前页面，刷新后不会恢复；规则和界面偏好仍会保存。</p>
+        <p class="muted">支持 JSON、CSV、TSV、HTML、Markdown、ASCII、固定宽度文本、CLI table-data 与 Data-Block。数据不会发送到网络。</p>`);
+    },
+
+    showRuleHelp() {
+        this.modal('规则语法', `<p>高亮规则和行过滤作用于目标表；全局过滤作用于所有表。三者使用相同语法。</p>
+        <div class="shortcut-grid">
+            <span>包含文字</span><code>error</code>
+            <span>字段等于 / 不等于</span><code>Status=OK / Status!=OK</code>
+            <span>数值比较</span><code>CPU&gt;90</code>
+            <span>字段包含</span><code>Msg:Error</code>
+            <span>正则表达式</span><code>/err[0-9]+/</code>
+            <span>排除匹配</span><code>!Status=OK</code>
+            <span>满足任意条件（OR）</span><code>error|warn</code>
+            <span>同时满足（AND）</span><code>Status=OK Qty&gt;0</code>
+        </div>`);
     },
 
     run(render=true) {
         if(!Store.getDocument()) return false;
+        if($('parseStatus')) $('parseStatus').hidden = true;
+        if($('sourceDiagnosticsBtn')) $('sourceDiagnosticsBtn').disabled = true;
         let parseContext = null;
         try {
             SourceController.clearAutoParse();

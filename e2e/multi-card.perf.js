@@ -39,7 +39,7 @@ for (const run of [1, 2, 3]) {
 
     const pasteFile = async () => {
       await page.locator('#sourceFileInput').setInputFiles(inputFile);
-      await expect(page.locator('#parseStatusText')).toContainText(/\d[\d,]* 行/, { timeout: 90000 });
+      await expect(page.locator('.data-card.active .data-card-summary')).toContainText(/\d[\d,]* 行/, { timeout: 90000 });
     };
     const metaShow = page.locator('.table-container').filter({ has: page.locator('.table-title', { hasText: /^CSV Table 1$/ }) })
       .locator('.meta-tag').filter({ hasText: /^Show:/ });

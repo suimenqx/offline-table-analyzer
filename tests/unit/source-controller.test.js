@@ -90,7 +90,7 @@ describe('SourceController card status', () => {
     const context={docId:card.id,sourceRevision:card.sourceRevision,config:{format:'auto',headerMode:'auto'}};
     const before=JSON.stringify(Store.serializeState());
     assert.equal(SourceController.setCardParsing(context,true),true);
-    assert.deepEqual(SourceController.getCardStatus(card.id),{state:'parsing',label:'解析中',text:'正在读取原文…'});
+    assert.deepEqual(SourceController.getCardStatus(card.id),{state:'parsing',label:'解析中',text:''});
     assert.equal(JSON.stringify(Store.serializeState()),before);
     OTA.require('table-registry').TableRegistry.recordParse(context,{format:'json',label:'JSON 表格',tables:[{headers:['id'],rows:[['1']]}]});
     assert.equal(SourceController.setCardParsing(context,false),true);

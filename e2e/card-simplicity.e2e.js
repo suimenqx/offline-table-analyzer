@@ -8,24 +8,21 @@ async function assertTwoRows(card) {
     const rect = selector => root.querySelector(selector).getBoundingClientRect();
     const head = rect('.data-card-head'), title = rect('.data-card-title');
     const status = rect('.card-status-badge'), remove = rect('.card-remove');
-    const summary = rect('.data-card-summary'), participation = rect('.card-participation');
+    const visibility = rect('.card-visibility');
     const badge = root.querySelector('.card-status-badge');
     return {
-      statusInHeading:!!badge.closest('.data-card-head'),
+      statusOnSecondRow:!!badge.closest('.data-card-detail') && status.top >= head.bottom,
       statusFits:badge.scrollWidth <= badge.clientWidth,
-      statusBeforeDelete:status.right <= remove.left,
-      nameBeforeStatus:title.right <= status.left,
+      visibilityBeforeDelete:visibility.right <= remove.left,
+      nameBeforeVisibility:title.right <= visibility.left,
       nameHasRoom:title.width >= 60,
-      metadataOnSecondRow:summary.top >= head.bottom,
-      participationOnSecondRow:participation.top >= head.bottom,
-      metadataBeforeParticipation:summary.right <= participation.left,
+      visibilityInHeading:visibility.top >= head.top && visibility.bottom <= head.bottom,
       height:root.getBoundingClientRect().height,
     };
   });
   expect(layout).toEqual({
-    statusInHeading:true, statusFits:true, statusBeforeDelete:true, nameBeforeStatus:true,
-    nameHasRoom:true, metadataOnSecondRow:true, participationOnSecondRow:true,
-    metadataBeforeParticipation:true, height:expect.any(Number),
+    statusOnSecondRow:true, statusFits:true, visibilityBeforeDelete:true, nameBeforeVisibility:true,
+    nameHasRoom:true, visibilityInHeading:true, height:expect.any(Number),
   });
   expect(layout.height).toBeLessThan(90);
 }
@@ -40,7 +37,7 @@ async function assertAttentionStatus(card) {
   await expect(card.locator('.card-status-badge')).not.toHaveCSS('border-top-color', transparent);
 }
 
-test('轻量双行卡片移除重复装饰，正常状态安静，异常状态醒目且不挤压名称与参与开关', async ({page}) => {
+test('轻量双行卡片移除重复装饰，正常状态安静，异常状态醒目且不挤压名称与眼睛按钮', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('#autoParseToggle').uncheck();
   const card = activeCard(page);
@@ -50,7 +47,8 @@ test('轻量双行卡片移除重复装饰，正常状态安静，异常状态�
   await expect(card.locator('.card-status-label')).toHaveText('待解析');
   await assertQuietStatus(card);
   await page.locator('#parseBtn').click();
-  await expect(card.locator('.card-status-label')).toHaveText('解析完成');
+  await expect(card).toHaveAttribute('data-parse-state','ready');
+  await expect(card.locator('.card-status-label')).toBeHidden();
   await expect(card.locator('.data-card-detail .data-card-summary')).toContainText('1 行');
   await assertQuietStatus(card);
   await card.focus();
@@ -61,7 +59,7 @@ test('轻量双行卡片移除重复装饰，正常状态安静，异常状态�
   await expect(card).toBeFocused();
   await expect(card.locator('.data-card-title')).toHaveText(name);
   await expect(card).toHaveAttribute('aria-current', 'true');
-  await expect(page.locator('#sourceEditorLabel')).toHaveText(`当前编辑：${name}`);
+  await expect(page.locator('#sourceEditorLabel')).toHaveText(`原文 · ${name}`);
   await page.locator('#rawInput').fill('alpha,beta\none,two\nthree,four');
   await page.locator('#parseBtn').click();
   await expect(card.locator('.card-status-label')).toHaveText('待确认');
@@ -73,7 +71,7 @@ test('轻量双行卡片移除重复装饰，正常状态安静，异常状态�
       if(await page.locator('html').getAttribute('data-theme') !== theme) await page.locator('#themeBtn').click();
       await assertTwoRows(card);
       await expect(card.locator('.card-status-label')).toHaveText('待确认');
-      await expect(card.locator('.data-card-detail [data-card-act="visible"]')).toBeChecked();
+      await expect(card.locator('.card-visibility')).toHaveAttribute('aria-pressed','true');
       await expect(card.locator('.data-card-title')).toHaveText(name);
     }
   }

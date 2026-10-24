@@ -24,7 +24,7 @@ const byClass = (root, name) => {
 const headerText = 'alpha,beta\none,two\nthree,four';
 
 describe('Visible parse status and confirmation feedback', () => {
-  it('separates name/status from metadata/participation without duplicate editing decorations', () => {
+  it('keeps icon actions with the name and one compact status row without repeated instructions', () => {
     const {dom} = setup();
     SourceController.renderCards();
     const card = dom.getElementById('cardList').children[0];
@@ -33,26 +33,26 @@ describe('Visible parse status and confirmation feedback', () => {
     assert.equal(byClass(card, 'card-source-symbol'), null);
     assert.equal(byClass(card, 'card-editing-badge'), null);
     assert.deepEqual(head.children.map(node => node.className), [
-      'card-drag-handle', 'data-card-title', 'card-status-badge', 'card-remove',
+      'card-drag-handle', 'data-card-title', 'card-visibility', 'card-remove',
     ]);
-    assert.deepEqual(detail.children.map(node => node.className), ['data-card-summary', 'card-participation']);
+    assert.deepEqual(detail.children.map(node => node.className), ['card-status-badge', 'data-card-summary']);
     assert.equal(card['aria-current'], 'true');
     assert.match(card['aria-label'], /编辑中/);
-    assert.equal(dom.getElementById('sourceEditorLabel').textContent, `当前编辑：${Store.curr().title}`);
-    const status = byClass(head, 'card-status-label');
+    assert.equal(dom.getElementById('sourceEditorLabel').textContent, `原文 · ${Store.curr().title}`);
+    const status = byClass(detail, 'card-status-label');
     Store.transition('source:replace', {text:headerText});
     SourceController.renderCards();
     assert.equal(dom.getElementById('cardList').children[0], card, 'status updates keep the keyed card node');
-    assert.equal(byClass(head, 'card-status-label'), status);
+    assert.equal(byClass(detail, 'card-status-label'), status);
     assert.equal(status.textContent, '待解析');
   });
 
-  it('keeps a separate, readable status label beside the light in every card state', () => {
+  it('keeps actionable state labels while merging success into its result summary', () => {
     const {TableRegistry, dom} = setup();
     const id = Store.curr().id;
     const label = () => byClass(dom.getElementById('cardList'), 'card-status-label')?.textContent;
     SourceController.renderCards();
-    assert.equal(label(), '空卡片');
+    assert.equal(label(), '空');
     Store.transition('source:replace', {text:headerText});
     SourceController.renderCards();
     assert.equal(label(), '待解析');
@@ -70,7 +70,60 @@ describe('Visible parse status and confirmation feedback', () => {
       SourceController.renderCards();
       assert.equal(label(), expected);
       assert.ok(byClass(dom.getElementById('cardList'), 'card-status-badge'));
+      assert.equal(byClass(dom.getElementById('cardList'), 'card-status-label').hidden, result.format === 'csv');
     }
+  });
+
+  it('uses an eye toggle without changing the active card, original input or parse summary', () => {
+    const {App, dom} = setup();
+    SourceController.displayText('[{"id":"1"}]');
+    App.run(false);
+    SourceController.renderCards();
+    const id = Store.curr().id;
+    const card = dom.getElementById('cardList').children[0];
+    const toggle = byClass(card, 'card-visibility');
+    assert.equal(toggle.tagName, 'BUTTON');
+    assert.equal(toggle['aria-pressed'], 'true');
+    toggle.onclick({stopPropagation(){}});
+    SourceController.renderCards();
+    assert.equal(toggle['aria-pressed'], 'false');
+    assert.match(toggle.title, /在分析结果中显示/);
+    assert.match(card.className, /active.*excluded-card/);
+    assert.equal(Store.curr().id, id);
+    assert.equal(Store.curr().raw, '[{"id":"1"}]');
+    assert.equal(SourceController.getCardStatus(id).state, 'ready');
+    toggle.onclick({stopPropagation(){}});
+    SourceController.renderCards();
+    assert.equal(toggle['aria-pressed'], 'true');
+  });
+
+  it('shows only actionable editor feedback and clears stale diagnostics as input changes', () => {
+    const {App, dom} = setup();
+    SourceController.displayText('[{"id":"1"}]');
+    App.run(false);
+    assert.equal(dom.getElementById('parseStatus').hidden, true);
+    assert.equal(dom.getElementById('sourceDiagnosticsBtn').disabled, false);
+    App.updateSourceParseState('pending');
+    assert.equal(dom.getElementById('parseStatusText').textContent, '等待解析');
+    assert.equal(dom.getElementById('sourceDiagnosticsBtn').disabled, true);
+    App.updateSourceParseState('manual');
+    assert.equal(dom.getElementById('parseStatus').hidden, true);
+    App.updateSourceParseState('large');
+    assert.equal(dom.getElementById('parseStatus').hidden, false);
+    assert.match(dom.getElementById('parseStatusText').textContent, /手动解析/);
+  });
+
+  it('merges the large-preview and whole-card paste notice, keeping normal editing quiet', () => {
+    const {dom} = setup();
+    SourceController.displayText('small');
+    SourceController.syncEditorContext();
+    assert.equal(dom.getElementById('sourcePreviewNotice').hidden, true);
+    Store.transition('source:replace', {text:'x'.repeat(SourceController.EDITOR_LIMIT + 1)});
+    SourceController.displayText(Store.curr().raw);
+    SourceController.syncEditorContext();
+    assert.equal(dom.getElementById('sourcePreviewNotice').hidden, false);
+    assert.match(dom.getElementById('sourcePreviewNotice').textContent, /完整原文.*已保留/);
+    assert.match(dom.getElementById('sourcePreviewNotice').textContent, /粘贴.*替换整卡/);
   });
 
   for(const text of [headerText, 'id,name;state\n1,Alice;ok', '报告\nid,name\n1,Alice\nbad,too,many,fields\n2,Bob\n结束']) {

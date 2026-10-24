@@ -21,7 +21,7 @@ test(`native 100,000-row ${rich?'rich-text':'plain-text'} paste exports a comple
     else await navigator.clipboard.writeText(text);
   },{text:fixture.text,rich});
   await page.locator('#rawInput').click();await page.locator('#rawInput').press('Control+V');
-  await expect(page.locator('#parseStatusText')).toContainText('全量 Excel');
+  await expect(page.locator('#parseStatusText')).toContainText('手动解析');
   expect(await page.evaluate(()=>OTA.require('table-registry').TableRegistry.getRaw().length)).toBe(0);
   const downloading=page.waitForEvent('download');
   await page.locator('#exportFullBtn').click();
@@ -158,7 +158,7 @@ test('offline release preserves large original, corrections, export and browser 
     await cell.dblclick();await cell.locator('textarea').fill('修正值');await cell.locator('textarea').press('Enter');
     await expect(wide(page).locator('tbody tr').first().locator('td').nth(3)).toHaveText('修正值');
     await expect.poll(()=>page.evaluate(()=>{const {Store,STORE_KEY}=OTA.require('store');const json=JSON.parse(localStorage.getItem(STORE_KEY));const saved=json.docs.find(doc=>doc.id===Store.getDocument().id);return {saving:Store.saving,rawReference:!!json.rawExternal,edits:saved.ui.cellEdits,currentEdits:Store.getDocument().ui.cellEdits,error:Store.lastSaveError};}),{timeout:10000}).toMatchObject({saving:false,rawReference:true,edits:{$Wide:{0:{3:'修正值'}}}});
-    const pending=page.waitForEvent('download');await page.locator('#exportSourceBtn').click();const source=await pending;
+    const pending=page.waitForEvent('download');await page.locator('#sourceTools summary').click();await page.locator('#exportSourceBtn').click();const source=await pending;
     expect(source.suggestedFilename()).toMatch(/^Analysis_1_source_\d{8}_\d{6}\.txt$/);
     const sourcePath=testInfo.outputPath('original.txt');await source.saveAs(sourcePath);expect(await fs.readFile(sourcePath,'utf8')).toBe(fixture.text);
     await context.close();context=null;
@@ -167,7 +167,7 @@ test('offline release preserves large original, corrections, export and browser 
     await page.locator('#sidebarConfigTabBtn').click();await page.locator('.acc-item[data-acc="rules"] .acc-head').click();await page.locator('#globalFilter').fill('ID<=100');await waitRows(page,100);
     const downloading=page.waitForEvent('download');await page.locator('#exportPrevBtn').click();const download=await downloading;const workbook=testInfo.outputPath('corrected.xlsx');await download.saveAs(workbook);
     const rows=await readSheet(workbook,'Wide');expect(rows).toHaveLength(101);expect(rows[1][3]).toBe('修正值');expect(rows[100][1]).toBe(100);
-    await page.locator('#sidebarDataTabBtn').click();await page.locator('#persistRawToggle').uncheck();
+    await page.locator('#sidebarDataTabBtn').click();await page.locator('#workspaceTools summary').click();await page.locator('#persistRawToggle').uncheck();
     expect(await page.evaluate(()=>OTA.require('store').Store.getState().persistRaw)).toBe(false);
     await expect.poll(()=>page.evaluate(()=>OTA.require('store').Store.cleaning),{timeout:30000}).toBe(false);
     await context.close();context=null;page=await open();

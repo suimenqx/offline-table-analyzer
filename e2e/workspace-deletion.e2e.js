@@ -9,7 +9,7 @@ const source = name => JSON.stringify([{ id:'1', name }]);
 async function parse(page, text) {
   await page.locator('#rawInput').fill(text);
   await page.locator('#parseBtn').click();
-  await expect(page.locator('#parseStatusText')).toContainText(/\d[\d,]* 行/);
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText(/\d[\d,]* 行/);
 }
 
 function dismissUnexpectedDialogs(page) {
@@ -83,7 +83,7 @@ test('点击直接删除卡片并释放其后台数据，最后一张也能删�
   await expect(page.locator('#rawInput')).toHaveValue('');
   await expect(page.locator('#rawInput')).toBeDisabled();
   await expect(page.locator('.table-container')).toHaveCount(0);
-  await expect(page.locator('#poolCount')).toHaveText('表池 0/0 张卡片');
+  await expect(page.locator('#cardCount')).toHaveText('0');
   await expect(page.locator('#addCardBtn')).toBeFocused();
   await page.keyboard.press('Control+s');
   await page.reload();
@@ -132,6 +132,7 @@ test('无卡片工程与完全空工作区的备份均可恢复，不自动补�
       await expect(tabs(page)).toHaveCount(0);
     }
     const pending = page.waitForEvent('download');
+    await page.locator('#workspaceTools summary').click();
     await page.locator('#exportTabBtn').click();
     const download = await pending;
     const buffer = await fs.readFile(await download.path());

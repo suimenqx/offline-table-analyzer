@@ -21,7 +21,7 @@
         <div class="sidebar-header">
             <button class="logo sidebar-toggle" id="sidebarToggle" type="button" title="折叠或展开控制面板" aria-label="折叠或展开控制面板" aria-expanded="true">
                 <span class="logo-icon" aria-hidden="true">OTA</span>
-                <span class="logo-copy"><span>Offline Table Analyzer</span><small>Local data workbench</small></span>
+                <span class="logo-copy"><span>Offline Table Analyzer</span></span>
                 <span class="version-pill">v{{APP_MAJOR_VERSION}}</span>
             </button>
         </div>
@@ -34,35 +34,40 @@
         </div>
         <div class="sidebar-scroll">
             <div class="sidebar-pane active" data-tab="data">
-                <div class="card">
-                    <div class="card-header" style="border-bottom:1px solid var(--border);">
-                        <div class="source-card-title">
-                            <span class="card-title">数据卡片</span>
-                            <span class="source-help">选中卡片编辑；勾选“参与分析”控制表池范围。</span>
+                <section class="source-panel source-drop-zone" id="sourceDropZone" aria-label="卡片与原文">
+                        <div class="source-section-heading">
+                            <strong>卡片 <span id="cardCount" class="source-count" role="status" aria-live="polite">1</span></strong>
+                            <button class="sm text-button" id="addCardBtn" type="button">＋ 新增</button>
                         </div>
-                    </div>
-                    <div class="card-body source-drop-zone" id="sourceDropZone">
                         <div class="data-card-list" id="cardList" role="list" aria-label="数据卡片，顺序决定拼接顺序"></div>
-                        <div class="row card-list-toolbar">
-                            <button class="sm" id="addCardBtn" type="button">＋ 新增卡片</button>
-                            <span class="muted" id="poolCount" role="status" aria-live="polite" style="font-size:11px;"></span>
-                        </div>
-                        <p class="source-help" id="cardKeyboardHint">↑↓ 聚焦 · Enter 选中 · F2 改名 · Alt+↑↓ 调整拼接顺序</p>
+                        <p class="visually-hidden" id="cardKeyboardHint">↑↓ 聚焦，Enter 选中，F2 改名，Delete 删除，Alt+↑↓ 调整拼接顺序。</p>
                         <span id="cardFeedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
-                        <label class="source-editor-label" id="sourceEditorLabel" for="rawInput">当前编辑</label>
+                        <div class="source-section-heading source-editor-heading">
+                            <label class="source-editor-label" id="sourceEditorLabel" for="rawInput">原文</label>
+                            <details class="tools-menu" data-menu id="sourceTools">
+                                <summary aria-label="当前卡片工具">更多 <span class="menu-chevron" aria-hidden="true"></span></summary>
+                                <div class="tools-popover" role="group" aria-label="当前卡片工具">
+                                    <button id="sourceDiagnosticsBtn" type="button">解析详情</button>
+                                    <button id="pasteSourceBtn" class="hidden" type="button">粘贴源</button>
+                                    <button id="exportSourceBtn" type="button">导出原文</button>
+                                    <button id="sampleLink" type="button">加载示例</button>
+                                </div>
+                            </details>
+                        </div>
                         <div class="source-actions">
-                            <button class="sm" id="parseBtn" type="button" title="立即解析当前数据（Ctrl/⌘ + Enter）">立即解析</button>
-                            <button id="importSourceBtn" type="button" title="导入 CSV、TSV、JSON、TXT、HTML 或 Markdown 文件">选择文件</button>
-                            <button id="clearBtn" type="button" title="清空当前数据源">清空</button>
+                            <button class="primary sm" id="parseBtn" type="button" title="解析当前数据（Ctrl/⌘ + Enter）">解析</button>
+                            <button class="sm" id="importSourceBtn" type="button" title="导入 CSV、TSV、JSON、TXT、HTML 或 Markdown 文件">导入文件</button>
+                            <button class="sm text-button" id="clearBtn" type="button" title="清空当前数据源">清空</button>
                             <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.json,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,application/json,text/html">
                         </div>
                         <div class="textarea-shell">
-                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" aria-describedby="pasteBehaviorHint" placeholder="粘贴 JSON、CSV、TSV、网页表格、Markdown、ASCII 或 CLI table-data…" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
+                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" aria-describedby="sourcePreviewNotice" placeholder="粘贴数据，或拖入文件" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
+                            <button class="sm text-button source-sample" id="sampleBtn" type="button">加载示例</button>
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
-                        <p class="source-help" id="pasteBehaviorHint">普通粘贴按光标位置插入；全选后粘贴替换整卡。</p>
+                        <p id="sourcePreviewNotice" class="source-help" role="status" aria-live="polite" hidden></p>
                         <div class="source-options">
-                            <select id="formatSelect" class="format-select" title="输入格式">
+                            <select id="formatSelect" class="format-select" aria-label="输入格式" title="输入格式">
                                 <option value="auto">自动识别</option>
                                 <option value="cli-table-data">CLI table-data</option>
                                 <option value="data-block">Data-Block 数据块</option>
@@ -78,7 +83,7 @@
                                 <option value="aligned-table">定宽对齐</option>
                                 <option value="plain-text">空白文本</option>
                             </select>
-                            <select id="headerModeSelect" class="format-select narrow" title="表头处理，CLI table-data 与 CLI 多块定宽表固定使用解析出的表头">
+                            <select id="headerModeSelect" class="format-select narrow" aria-label="表头处理" title="表头处理，CLI table-data 与 CLI 多块定宽表固定使用解析出的表头">
                                 <option value="auto">自动表头</option>
                                 <option value="first-row">首行表头</option>
                                 <option value="none">无表头</option>
@@ -87,44 +92,27 @@
                         <label class="auto-parse-toggle" title="输入稳定后自动刷新预览；大于 1 MB 的数据需要手动解析">
                             <input type="checkbox" id="autoParseToggle" checked>
                             <span>自动解析</span>
-                            <span class="muted">输入稳定后刷新预览</span>
                         </label>
-                        <div class="parse-status" id="parseStatus" role="status" aria-live="polite" aria-atomic="true">
+                        <div class="parse-status" id="parseStatus" role="status" aria-live="polite" aria-atomic="true" hidden>
                             <span class="parse-status-dot" aria-hidden="true"></span>
-                            <span class="parse-status-text" id="parseStatusText">等待输入数据</span>
-                            <button class="sm text-button hidden" id="pasteSourceBtn" type="button" title="查看粘贴源">粘贴源</button>
+                            <span class="parse-status-text" id="parseStatusText"></span>
                             <button class="sm text-button hidden" id="diagnosticsBtn" type="button" aria-haspopup="dialog">详情</button>
                         </div>
-                        <div class="privacy-toggle">
-                            <input type="checkbox" id="persistRawToggle" checked>
-                            <label for="persistRawToggle">在此设备保存原始数据</label>
-                            <span class="help-icon" data-tip="关闭后，原始数据只保留在当前页面内；刷新页面后不会恢复。分析规则和界面偏好仍会保存。">?</span>
-                        </div>
-                        <p id="sourcePreviewNotice" class="muted" role="status" aria-live="polite" hidden></p>
                         <div id="backgroundJob" role="status" aria-live="polite" hidden>
                             <span id="backgroundJobText"></span>
                             <button id="cancelJobBtn" class="sm" type="button">取消操作</button>
                         </div>
-                        <div class="source-utilities" aria-label="数据源工具">
-                            <button class="sm" id="exportSourceBtn" type="button">导出原文</button>
-                            <button class="sm" id="sampleLink" type="button">加载示例</button>
-                            <button class="sm" id="exportRawBtn" type="button" title="导出解析后的原始表">原始 Excel</button>
-                            <button class="sm" id="exportTabBtn" type="button" title="备份整个工作区">备份工作区</button>
-                            <button class="sm" id="importTabBtn" type="button" title="恢复工作区备份">恢复备份</button>
-                            <input type="file" id="fileInputTab" class="hidden" accept=".json,application/json">
-                        </div>
-                    </div>
-                </div>
+                </section>
             </div>
 
             <div class="sidebar-pane" data-tab="config">
                 <div class="accordion">
                     <div class="acc-item open" data-acc="view">
-                        <div class="acc-head">
+                        <button class="acc-head" type="button" aria-expanded="true" aria-controls="viewSettingsBody">
                             <span>视图设置</span>
-                            <span class="muted">控制展示范围</span>
-                        </div>
-                        <div class="acc-body">
+                            <span class="menu-chevron" aria-hidden="true"></span>
+                        </button>
+                        <div class="acc-body" id="viewSettingsBody">
                             <div class="control-block" style="margin-bottom:10px;">
                                 <label>显示原始表</label>
                                 <div class="multi-select" id="tablesTrigger"><span class="placeholder">加载中...</span></div>
@@ -132,7 +120,7 @@
                             <div class="control-block" style="margin-bottom:10px;">
                                 <label class="flex justify-between">
                                     <span>启用 JOIN 视图</span>
-                                    <span style="color:var(--primary); cursor:pointer;" id="manageViewsBtn">管理</span>
+                                    <button class="sm text-button" type="button" id="manageViewsBtn">管理</button>
                                 </label>
                                 <div class="multi-select" id="viewsTrigger"><span class="placeholder">未启用</span></div>
                             </div>
@@ -140,13 +128,14 @@
                     </div>
 
                     <div class="acc-item" data-acc="rules">
-                        <div class="acc-head">
-                            <span>规则引擎</span>
-                            <span class="muted">过滤与高亮</span>
-                        </div>
-                        <div class="acc-body">
+                        <button class="acc-head" type="button" aria-expanded="false" aria-controls="ruleSettingsBody">
+                            <span>筛选与高亮</span>
+                            <span class="menu-chevron" aria-hidden="true"></span>
+                        </button>
+                        <div class="acc-body" id="ruleSettingsBody">
+                            <div class="rule-help-row"><button class="sm text-button" id="ruleHelpBtn" type="button" aria-haspopup="dialog">规则语法</button></div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label>配置目标表</label>
+                                <label for="targetTableSelect">目标表</label>
                                 <select id="targetTableSelect"></select>
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
@@ -157,36 +146,36 @@
                                 </div>
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label>高亮规则 <span class="help-icon" data-tip="高亮匹配行，支持：&#10;• error — 包含 'error'&#10;• ID=1001 — 精确匹配&#10;• CPU>90 — 数值比较&#10;• Msg:Error — 包含 Error&#10;• /err[0-9]+/ — 正则&#10;• !Status=OK — NOT 取反&#10;• a|b|c — OR 逻辑&#10;• A=1 B!=OK — AND 组合">?</span></label>
-                                <input type="text" id="hlInput" placeholder="error | ID=1 | CPU>90">
+                                <label for="hlInput">高亮规则</label>
+                                <input type="text" id="hlInput" placeholder="Level=ERROR">
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label>行过滤 <span class="help-icon" data-tip="仅显示匹配行（AND 组合），语法同上。&#10;例：Status=OK Qty>0&#10;例：/error|warn/ !Level=DEBUG">?</span></label>
-                                <input type="text" id="filterInput" placeholder="Status!=OK, Qty>0 ...">
+                                <label for="filterInput">行过滤</label>
+                                <input type="text" id="filterInput" placeholder="Status=OK">
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label>全局过滤 <span class="help-icon" data-tip="对所有表生效的过滤（AND 组合），语法同上。&#10;例：Server=web01&#10;例：CPU>90 | Mem>80">?</span></label>
-                                <input type="text" id="globalFilter" placeholder="全局搜索 (支持 key=val)...">
+                                <label for="globalFilter">全局过滤</label>
+                                <input type="text" id="globalFilter" placeholder="Server=web01">
                             </div>
                             <div class="control-block">
                                 <label class="checkbox-row" id="toggleHlRow">
                                     <input type="checkbox" id="checkHl" checked>
-                                    <span>启用高亮渲染</span>
+                                    <span>高亮</span>
                                 </label>
                                 <label class="checkbox-row" id="toggleOnlyHlRow">
                                     <input type="checkbox" id="checkOnlyHl">
-                                    <span style="color:var(--primary);">仅显示高亮行 (Focus)</span>
+                                    <span style="color:var(--primary);">仅看高亮行</span>
                                 </label>
                             </div>
                         </div>
                     </div>
 
                     <div class="acc-item" data-acc="export">
-                        <div class="acc-head">
+                        <button class="acc-head" type="button" aria-expanded="false" aria-controls="exportSettingsBody">
                             <span>导出选项</span>
-                            <span class="muted">Excel & 配置</span>
-                        </div>
-                        <div class="acc-body">
+                            <span class="menu-chevron" aria-hidden="true"></span>
+                        </button>
+                        <div class="acc-body" id="exportSettingsBody">
                             <div class="control-block" style="margin-bottom:10px;">
                                 <label class="checkbox-row">
                                     <input type="checkbox" id="checkExpSelected">
@@ -196,16 +185,6 @@
                                     <option value="all">导出全量列</option>
                                     <option value="shown">仅导出展示列</option>
                                 </select>
-                                <label class="checkbox-row" style="margin-top:6px;">
-                                    <input type="checkbox" id="checkFormulaSafe" checked>
-                                    <span>安全复制公式前缀</span>
-                                    <span class="help-icon" data-tip="复制 TSV/CSV 时，为 =、+、-、@ 开头的潜在电子表格公式添加文本前缀，避免粘贴后意外执行。">?</span>
-                                </label>
-                            </div>
-                            <div class="flex gap-2">
-                                <button class="sm" id="exportConfigBtn" title="导出配置">导出配置</button>
-                                <button class="sm" id="importConfigBtn" title="导入配置">导入配置</button>
-                                <input type="file" id="fileInputConfig" class="hidden" accept=".json">
                             </div>
                         </div>
                     </div>
@@ -260,10 +239,35 @@
                             <input id="copyHeadersToggle" type="checkbox" checked aria-label="复制时包含表头">
                             <span class="copy-header-switch" aria-hidden="true"></span>
                         </label>
+                        <label class="copy-settings-row" title="复制 TSV/CSV 时，为潜在公式添加文本前缀，避免粘贴后意外执行；JSON 和 Lua 不受影响。">
+                            <span class="copy-settings-row-label">公式防护</span>
+                            <span class="copy-settings-row-hint">TSV / CSV</span>
+                            <input id="checkFormulaSafe" type="checkbox" checked aria-label="复制时防止公式执行">
+                            <span class="copy-header-switch" aria-hidden="true"></span>
+                        </label>
                     </div>
                 </div>
                 <button class="sm export-secondary" id="exportFullBtn" type="button" title="自动解析当前原文并导出全量数据（遵循格式与导出设置）">全量 Excel</button>
                 <button class="primary sm" id="exportPrevBtn" type="button" title="导出当前筛选后的预览结果">导出预览</button>
+                <details class="tools-menu" data-menu id="workspaceTools">
+                    <summary>工作区 <span class="menu-chevron" aria-hidden="true"></span></summary>
+                    <div class="tools-popover" role="group" aria-label="工作区工具与设置">
+                        <button id="exportRawBtn" type="button" title="导出表池中的原始表，包含显示的卡片">原始 Excel</button>
+                        <hr>
+                        <button id="exportTabBtn" type="button">备份工作区</button>
+                        <button id="importTabBtn" type="button">恢复备份</button>
+                        <button id="exportConfigBtn" type="button">导出配置</button>
+                        <button id="importConfigBtn" type="button">导入配置</button>
+                        <hr>
+                        <label class="menu-setting" title="关闭后，原文只保留在当前页面；刷新后不会恢复，规则和界面偏好仍会保存。">
+                            <span>本地保存原文</span>
+                            <input type="checkbox" id="persistRawToggle" checked aria-describedby="persistRawHint">
+                        </label>
+                        <span class="visually-hidden" id="persistRawHint">关闭后原文仅保留在当前页面，刷新后不会恢复。此设置作用于整个工作区。</span>
+                    </div>
+                </details>
+                <input type="file" id="fileInputTab" class="hidden" accept=".json,application/json">
+                <input type="file" id="fileInputConfig" class="hidden" accept=".json,application/json">
                 <button class="icon-btn sm" id="helpBtn" type="button" title="帮助与快捷键" aria-label="帮助与快捷键">?</button>
             </div>
         </nav>

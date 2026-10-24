@@ -87,7 +87,7 @@ test('parse JSON records and copy both JSON layouts', async ({ page, context }) 
   await page.locator('#autoParseToggle').uncheck();
   await page.locator('#rawInput').fill('[{"id":"001","name":"Alice"},{"id":"002","name":"Bob"}]');
   await page.locator('#parseBtn').click();
-  await expect(page.locator('#parseStatusText')).toContainText('JSON 表格');
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText('JSON 表格');
   await expect(page.locator('#previewArea')).toContainText('Alice');
 
   await page.locator('#copySettingsBtn').click();
@@ -134,8 +134,8 @@ test('parse a copied JSON fragment and show recovery diagnostics', async ({ page
   await page.locator('#autoParseToggle').uncheck();
   await page.locator('#rawInput').fill('"name":"cut"},\n{id: 1, name: \'Alice\'},\n{id: 2, name:');
   await page.locator('#parseBtn').click();
-  await expect(page.locator('#parseStatusText')).toContainText('JSON 表格');
-  await expect(page.locator('#parseStatusText')).toContainText('2 行');
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText('JSON 表格');
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText('2 行');
   await expect(page.locator('#previewArea')).toContainText('Alice');
   await expect(page.locator('#previewArea tbody tr')).toHaveCount(2);
   await expect(page.locator('#previewArea tbody tr').last().locator('td').first()).toHaveText('2');
@@ -150,16 +150,16 @@ test('recognize a data block after JSON and keep marker text inside CSV cells', 
   await page.locator('#autoParseToggle').uncheck();
   await page.locator('#rawInput').fill('[{"id":1}]');
   await page.locator('#parseBtn').click();
-  await expect(page.locator('#parseStatusText')).toContainText('JSON 表格');
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText('JSON 表格');
 
   await page.locator('#rawInput').fill('data T [{id:1,note:"table-data"}]');
   await page.locator('#parseBtn').click();
-  await expect(page.locator('#parseStatusText')).toContainText('Data-Block 数据块');
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText('Data-Block 数据块');
   await expect(page.locator('#previewArea')).toContainText('table-data');
   await expect(page.locator('#targetTableSelect')).toHaveValue('T');
 
   await page.locator('#rawInput').fill('id,note\n1,"<table>hello</table>"\n2,table-data');
   await page.locator('#parseBtn').click();
-  await expect(page.locator('#parseStatusText')).toContainText('CSV');
-  await expect(page.locator('#parseStatusText')).toContainText('2 行');
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText('CSV');
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText('2 行');
 });

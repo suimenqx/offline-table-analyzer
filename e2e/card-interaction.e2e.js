@@ -8,7 +8,7 @@ const shown = page => page.locator('.table-container .meta-tag').filter({hasText
 async function parse(page, text) {
   await page.locator('#rawInput').fill(text);
   await page.locator('#parseBtn').click();
-  await expect(page.locator('#parseStatusText')).toContainText(/\d[\d,]* 行/);
+  await expect(page.locator('.data-card.active .data-card-summary')).toContainText(/\d[\d,]* 行/);
 }
 
 test.beforeEach(async ({page}) => {
@@ -25,7 +25,7 @@ test('普通粘贴按光标插入，全选才替换；大段粘贴切换明确�
   await page.evaluate(()=>navigator.clipboard.writeText('MID'));
   await editor.press('Control+V');
   await expect(editor).toHaveValue('left|MIDright');
-  await expect(page.locator('#pasteBehaviorHint')).toContainText('光标');
+  await expect(page.locator('#sourcePreviewNotice')).toBeHidden();
   await editor.press('Control+A');
   await page.evaluate(()=>navigator.clipboard.writeText('whole card'));
   await editor.press('Control+V');
@@ -42,7 +42,7 @@ test('普通粘贴按光标插入，全选才替换；大段粘贴切换明确�
   await editor.focus();
   await editor.press('Control+V');
   await expect(editor).toHaveJSProperty('readOnly',true);
-  await expect(page.locator('#pasteBehaviorHint')).toContainText('只读预览');
+  await expect(page.locator('#sourcePreviewNotice')).toContainText('只读预览');
   expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw.length)).toBe(large.length);
 });
 
@@ -67,15 +67,15 @@ test('卡片显示解析摘要，结果栏统计整个筛选结果；编辑退�
   await expect(cards(page).last().locator('.card-status-label')).toHaveText('解析完成');
   await expect(cards(page).first().locator('.data-card-summary')).toContainText('2 行');
   await expect(cards(page).last().locator('.data-card-summary')).toContainText('3 行');
-  await expect(page.locator('#datasetSummary')).toContainText('表池 2/2 张卡片 · 1 表 · 5 行');
-  await cards(page).last().locator('[data-card-act="visible"]').uncheck();
+  await expect(page.locator('#datasetSummary')).toContainText('显示 2/2 张卡片 · 1 表 · 5 行');
+  await cards(page).last().locator('[data-card-act="visible"]').click();
   await expect(shown(page)).toHaveText('Show: 2');
   await cards(page).first().click();
   await cards(page).last().click();
   await expect(page.locator('#rawInput')).toHaveValue(b);
   await expect(shown(page)).toHaveText('Show: 2');
   await expect(page.locator('#previewArea tbody tr').first()).toContainText('A');
-  await expect(page.locator('#datasetSummary')).toContainText('表池 1/2 张卡片 · 1 表 · 2 行');
+  await expect(page.locator('#datasetSummary')).toContainText('显示 1/2 张卡片 · 1 表 · 2 行');
   await page.locator('#formatSelect').selectOption('json');
   await page.locator('#rawInput').fill('{broken');
   await page.locator('#parseBtn').click();
@@ -86,9 +86,9 @@ test('卡片显示解析摘要，结果栏统计整个筛选结果；编辑退�
   const download=await pending;
   const rows=await readSheet(await download.path(),'JSON Table 1');
   expect(rows).toEqual([['id','name'],[1,'A'],[2,'A']]);
-  await cards(page).first().locator('[data-card-act="visible"]').uncheck();
+  await cards(page).first().locator('[data-card-act="visible"]').click();
   await expect(page.locator('.table-container')).toHaveCount(0);
-  await expect(page.locator('#datasetSummary')).toContainText('表池 0/2 张卡片 · 0 表 · 0 行');
+  await expect(page.locator('#datasetSummary')).toContainText('显示 0/2 张卡片 · 0 表 · 0 行');
 });
 
 test('键盘和拖拽排序改变拼接顺序，不改变编辑对象或记录数量', async ({page}) => {
@@ -113,7 +113,7 @@ test('键盘和拖拽排序改变拼接顺序，不改变编辑对象或记录�
   await expect(page.locator('#cardFeedback')).toContainText('拼接顺序');
 });
 
-test('方向键只移动焦点，Enter 选中；重命名和参与开关不丢焦点', async ({page}) => {
+test('方向键只移动焦点，Enter 选中；重命名和眼睛开关不丢焦点', async ({page}) => {
   await parse(page, raw('A'));
   await page.locator('#addCardBtn').click();
   await parse(page, raw('B'));
@@ -136,9 +136,9 @@ test('方向键只移动焦点，Enter 选中；重命名和参与开关不丢�
   await expect(cards(page).last()).toBeFocused();
   await expect(cards(page).last().locator('.data-card-title')).toHaveText('订单数据');
   const toggle = cards(page).last().locator('[data-card-act="visible"]');
-  await toggle.uncheck();
+  await toggle.click();
   await expect(toggle).toBeFocused();
-  await expect(page.locator('#sourceEditorLabel')).toHaveText('当前编辑：订单数据（未参与分析）');
+  await expect(page.locator('#sourceEditorLabel')).toHaveText('原文 · 订单数据');
   await expect(page.locator('#rawInput')).toBeEnabled();
   await expect(cards(page).last().locator('.data-card-title')).not.toHaveCSS('text-decoration-line', 'line-through');
 });
@@ -152,7 +152,7 @@ test('紧凑卡片列表限高，原文不重复展示，解析和当前编辑�
   await expect(cards(page).last().locator('.data-card-title')).toHaveText('数据段 6');
   await expect(page.locator('.data-card-preview')).toHaveCount(0);
   await expect(page.locator('#sourceEditorLabel')).toContainText('数据段 6');
-  await expect(page.locator('#pasteBehaviorHint')).toContainText('光标');
+  await expect(page.locator('#sourcePreviewNotice')).toBeHidden();
   const layout = await page.evaluate(() => ({
     card:document.querySelector('.data-card').getBoundingClientRect().height,
     list:document.querySelector('#cardList').getBoundingClientRect().height,
@@ -162,7 +162,7 @@ test('紧凑卡片列表限高，原文不重复展示，解析和当前编辑�
   expect(layout.card).toBeLessThan(90);
   expect(layout.list).toBeLessThanOrEqual(230);
   expect(layout.parse).toBeLessThan(layout.height);
-  await expect(cards(page).last().locator('[data-card-act="visible"]')).toBeChecked();
+  await expect(cards(page).last().locator('[data-card-act="visible"]')).toHaveAttribute('aria-pressed','true');
   await expect(cards(page).last().locator('.card-editing-badge')).toHaveCount(0);
   await expect(cards(page).last()).toHaveAttribute('aria-current','true');
   await expect(cards(page).last()).toHaveAccessibleName(/数据段 6，编辑中/);

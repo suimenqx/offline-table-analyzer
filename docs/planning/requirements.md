@@ -78,6 +78,8 @@ The defining constraints are:
 
 ## 3. Current release requirements
 
+The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md) records the approved presentation simplification: eye-button card visibility with readable muted hidden cards, one success summary, conditional editor feedback, native source/workspace tool disclosures, shared help, and copy formula protection in copy settings. These use the existing `visible`, `persistRaw` and `spreadsheetSafe` fields and preserve workspace/backup compatibility. The original-saving control remains global even though its location changes.
+
 ### R1 — trustworthy persistence
 
 - Schema version `22`, application version `23.2.0`. Empty `projects`/`docs` and `activeProjectId`/`activeCardId: null` are valid existing schema-22 shapes; no new persisted fields or schema bump are needed. Schema 21 migrates each old document into one project/card; explicit empty legacy backups remain empty.

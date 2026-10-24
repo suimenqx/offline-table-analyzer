@@ -8,7 +8,7 @@
 | --- | --- |
 | **Paste** | Paste text directly into the left-panel source editor. The editor accepts JSON table data, CSV, TSV, HTML tables, Markdown/pipe tables, ASCII tables, fixed-width and aligned fixed-width tables, CLI `table-data` blocks, CLI multi-block tables, Data-Block `data <table> [...]` blocks, and plain whitespace-delimited text. |
 | **Drag file** | Drag a supported text file onto the editor area. A visible drop zone highlight confirms detection. |
-| **Select file** | Click **Select file** (or press `Ctrl/Cmd+O`) and choose a file. Accepted extensions: `.csv`, `.tsv`, `.json`, `.txt`, `.log`, `.md`, `.markdown`, `.html`, `.htm`. |
+| **Select file** | Click **导入文件** (or press `Ctrl/Cmd+O`) and choose a file. Accepted extensions: `.csv`, `.tsv`, `.json`, `.txt`, `.log`, `.md`, `.markdown`, `.html`, `.htm`. |
 
 Sources are limited to **128 MiB** of file bytes and UTF-16 text estimate. Large originals use a bounded read-only preview; complete text remains available for parsing, recovery and original-text export.
 
@@ -46,7 +46,7 @@ The **Format** dropdown includes fourteen options:
 13. **Aligned fixed width** — delimiter-free aligned output whose column positions are inferred from the header row.
 14. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
 
-**When auto-detection needs help:** Open the **Details** panel (beside the parse status indicator). It lists format candidates with heuristic ranking references, which are not correctness probabilities. If the format, table region, or header is ambiguous, no guessed table is loaded; choose a candidate to re-parse the current source. Confirmation choices for detected headers and regions do not change the saved automatic settings.
+**When auto-detection needs help:** Use the direct confirmation/error action beside the parse notice, or **更多 → 解析详情** beside the original-text heading. The dialog lists format candidates with heuristic ranking references, which are not correctness probabilities. If the format, table region, or header is ambiguous, no guessed table is loaded; choose a candidate to re-parse the current source. Confirmation choices for detected headers and regions do not change the saved automatic settings.
 
 Automatic selection verifies bounded samples and expands them within a fixed budget. The final parser reads the complete source or identified table regions. Unresolved format, region, or header ambiguity keeps the original and asks you to choose in Details; no guessed workbook is produced.
 
@@ -81,7 +81,7 @@ Duplicate or empty header names receive numeric suffixes (e.g., `Name_2`).
 
 ### 1.6 Diagnostics
 
-The parse status bar shows warnings for malformed quotes, rows with mismatched column counts, and other recoverable issues. These never block parsing; they are informational. Open **Details** to see the full list.
+The editor shows a notice for malformed quotes, rows with mismatched column counts, and other issues needing attention. Ordinary successful parse counts appear once in the card summary. Open **更多 → 解析详情** for all diagnostics, including informational notes; unresolved format, region and header choices retain their direct confirmation actions.
 
 ---
 
@@ -96,14 +96,14 @@ Drag the horizontal handle below the source textarea to resize it. The height ra
 The source area holds a **card list**: each card is one data segment with its own raw text, parse options (format / header mode), and a visibility toggle.
 
 - **Click a card** to select it — the left panel then shows its content and parse options, and parsing applies to it.
-- **Paste** inserts at the caret or replaces the selection for small text. Select all before pasting to replace the whole card. Large pastes and pastes into a large-source read-only preview replace the complete card; the editor explains this distinction and names the target card. **＋ 新增卡片** adds an empty, participating card, selects it and focuses its source input.
-- **参与分析** controls whether the card's tables enter the **table pool** — the context for preview, filtering, JOIN and data export. Clearing the checkbox excludes its data, not its editor; **编辑中** independently marks the selected card. Excluded cards are not struck through or treated as deleted.
+- **Paste** inserts at the caret or replaces the selection for small text. Select all before pasting to replace the whole card. Pastes exceeding 128 Ki characters and pastes into a large-source read-only preview replace the complete card. The preview shows one notice explaining replacement and preservation of the original; ordinary paste instructions are in Help. **＋ 新增** adds an empty, visible card, selects it and focuses its source input.
+- The **eye button** shows or hides the card's tables in the **table pool**, the context for preview, filtering, JOIN and data export. A slashed eye and muted card/title/summary express hidden data; the card stays editable. Selection and keyboard focus remain clear even on a hidden card. Hidden cards retain their source and parsed dataset until deletion.
 - The workspace tab bar now manages **projects (工程)**: each project is a container holding a group of cards and its own JOIN views.
 - **Rename** a card by double-clicking its title or pressing `F2`: edit in place, `Enter`/blur saves, `Escape` cancels. New default cards consistently use **数据段 N**; historical names remain unchanged. Default main-card downloads retain the project's filename prefix; after an explicit card rename, downloads use that card name.
 - **Keyboard**: ↑↓ and Home/End move card focus without selecting; Enter/Space selects. **Order**: drag the handle or use Alt+↑↓. During dragging, neighboring cards preview the insertion position; order changes only when dropped inside the list. Press Escape or release outside the list to cancel. This controls concatenation order and never deduplicates records or changes the editing target. Reduced-motion preferences remove movement interpolation without removing these controls.
-- Cards retain the existing light/dark colors with compact source icons, an editing marker and distinct status dots/text. **解析中…** appears only while the selected source has an actual background parse in flight, then clears on completion, failure or cancellation; it is not a fabricated percentage.
-- Cards show format, full row count and parse status instead of repeating raw previews. The right-hand header reports participating/total cards and full filtered result counts, not the active card's rows or just the displayed page.
-- **Delete** any card with its × button or `Delete`, including the last card. An empty project keeps its JOIN views; source editing and data export stay disabled until you click **新增卡片**. Reloading does not add a replacement card.
+- Cards retain the existing light/dark colors. Their first row holds the drag handle, name, eye and delete actions; their second row holds a single status or success summary. Success uses a checkmark, format and full row count (plus table count for multiple tables). Empty cards show **空**; pending, parsing, confirmation and error states retain explicit short labels. **解析中** appears only during an actual background parse and clears on completion, failure or cancellation.
+- The card heading counts all cards. The right-hand header reports **显示 N/M 张卡片** and full filtered result counts, including enabled JOIN views. The tooltip explains that counts cover all matching records rather than the current page.
+- **Delete** any card with its × button or `Delete`, including the last card. An empty project keeps its JOIN views; source editing and data export stay disabled until you click **＋ 新增**. Reloading does not add a replacement card.
 
 ---
 
@@ -113,8 +113,10 @@ The left sidebar has two tabs:
 
 | Tab | Contains |
 | --- | --- |
-| **Data** (数据源) | Source textarea, format/header selects, file import button, parse/clear actions, parse status, privacy toggle, sample data loader, and quick-export utilities. |
-| **Config** (分析规则) | View settings (raw tables, JOIN views), rule engine (highlight, row filter, global filter), column focus, and export options. |
+| **Data** (数据源) | Card list, source textarea, format/header selects, automatic parsing, import/parse/clear actions and actionable parse notices. **更多** holds source diagnostics, paste metadata, original-text export and sample data; an empty editor also offers the sample directly. |
+| **Config** (分析规则) | View settings, filters/highlights, column focus, and Excel export options. Rule syntax is available from one keyboard-accessible help button. |
+
+The top **工作区** disclosure holds raw Excel, workspace backup/restore, configuration import/export and the global original-text saving preference. Formula protection is in the existing **复制设置** popover. Tool disclosures support keyboard activation, Escape, outside click and focus restoration after dialogs.
 
 ### 3.1 Collapse the sidebar
 
@@ -470,13 +472,13 @@ All Excel actions reuse a matching completed parse (and its corrections), wait f
 
 | Export | Button location | Contents |
 | --- | --- | --- |
-| **Raw Excel** | Sidebar Data tab → "原始 Excel" | All parsed source tables (no filters, no JOIN views). One sheet per table. |
+| **Raw Excel** | Top toolbar → "工作区" → "原始 Excel" | All visible source tables (no filters, no JOIN views). One sheet per table. |
 | **Full Excel** | Top toolbar → "全量 Excel" | Selected raw tables **plus** enabled JOIN views. Respects "Export displayed columns" if enabled. No row filtering applied. |
 | **Export preview** | Top toolbar → "导出预览" | Filtered and highlighted results for **ALL matching rows** across all pages in the current tab. Uses the active focus columns. |
-| **Back up workspace** | Sidebar Data tab → "备份工作区" | Complete workspace as versioned JSON: all tabs, raw sources, rules, cell corrections, JOIN views, and preferences. |
-| **Restore backup** | Sidebar Data tab → "恢复备份" | Import a workspace JSON. Choose to **replace** the current workspace or **append** backup tabs as new tabs. |
-| **Export configuration** | Config tab → "导出配置" | Rules, JOIN views, and UI settings only. **No raw source data.** |
-| **Import configuration** | Config tab → "导入配置" | Apply exported configuration to the current workspace. Matches docs by **title first**, then by ID. Offers to create new docs for unmatched configs. |
+| **Back up workspace** | Top toolbar → "工作区" → "备份工作区" | Complete workspace as versioned JSON: all tabs, raw sources, rules, cell corrections, JOIN views, and preferences. |
+| **Restore backup** | Top toolbar → "工作区" → "恢复备份" | Import a workspace JSON. Choose to **replace** the current workspace or **append** backup tabs as new tabs. |
+| **Export configuration** | Top toolbar → "工作区" → "导出配置" | Rules, JOIN views, and UI settings only. **No raw source data.** |
+| **Import configuration** | Top toolbar → "工作区" → "导入配置" | Apply exported configuration to the current workspace. Matches docs by **title first**, then by ID. Offers to create new docs for unmatched configs. |
 
 ### 13.2 Excel format
 
@@ -501,11 +503,11 @@ In **Config → Export options**:
 
 ### 14.1 Save raw data on this device
 
-Toggle in the sidebar Data tab. When **enabled** (default), all source text is persisted to `localStorage` and survives browser refresh. When **disabled**, rules, preferences, and column filters are still saved, but the raw source text is not persisted across page loads (it remains during the current session).
+Toggle **工作区 → 本地保存原文**. When **enabled** (default), source text is saved locally and survives browser refresh; large originals use IndexedDB snapshots. When **disabled**, rules, preferences, and column filters are still saved, but raw text only remains in the current page and is not restored after refresh.
 
 ### 14.2 Spreadsheet formula protection
 
-Toggle in Config → Export options. Controls whether a leading apostrophe is added to dangerous formula-starting cells when copying spreadsheet-oriented text formats (see §12.5). It does not affect JSON/Lua formats or the Excel export.
+Toggle **复制设置 → 公式防护**. Controls whether a leading apostrophe is added to dangerous formula-starting cells when copying spreadsheet-oriented text formats (see §12.5). It does not affect JSON/Lua formats or the Excel export.
 
 ### 14.3 Clear local data
 
@@ -515,7 +517,7 @@ The **Clear local data** button in the status bar removes ALL `localStorage` dat
 
 The status bar reports save state in real time:
 - **"已保存 · X KB"** — data saved successfully, with estimated size.
-- **"临时数据模式 · 规则已保存"** — raw data persistence is off.
+- **"原文仅保留在当前页面 · 规则已保存"** — raw data persistence is off.
 - **"保存失败"** (in red) — `localStorage` write failed (e.g., quota exceeded). A visual storage meter with a colored bar shows usage proportion.
 
 If storage is full, **do not close the page** — download a workspace backup first, then clear local data.

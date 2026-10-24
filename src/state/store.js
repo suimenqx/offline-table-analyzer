@@ -1219,6 +1219,11 @@ const Store = {
                 this._notify('state:changed', { changed:['preferences'] });
                 return true;
             }
+            case 'ui:spreadsheetSafe': {
+                this.setSpreadsheetSafe(payload && payload.enabled);
+                this._notify('state:changed', { changed:['preferences'] });
+                return true;
+            }
             case 'ui:theme': {
                 this.toggleTheme();
                 this._notify('ui:themeChanged', { theme: this.state.theme });

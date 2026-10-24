@@ -135,6 +135,7 @@ for (const sample of cases) {
         expect(report.phases.at(-1).pasteEvents).toBe(1);
         await phase('save-raw', () => page.keyboard.press('Control+S'));
         await phase('temporary-mode-control', async () => {
+          await page.locator('#workspaceTools summary').click();
           await page.locator('#persistRawToggle').uncheck();
           const state = await rawState();
           report.temporaryMode = { storeEnabled: state.persistRaw, controlChecked: await page.locator('#persistRawToggle').isChecked() };

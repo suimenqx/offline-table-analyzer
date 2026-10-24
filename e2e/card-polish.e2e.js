@@ -24,10 +24,10 @@ test('卡片精修保留经典明暗色板、紧凑尺寸和减少动态下的�
   expect(await palette()).toEqual(['#a66a4c','#0f9f8f','#f3f3f0','#ffffff']);
   await expect(cards(page).last().locator('.card-source-symbol, .card-editing-badge')).toHaveCount(0);
   await expect(cards(page).last().locator('.card-drag-handle svg, .card-remove svg')).toHaveCount(2);
-  await expect(cards(page).last().locator('.data-card-head .card-status-label')).toHaveText('空卡片');
-  await expect(cards(page).last().locator('.data-card-detail .data-card-summary')).toHaveText('粘贴或导入数据');
-  await expect(cards(page).last().locator('.data-card-detail .card-participation')).toHaveText('参与分析');
-  await expect(cards(page).last().locator('[data-card-act="visible"]')).toBeChecked();
+  await expect(cards(page).last().locator('.data-card-detail .card-status-label')).toHaveText('空');
+  await expect(cards(page).last().locator('.data-card-summary')).toBeHidden();
+  await expect(cards(page).last().locator('.card-visibility svg')).toBeVisible();
+  await expect(cards(page).last().locator('[data-card-act="visible"]')).toHaveAttribute('aria-pressed','true');
   const first=await cards(page).first().boundingBox();
   await cards(page).first().hover();
   expect(await cards(page).first().boundingBox()).toEqual(first);
@@ -99,7 +99,7 @@ test('真实后台解析时显示忙碌状态，完成或失败后清除；减�
   const card=cards(page).last();
   await expect(card).toHaveAttribute('aria-busy','true');
   await expect(card.locator('.card-status-label')).toHaveText('解析中');
-  await expect(card.locator('.data-card-summary')).toHaveText('正在读取原文…');
+  await expect(card.locator('.data-card-summary')).toBeHidden();
   await expect(card.locator('.card-status-dot')).toHaveCSS('animation-name','none');
   await expect(card).toHaveAttribute('aria-busy','false');
   await expect(card.locator('.card-status-label')).toHaveText('解析完成');

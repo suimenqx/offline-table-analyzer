@@ -4,11 +4,18 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## Unreleased
 
+### 侧栏信息简化
+
+- Replace repeated participation labels with accessible eye buttons; mute hidden-card surfaces and text while preserving editing, selection, keyboard focus and visible error states.
+- Flatten the source panel, combine successful parsing into one card summary, remove routine instructions and duplicate counts, and keep conditional notices for confirmation, errors, warnings and large-source replacement.
+- Put current-card tools in the source disclosure and workspace exports, backups, configuration and raw-saving preferences in the workspace disclosure, with keyboard operation and stable focus restoration.
+- Consolidate rule and keyboard help, simplify rule labels, and move formula protection into copy preferences with a Store command for the existing global preference. Preserve offline delivery and schema-22 compatibility.
+
 ### 卡片式数据源工作区
 
-- Refine card edges, typography, source symbols and status indicators within the existing warm-white/brown/teal and graphite palettes; retain compact layout, native participation controls and visible keyboard focus.
+- Refine card edges, typography and status indicators within the existing warm-white/brown/teal and graphite palettes; retain compact layout, accessible visibility controls and visible keyboard focus.
 - Preview drag insertion with smooth neighbor movement without changing persisted order until drop; animate committed keyboard ordering, restore cancelled previews and respect reduced motion. Report real in-flight background parsing with stale-job-safe, session-only card feedback.
-- Compact the source-card list into two-line, independently scrollable items; separate editing state from the native participation checkbox, name the editor's paste target, and explain caret/selection versus whole-card replacement.
+- Compact the source-card list into two-line, independently scrollable items; separate editing state from visibility, name the editor's paste target, and document caret/selection versus whole-card replacement in Help.
 - Preserve card DOM/focus across status, rename and visibility updates; add arrow/Home/End navigation and drag-handle/Alt+arrow reordering with concatenation-order feedback.
 - Use consistent default data-segment names without rewriting historical names, with an explicit optional export-prefix policy to retain project-based default downloads and custom/legacy card naming.
 - Show revision-bound, session-only parse summaries and full filtered preview scope; keep excluded sources out of single-card queries and preserve other participating sources when editing an excluded card. Refresh source/name/correction cache keys and return bounded lazy-parse descriptors without copying full Worker data.

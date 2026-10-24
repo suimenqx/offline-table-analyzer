@@ -44,6 +44,8 @@ describe('Card parse and preview UI metadata', () => {
     assert.equal(SourceController.getCardStatus(Store.curr().id).state,'parsing');
     const cardElement=dom.getElementById('cardList').children.find(node=>node.dataset.cardId===Store.curr().id);
     assert.equal(cardElement['aria-busy'],'true');
+    assert.equal(dom.getElementById('parseStatus').hidden,true);
+    assert.equal(dom.getElementById('sourceDiagnosticsBtn').disabled,true);
     held.shift()();
     assert.equal(await pending,true);
     assert.equal(SourceController.getCardStatus(Store.curr().id).label,'解析完成');
@@ -57,7 +59,7 @@ describe('Card parse and preview UI metadata', () => {
     await new Promise(resolve=>setTimeout(resolve,20));
     Store.transition('project:rename',{id:Store.getActiveProject().id,title:'Legacy renamed'});
     await new Promise(resolve=>setTimeout(resolve,20));
-    assert.equal(dom.getElementById('sourceEditorLabel').textContent,'当前编辑：Legacy renamed');
+    assert.equal(dom.getElementById('sourceEditorLabel').textContent,'原文 · Legacy renamed');
   });
 
   it('keeps an excluded single card editable but out of preview and export', () => {
@@ -87,7 +89,7 @@ describe('Card parse and preview UI metadata', () => {
     App.renderPreview();
     assert.equal(SourceController.getCardStatus(Store.curr().id).label,'解析完成');
     assert.match(SourceController.getCardStatus(Store.curr().id).text,/2 行/);
-    assert.match(dom.getElementById('datasetSummary').textContent,/表池 1\/1 张卡片.*1 表.*2 行/);
+    assert.match(dom.getElementById('datasetSummary').textContent,/显示 1\/1 张卡片.*1 表.*2 行/);
     Store.transition('source:replace',{text:'changed'});
     assert.equal(SourceController.getCardStatus(Store.curr().id).state,'pending');
   });

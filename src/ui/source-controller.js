@@ -37,7 +37,7 @@ const SourceController = {
         const notice = $('sourcePreviewNotice');
         if (notice) {
             notice.hidden = !large;
-            notice.textContent = large ? `完整原文 ${formatBytes(text.length * 2)} 已保留，此处仅预览。需要修改时，请在本地编辑器中完成后再粘贴替换，或导出原文备份。` : '';
+            notice.textContent = large ? `只读预览，完整原文 ${formatBytes(text.length * 2)} 已保留。粘贴会替换整卡；也可导出原文后在本地编辑。` : '';
         }
     },
 
@@ -222,14 +222,14 @@ const SourceController = {
         const config = parsing && (parsing.config || parsing.options || {});
         if(card && parsing && card.sourceRevision === parsing.sourceRevision
             && (card.ui.importFormat || 'auto') === (config.format || 'auto')
-            && (card.ui.importHeaderMode || 'auto') === (config.headerMode || 'auto')) return {state:'parsing', label:'解析中', text:'正在读取原文…'};
-        if(!card?.raw) return {state:'empty', label:'空卡片', text:'粘贴或导入数据'};
+            && (card.ui.importHeaderMode || 'auto') === (config.headerMode || 'auto')) return {state:'parsing', label:'解析中', text:''};
+        if(!card?.raw) return {state:'empty', label:'空', text:''};
         const summary = TableRegistry.getCardSummary(id);
-        if(!summary) return {state:'pending', label:'待解析', text:`${card.raw.length.toLocaleString()} 字符`};
-        if(summary.format === 'ambiguous') return {state:'confirm', label:'待确认', text:'需确认候选后继续'};
-        if(summary.format === 'error') return {state:'error', label:'解析失败', text:'请检查格式或原文'};
-        if(!summary.tableCount) return {state:'unrecognized', label:'未识别表格', text:'请检查解析设置'};
-        return {state:'ready', label:'解析完成', text:`${summary.label} · ${summary.rowCount.toLocaleString()} 行`};
+        if(!summary) return {state:'pending', label:'待解析', text:''};
+        if(summary.format === 'ambiguous') return {state:'confirm', label:'待确认', text:''};
+        if(summary.format === 'error') return {state:'error', label:'解析失败', text:''};
+        if(!summary.tableCount) return {state:'unrecognized', label:'未识别表格', text:''};
+        return {state:'ready', label:'解析完成', text:`${summary.label} · ${summary.tableCount > 1 ? `${summary.tableCount} 表 · ` : ''}${summary.rowCount.toLocaleString()} 行`};
     },
 
     /** 选中卡片（左侧面板显示其内容，解析作用于它） */
@@ -249,7 +249,7 @@ const SourceController = {
         if(!card) return false;
         const enabled = visible === undefined ? card.visible === false : visible;
         const changed = dispatch('card:visible', { id, visible:enabled });
-        if(changed) this.announceCardChange(`${card.title}${enabled ? '已参与分析' : '已退出表池，仍可编辑'}`);
+        if(changed) this.announceCardChange(`${card.title}${enabled ? '已在分析结果中显示' : '已从分析结果中隐藏，仍可编辑'}`);
         return changed;
     },
 
@@ -455,22 +455,20 @@ const SourceController = {
         const remove = createEl('button', 'card-remove');
         remove.type = 'button'; remove.dataset.cardAct = 'remove';
         remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
-        head.appendChild(drag); head.appendChild(title); head.appendChild(statusBadge); head.appendChild(remove);
+        const visible = createEl('button', 'card-visibility');
+        visible.type = 'button'; visible.dataset.cardAct = 'visible';
+        visible.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path class="eye-outline" d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle class="eye-pupil" cx="12" cy="12" r="3"/><path class="eye-slash" d="m3 3 18 18"/></svg>';
+        head.appendChild(drag); head.appendChild(title); head.appendChild(visible); head.appendChild(remove);
         const detail = createEl('div', 'data-card-detail');
         const summary = createEl('span', 'data-card-summary');
-        const participation = createEl('label', 'card-participation');
-        const visible = document.createElement('input');
-        visible.type = 'checkbox'; visible.dataset.cardAct = 'visible';
-        const visibleLabel = createEl('span'); visibleLabel.textContent = '参与分析';
-        participation.appendChild(visible); participation.appendChild(visibleLabel);
-        detail.appendChild(summary); detail.appendChild(participation);
+        detail.appendChild(statusBadge); detail.appendChild(summary);
         root.appendChild(head); root.appendChild(detail);
         root.onclick = event => {
-            if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
+            if(event.target.closest('[data-card-act], .data-card-title-input')) return;
             this.activateCard(id);
         };
         root.ondblclick = event => {
-            if(event.target.closest('[data-card-act], .card-participation, .data-card-title-input')) return;
+            if(event.target.closest('[data-card-act], .data-card-title-input')) return;
             event.preventDefault(); this.startCardRename(id);
         };
         root.addEventListener('focusin', () => { this._focusedCardId = id; this._syncCardTabStops(); });
@@ -498,7 +496,7 @@ const SourceController = {
                 else this.activateCard(id);
             }
         };
-        visible.onchange = () => this.toggleCardVisible(id, visible.checked);
+        visible.onclick = event => { event.stopPropagation(); this.toggleCardVisible(id); };
         remove.onclick = event => { event.stopPropagation(); this.removeCard(id); };
         drag.onclick = event => event.stopPropagation();
         drag.ondragstart = event => { event.stopPropagation(); this._startCardDrag(id, event); };
@@ -508,13 +506,12 @@ const SourceController = {
 
     syncEditorContext() {
         const card = Store.getDocument();
-        const label = $('sourceEditorLabel'), hint = $('pasteBehaviorHint');
-        if(label) label.textContent = card ? `当前编辑：${card.title}${card.visible === false ? '（未参与分析）' : ''}` : '尚未选择卡片';
+        const label = $('sourceEditorLabel');
+        if(label) { label.textContent = card ? `原文 · ${card.title}` : '原文'; label.title = label.textContent; }
         const editor = $('rawInput');
         if(editor) editor.setAttribute('aria-label', card ? `原文：${card.title}` : '原始表格数据');
-        if(hint) hint.textContent = !card ? '请先新增卡片，再粘贴或导入数据。'
-            : editor?.dataset.sourcePreview === 'true' ? '当前为只读预览；粘贴会替换这张卡片的完整原文。'
-            : '普通粘贴在光标处插入或替换选区；全选后粘贴可替换整卡。大段粘贴会替换整卡。';
+        const sample = $('sampleBtn');
+        if(sample) sample.hidden = !card || Boolean(this.readText(editor));
     },
 
     renderCards() {
@@ -547,11 +544,12 @@ const SourceController = {
             nodes.root.className = `data-card${active ? ' active' : ''}${card.visible === false ? ' excluded-card' : ''}${card.id === this._dragCardId ? ' dragging' : ''}`;
             nodes.root.tabIndex = active ? 0 : -1;
             nodes.root.setAttribute('aria-current', String(active));
-            nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '未参与分析' : '参与分析'}，${status.label}，${status.text}`);
+            nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '已隐藏' : '已显示'}，${status.label}${status.text ? `，${status.text}` : ''}`);
             if(!nodes.title.querySelector('input')) nodes.title.textContent = card.title;
             nodes.title.title = `${card.title} · 双击或 F2 重命名`;
-            nodes.visible.checked = card.visible !== false;
-            nodes.visible.setAttribute('aria-label', `${card.title}：参与分析`);
+            nodes.visible.setAttribute('aria-pressed', String(card.visible !== false));
+            nodes.visible.setAttribute('aria-label', `显示 ${card.title} 的分析结果`);
+            nodes.visible.title = card.visible === false ? '在分析结果中显示' : '从分析结果中隐藏';
             nodes.remove.title = `删除卡片 ${card.title}`;
             nodes.remove.setAttribute('aria-label', nodes.remove.title);
             nodes.root.dataset.parseState = status.state;
@@ -559,7 +557,9 @@ const SourceController = {
             nodes.statusBadge.dataset.state = status.state;
             nodes.statusDot.dataset.state = status.state;
             nodes.statusLabel.textContent = status.label;
+            nodes.statusLabel.hidden = status.state === 'ready';
             nodes.summary.textContent = status.text;
+            nodes.summary.hidden = !status.text;
             nodes.summary.dataset.state = status.state;
             nodes.summary.title = `${status.label} · ${status.text}`;
             if(container.children[index] !== nodes.root) {
@@ -578,8 +578,8 @@ const SourceController = {
             addBtn.disabled = !project;
             addBtn.onclick = event => { event.preventDefault(); dispatch('card:create', {}); };
         }
-        const poolCount = $('poolCount');
-        if(poolCount) poolCount.textContent = `表池 ${cards.filter(card => card.visible !== false).length}/${cards.length} 张卡片`;
+        const cardCount = $('cardCount');
+        if(cardCount) cardCount.textContent = String(cards.length);
         this.syncEditorContext();
     },
 

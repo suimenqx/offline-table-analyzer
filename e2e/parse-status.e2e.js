@@ -15,7 +15,7 @@ test.beforeEach(async ({page}) => {
 
 for(const {name, text, value} of cases) {
   test(`${name}待确认时明确说明未出表原因，可用键盘进入候选并完成解析`, async ({page}) => {
-    await expect(activeCard(page).locator('.card-status-label')).toHaveText('空卡片');
+    await expect(activeCard(page).locator('.card-status-label')).toHaveText('空');
     await page.locator('#rawInput').fill(text);
     await expect(activeCard(page).locator('.card-status-label')).toHaveText('待解析');
     await page.locator('#parseBtn').click();
@@ -37,7 +37,7 @@ for(const {name, text, value} of cases) {
     await expect(page.locator('#parseBtn')).toBeFocused();
     await expect(page.locator('#previewArea')).toContainText(value);
     await expect(page.locator('#rawInput')).toHaveValue(text);
-    await expect(page.locator('#diagnosticsBtn')).toHaveText('详情');
+    await expect(page.locator('#sourceDiagnosticsBtn')).toHaveText('解析详情');
   });
 }
 

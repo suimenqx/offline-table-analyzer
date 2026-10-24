@@ -44,6 +44,18 @@ const clickExport = () => dom.getElementById('exportFullBtn').onclick();
 const small = 'table-data Items\nvalidflag ID Name\n1 001 Alice\n1 002 Bob';
 const large = createLargeTableData({rows:2000}).text;
 
+describe('Copy formula-protection preference', () => {
+  it('writes the existing global preference through the copy control and Store command', () => {
+    const control = dom.getElementById('checkFormulaSafe');
+    assert.equal(Store.getState().spreadsheetSafe, true);
+    control.onchange({target:{checked:false}});
+    assert.equal(Store.getState().spreadsheetSafe, false);
+    assert.equal(Store.serializeState().spreadsheetSafe, false);
+    control.onchange({target:{checked:true}});
+    assert.equal(Store.getState().spreadsheetSafe, true);
+  });
+});
+
 describe('Original source export filenames', () => {
   it('matches the full Excel naming style and preserves the original text', async () => {
     const source='\uFEFF'+small.replace(/\n/g,'\r\n');

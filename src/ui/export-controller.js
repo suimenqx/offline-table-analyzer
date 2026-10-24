@@ -105,6 +105,12 @@ const ExportController = {
             };
         }
 
+        const formulaSafe = $('checkFormulaSafe');
+        if(formulaSafe) {
+            formulaSafe.checked = Store.getState().spreadsheetSafe !== false;
+            formulaSafe.onchange = e => dispatch('ui:spreadsheetSafe', {enabled:e.target.checked});
+        }
+
         // XLSX exports
         const rawBtn = $('exportRawBtn');
         if (rawBtn) rawBtn.onclick = () => ExportController.exportExcel('raw');
