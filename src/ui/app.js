@@ -12,6 +12,7 @@ const App = {
     _jobGeneration:0,
     _regionSelection:null,
     _headerModeConfirmation:null,
+    _diagnosticsRequest:0,
     showJob(label) {
         const id=++this._jobGeneration;
         const status=$('backgroundJob');if(status)status.hidden=false;
@@ -105,16 +106,33 @@ const App = {
                     this.requestRender();
                     break;
                 case 'card:removed':
+                    if(Store.getCard(payload.id)) break;
                     BackgroundService.removeCard(payload.id).catch(error => Toast.show(`卡片数据释放失败：${error.message}`, true));
                     QueryService.clearCache();
                     if(payload.activeChanged) {
                         this.loadDoc();
-                        const card = Array.from(document.querySelectorAll('.data-card')).find(el => el.dataset.cardId === Store.getDocument()?.id);
-                        (card || $('addCardBtn'))?.focus();
+                        if(!SourceController.focusCard(Store.getDocument()?.id)) {
+                            const search = $('cardSearchRow');
+                            (search && !search.hidden ? $('cardSearchInput') : $('addCardBtn'))?.focus();
+                        }
                     } else {
                         SourceController.renderCards();
                         this.requestRender();
                     }
+                    break;
+                case 'card:undoChanged':
+                    SourceController.renderCards();
+                    break;
+                case 'card:restored':
+                    this.renderTabs();
+                    SourceController.renderCards();
+                    QueryService.clearCache();
+                    // Finish any queued release before rebuilding this restored source.
+                    BackgroundService.removeCard(payload.id).then(() => {
+                        if(Store.getDocument()?.id !== payload.id) return;
+                        this.loadDoc();
+                        SourceController.focusCard(payload.id);
+                    }).catch(error => Toast.show(`恢复卡片解析失败：${error.message}；完整原文仍保留`, true));
                     break;
                 case 'card:renamed':
                 case 'card:reordered':
@@ -208,6 +226,7 @@ const App = {
             document.addEventListener('ota:sourceFileLoaded', () => { this.run(); });
             document.addEventListener('ota:sourceParseRequested', () => { this.run(); });
             document.addEventListener('ota:sourceAutoParse', () => { this.run(); });
+            document.addEventListener('ota:cardDiagnosticsRequested', event => { this.showCardDiagnostics(event.detail?.id); });
             document.addEventListener('ota:sourceParseState', (e) => {
                 this.updateSourceParseState(e.detail && e.detail.state);
             });
@@ -1075,6 +1094,29 @@ validflag Time      Level   Message                 Code
 
 
 
+    async showCardDiagnostics(id) {
+        const card = Store.getCard(id);
+        if(!card || Store.getDocument()?.id !== id) return false;
+        const request = ++this._diagnosticsRequest;
+        const revision = card.sourceRevision;
+        // Activation is delivered through Store's existing batched events.
+        await new Promise(resolve => setTimeout(resolve, 0));
+        if(Store.getDocument()?.id !== id || Store.getCard(id)?.sourceRevision !== revision) return false;
+        const context = this.getSourceContext();
+        try {
+            const pending = this._pendingParse;
+            if(this.matchesSourceContext(pending?.context, context)) await pending.promise;
+            else if(!this.matchesSourceContext(this._parseToken, context) || TableRegistry.getFormat() === 'empty') await this.run(false);
+            if(request !== this._diagnosticsRequest || !this.matchesSourceContext(context, this.getSourceContext()) || TableRegistry.getFormat() === 'empty') return false;
+            SourceController.focusCard(id, 'statusAction');
+            this.showDiagnostics();
+            return true;
+        } catch(error) {
+            Toast.show(`无法打开解析详情：${error.message || error}`, true);
+            return false;
+        }
+    },
+
     showDiagnostics() {
         const result = TableRegistry.getLastResult();
         const fromPreview = Boolean(document.activeElement?.closest?.('.parse-feedback'));
@@ -1135,7 +1177,8 @@ validflag Time      Level   Message                 Code
             <span>选中聚焦的卡片编辑</span><span><kbd>Enter</kbd> <kbd>Space</kbd></span>
             <span>卡片改名 / 删除</span><span><kbd>F2</kbd> <kbd>Delete</kbd></span>
             <span>调整卡片拼接顺序</span><kbd>Alt ↑ / ↓</kbd>
-        </div><p>卡片可双击改名，拖动手柄调整拼接顺序。眼睛按钮决定数据是否进入分析结果；隐藏的卡片仍可选中编辑。</p>
+        </div><p>卡片可双击改名，拖动手柄调整拼接顺序。眼睛按钮决定数据是否进入分析结果；隐藏的卡片仍可选中编辑。删除后 15 秒内可撤销最近一张卡片。</p>
+        <p>卡片较多时可展开列表，选中卡片后自动收起；八张起可搜索卡片名称。搜索只影响左侧列表，清除后可调整拼接顺序。点击卡片的待确认或失败状态可直接打开解析详情。</p>
         <p>普通粘贴按光标位置插入或替换选区；全选后粘贴替换整卡。超过 128 Ki 字符的大段粘贴，以及在只读预览中粘贴，会替换整卡原文。</p>
         <p>“工作区”菜单提供备份、恢复和本地保存设置。关闭“本地保存原文”后，原文只保留在当前页面，刷新后不会恢复；规则和界面偏好仍会保存。</p>
         <p class="muted">支持 JSON、CSV、TSV、HTML、Markdown、ASCII、固定宽度文本、CLI table-data 与 Data-Block。数据不会发送到网络。</p>`);

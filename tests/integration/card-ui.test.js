@@ -5,7 +5,13 @@ import {createDOMSandbox} from '../mocks/dom.js';
 import {createStorageMock} from '../mocks/storage.js';
 
 let Store, SourceController;
-afterEach(() => { clearTimeout(Store?.saveTimer); SourceController?.resetPendingInput(); });
+afterEach(() => {
+  clearTimeout(Store?.saveTimer);
+  Store?.clearCardRemoval?.();
+  clearTimeout(Store?._notifyTimer);
+  Store?._listeners?.clear();
+  SourceController?.resetPendingInput();
+});
 function setup() {
   const dom=createDOMSandbox();
   const target=dom.getElementById('targetTableSelect');target.options=[];target.add=option=>target.options.push(option);
@@ -17,6 +23,80 @@ function setup() {
 }
 
 describe('Card parse and preview UI metadata', () => {
+  it('searches card names without changing source order, visibility, preview scope or saved state', () => {
+    const {Store,SourceController,dom}=setup();
+    for(let i=0;i<7;i++) Store.transition('card:create',{title:i===3?'Orders October':`Other ${i}`});
+    SourceController.renderCards();
+    const before=JSON.stringify(Store.serializeState());
+    SourceController.setCardSearch('  ORDERS  ');
+    const visible=dom.getElementById('cardList').children.filter(node=>!node.hidden);
+    assert.equal(visible.length,1);
+    assert.equal(Store.getCard(visible[0].dataset.cardId).title,'Orders October');
+    assert.equal(visible[0].tabIndex,0,'a matching card remains keyboard reachable when the active card is filtered out');
+    assert.equal(dom.getElementById('cardSearchStatus').textContent,'找到 1 / 8 张卡片');
+    assert.equal(JSON.stringify(Store.serializeState()),before);
+    SourceController.setCardSearch('not present');
+    assert.equal(dom.getElementById('cardSearchEmpty').hidden,false);
+    SourceController.setCardSearch('');
+    assert.equal(dom.getElementById('cardList').children.filter(node=>!node.hidden).length,8);
+  });
+
+  it('expands the card list temporarily and collapses it when selecting a card; project switches clear search', () => {
+    const {Store,SourceController,dom}=setup();
+    const first=Store.curr();
+    for(let i=0;i<7;i++) Store.transition('card:create');
+    SourceController.renderCards();
+    SourceController.setCardListExpanded(true);
+    assert.equal(dom.getElementById('expandCardListBtn')['aria-expanded'],'true');
+    SourceController.activateCard(first.id);
+    assert.equal(dom.getElementById('expandCardListBtn')['aria-expanded'],'false');
+    SourceController.setCardListExpanded(true);
+    Store.transition('card:activate',{id:Store.getActiveProject().cardIds[1]});
+    SourceController.renderCards();
+    assert.equal(dom.getElementById('expandCardListBtn')['aria-expanded'],'false','selection from another UI entry also collapses the list');
+    SourceController.setCardSearch('段');
+    Store.transition('project:create');
+    SourceController.renderCards();
+    assert.equal(dom.getElementById('cardSearchInput').value,'');
+    assert.equal(dom.getElementById('cardSearchRow').hidden,true);
+  });
+
+  it('opens diagnostics for the requested card and ignores a request superseded by switching cards', async () => {
+    const {App,Store,SourceController,dom,TableRegistry}=setup();
+    SourceController.displayText('x,y\n1,2');
+    App.run(false);
+    let opened=0;
+    const show=App.showDiagnostics;
+    App.showDiagnostics=()=>{opened++;};
+    const id=Store.curr().id;
+    assert.equal(await App.showCardDiagnostics(id),true);
+    assert.equal(opened,1);
+    const pending=App.showCardDiagnostics(id);
+    Store.transition('card:create');
+    assert.equal(await pending,false);
+    assert.equal(opened,1);
+    App.showDiagnostics=show;
+    assert.equal(dom.getElementById('rawInput').value,'x,y\n1,2');
+  });
+
+  it('restores a deleted card and rebuilds the preview with its saved correction', async () => {
+    const {App,Store,SourceController,dom,TableRegistry}=setup();
+    SourceController.displayText('[{"id":"001"}]');
+    App.run(false);
+    Store.transition('cell:edit',{table:'JSON Table 1',row:0,col:0,value:'restored value'});
+    const card=Store.curr();
+    SourceController.removeCard(card.id);
+    await new Promise(resolve=>setTimeout(resolve,20));
+    assert.equal(dom.getElementById('cardUndoNotice').hidden,false);
+    SourceController.undoCardRemoval();
+    await new Promise(resolve=>setTimeout(resolve,40));
+    App.renderPreview();
+    assert.equal(Store.curr().id,card.id);
+    assert.equal(dom.getElementById('rawInput').value,'[{"id":"001"}]');
+    assert.equal(TableRegistry.getRaw()[0].rows[0][0],'restored value');
+    assert.equal(dom.getElementById('cardUndoNotice').hidden,true);
+  });
+
   it('connects the card busy state to a real background parse, not to arbitrary queries', async t => {
     const {App,Store,SourceController,OTA,dom}=setup();
     const {WorkerRuntime}=OTA.require('worker-runtime');

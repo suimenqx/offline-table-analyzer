@@ -39,7 +39,23 @@
                             <strong>卡片 <span id="cardCount" class="source-count" role="status" aria-live="polite">1</span></strong>
                             <button class="sm text-button" id="addCardBtn" type="button">＋ 新增</button>
                         </div>
+                        <div class="card-search-row" id="cardSearchRow" hidden>
+                            <label class="visually-hidden" for="cardSearchInput">搜索卡片名称</label>
+                            <input id="cardSearchInput" type="search" placeholder="搜索卡片名称" autocomplete="off" aria-controls="cardList" aria-describedby="cardSearchStatus">
+                            <button class="sm text-button" id="clearCardSearchBtn" type="button" hidden>清除</button>
+                        </div>
+                        <p class="card-browser-feedback" id="cardSearchStatus" role="status" aria-live="polite" hidden></p>
                         <div class="data-card-list" id="cardList" role="list" aria-label="数据卡片，顺序决定拼接顺序"></div>
+                        <p class="card-search-empty" id="cardSearchEmpty" hidden>没有匹配的卡片，请更换名称或清除搜索。</p>
+                        <div class="card-list-controls" id="cardListControls" hidden>
+                            <button class="sm text-button" id="expandCardListBtn" type="button" aria-expanded="false" aria-controls="cardList">展开列表</button>
+                        </div>
+                        <p class="card-browser-feedback card-reorder-hint" id="cardReorderHint" role="status" aria-live="polite" hidden></p>
+                        <div class="card-undo-notice" id="cardUndoNotice" hidden>
+                            <span id="cardUndoText" role="status" aria-live="polite"></span>
+                            <button class="sm text-button" id="undoCardRemovalBtn" type="button" aria-describedby="cardUndoHint">撤销</button>
+                            <span class="visually-hidden" id="cardUndoHint">15 秒内可撤销最近一次删除。</span>
+                        </div>
                         <p class="visually-hidden" id="cardKeyboardHint">↑↓ 聚焦，Enter 选中，F2 改名，Delete 删除，Alt+↑↓ 调整拼接顺序。</p>
                         <span id="cardFeedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
                         <div class="source-section-heading source-editor-heading">

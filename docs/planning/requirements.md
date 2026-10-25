@@ -46,6 +46,13 @@ The defining constraints are:
 - Preserve theme, global JOIN views, and copy preferences. `copyFormat` remains the existing global field and accepts `default`, `csv`, `markdown`, `ascii`, `json-inline`, `json-expanded`, `lua-inline`, or `lua-expanded`; the older `json` value retains the expanded layout.
 - Backup/restore tabs and import/export configuration.
 
+### Card browsing and recovery (2026-10-25)
+
+- Distinguish the selected card with the classic brown accent and matching source heading, independently of keyboard focus, visibility and parse status.
+- Offer temporary expansion from four cards; selecting a card returns to the compact list. Offer card-name search from eight cards, with matching counts, empty results, clear/Escape and keyboard navigation. Search affects only the list; analysis, JOIN and exports keep their existing scope and order. Clear search before changing concatenation order.
+- Actionable confirmation/failure badges open that card's correct diagnostics directly, including other or hidden cards, with stale-source checks and focus restoration. Show the destination position during drag; cancellation keeps the existing order.
+- Delete immediately and offer recovery of the most recently deleted card for 15 seconds in the current session. Recover its original position, raw, visibility, parse options and correction overlay into its existing project, selecting and reparsing it. A newer deletion replaces this slot; expiry, owning-project removal, clearing local data and successful workspace import discard it. Backups and saved schema 22 contain no recovery slot. Existing import fixtures and migration contracts remain unchanged.
+
 ### Analysis rules
 
 - Select visible raw tables and enabled JOIN views.

@@ -99,6 +99,8 @@ const Store = {
     cleaning:false,
     _storageTouched:false,
     _rawSnapshot:null,
+    _cardRemoval:null,
+    _cardRemovalTimer:null,
     getState() { return this.state; },
     /** 当前选中卡片；空工程/空工作区返回 null，读取不自动创建内容。 */
     getCard(id) {
@@ -167,6 +169,7 @@ const Store = {
         return Object.assign(this.createDefaultUI(), card?.ui, { enabledViews:(project && project.enabledViews) || [] });
     },
     init() {
+        this.clearCardRemoval();
         this._rawSnapshot=null;
         let loaded = null;
         try {
@@ -390,6 +393,7 @@ const Store = {
         return true;
     },
     clearLocalData() {
+        this.clearCardRemoval();
         clearTimeout(this.saveTimer);this.saveTimer=null;
         const generation=++this._saveGeneration;this.saving=false;this.cleaning=false;this._rawSnapshot=null;
         try {
@@ -461,6 +465,7 @@ const Store = {
         const nextCards = baseCards.concat(newCards);
         if(nextProjects.length > 100 || nextCards.length > 100) throw new Error('工作区超过 100 个工程或卡片预算');
         if(nextCards.reduce((sum,doc)=>sum+(doc.raw || '').length*2,0) > MAX_WORKSPACE_BYTES) throw new Error('工作区原文超过 256 MiB 保存预算');
+        this.clearCardRemoval();
         this.state.projects = nextProjects;
         this.state.docs = nextCards;
         this.state.docs.forEach((doc, idx) => this.normalizeDoc(doc, idx));
@@ -573,11 +578,47 @@ const Store = {
         if(!project) return false;
         const idx = this.state.docs.findIndex(d=>d.id===id);
         if(idx < 0) return false;
+        this.clearCardRemoval();
+        this._cardRemoval = {card:this.state.docs[idx], project, index:project.cardIds.indexOf(id), docIndex:idx, expiresAt:Date.now()+15000};
+        this._cardRemovalTimer = setTimeout(() => this.clearCardRemoval(), 15000);
+        this._cardRemovalTimer.unref?.();
         this.state.docs.splice(idx,1);
         project.cardIds = project.cardIds.filter(cid => cid !== id);
         if(project.activeCardId===id) project.activeCardId = project.cardIds[0] || null;
         this.save();
         return true;
+    },
+    /** One bounded, session-only recovery slot. Backups and local saves contain only state. */
+    clearCardRemoval() {
+        clearTimeout(this._cardRemovalTimer);
+        this._cardRemovalTimer = null;
+        if(!this._cardRemoval) return;
+        this._cardRemoval = null;
+        this._notify('card:undoChanged', {});
+    },
+    getCardRemoval() {
+        const saved = this._cardRemoval;
+        if(!saved) return null;
+        if(Date.now() >= saved.expiresAt || !this.state.projects.includes(saved.project) || this.getCard(saved.card.id)) {
+            this.clearCardRemoval();
+            return null;
+        }
+        return {id:saved.card.id, title:saved.card.title, projectId:saved.project.id, expiresAt:saved.expiresAt};
+    },
+    undoCardRemoval() {
+        if(!this.getCardRemoval()) return false;
+        const {card, project, index, docIndex} = this._cardRemoval;
+        if(this.state.docs.reduce((sum,doc)=>sum+(doc.raw || '').length*2,0)+(card.raw || '').length*2 > MAX_WORKSPACE_BYTES) {
+            throw new Error('无法撤销：工作区原文超过 256 MiB，请先导出或移除其他数据');
+        }
+        this.clearCardRemoval();
+        card.title = this.makeUniqueTitle(card.title);
+        this.state.docs.splice(Math.min(docIndex, this.state.docs.length), 0, card);
+        project.cardIds.splice(Math.min(index, project.cardIds.length), 0, card.id);
+        project.activeCardId = card.id;
+        this.state.activeProjectId = project.id;
+        this.save();
+        return card;
     },
     duplicateCard(id) {
         const source = this.getCard(id);
@@ -630,6 +671,7 @@ const Store = {
         const idx = this.state.projects.findIndex(p=>p.id===id);
         if(idx < 0) return false;
         const project = this.state.projects[idx];
+        if(this._cardRemoval?.project === project) this.clearCardRemoval();
         this.state.projects.splice(idx,1);
         this.state.docs = this.state.docs.filter(d => !project.cardIds.includes(d.id));
         if(this.state.activeProjectId===id) this.state.activeProjectId = this.state.projects[Math.max(0,idx-1)]?.id ?? null;
@@ -920,6 +962,13 @@ const Store = {
                     this._notify('state:changed', {});
                 }
                 return result;
+            }
+            case 'card:undoRemove': {
+                const card = this.undoCardRemoval();
+                if(!card) return false;
+                this._notify('card:restored', {id:card.id, projectId:this.state.activeProjectId});
+                this._notify('state:changed', {changed:['dataset']});
+                return card;
             }
             case 'card:duplicate': {
                 const id = payload && payload.id;

@@ -237,6 +237,7 @@ const SourceController = {
         if(!id) return false;
         const project = Store.state.projects.find(p => p.cardIds.includes(id));
         if(!project) return false;
+        this.setCardListExpanded(false);
         if(!force && project.activeCardId === id) return false;
         const input = $('rawInput');
         if(input) dispatch('source:replace', { text:SourceController.readText(input) });
@@ -258,25 +259,68 @@ const SourceController = {
         if(feedback) feedback.textContent = text;
     },
 
+    _cardSearch:'',
+    _cardListExpanded:false,
+    _cardProjectId:null,
+    setCardSearch(value='') {
+        this._clearCardDrag(false);
+        this._cardSearch = String(value);
+        if($('cardReorderHint')) $('cardReorderHint').hidden = true;
+        this.renderCards();
+    },
+    setCardListExpanded(expanded) {
+        this._clearCardDrag(false);
+        this._cardListExpanded = expanded === true;
+        this.renderCards();
+    },
+    requestCardDiagnostics(id) {
+        if(!['confirm','error','unrecognized'].includes(this.getCardStatus(id).state)) return false;
+        this.activateCard(id);
+        this.focusCard(id, 'statusAction');
+        document.dispatchEvent(new CustomEvent('ota:cardDiagnosticsRequested', {detail:{id}}));
+        return true;
+    },
+    undoCardRemoval() {
+        const input = $('rawInput');
+        if(Store.getDocument() && input) dispatch('source:replace', {text:this.readText(input)});
+        try {
+            const card = dispatch('card:undoRemove');
+            if(!card) { this.renderCards(); return false; }
+            this._cardSearch = '';
+            this._cardListExpanded = false;
+            this.renderCards();
+            this.announceCardChange(`已恢复卡片 ${card.title}`);
+            return true;
+        } catch(error) {
+            Toast.show(error.message || '撤销删除失败，其他数据仍保留', true);
+            return false;
+        }
+    },
+
     focusCard(id, control='root') {
         const nodes = this._cardNodes.get(id);
-        if(!nodes) return false;
+        if(!nodes || nodes.root.hidden) return false;
         this._focusedCardId = id;
         this._syncCardTabStops();
-        (nodes[control] || nodes.root).focus({preventScroll:true});
+        const target = nodes[control];
+        (target && !target.hidden && !target.disabled ? target : nodes.root).focus({preventScroll:true});
         nodes.root.scrollIntoView?.({block:'nearest'});
         return true;
     },
 
     _syncCardTabStops() {
         const insideList = $('cardList')?.contains?.(document.activeElement);
-        const activeId = insideList && this._cardNodes.has(this._focusedCardId) ? this._focusedCardId : Store.getDocument()?.id;
+        const available = id => this._cardNodes.has(id) && !this._cardNodes.get(id).root.hidden;
+        const activeId = insideList && available(this._focusedCardId) ? this._focusedCardId
+            : available(Store.getDocument()?.id) ? Store.getDocument().id
+                : (Store.getActiveProject()?.cardIds || []).find(available);
         for(const [id, nodes] of this._cardNodes) {
             const tabIndex = id === activeId ? 0 : -1;
             nodes.root.tabIndex = tabIndex;
             nodes.visible.tabIndex = tabIndex;
             nodes.remove.tabIndex = tabIndex;
-            nodes.drag.tabIndex = tabIndex;
+            nodes.drag.tabIndex = nodes.drag.disabled ? -1 : tabIndex;
+            nodes.statusAction.tabIndex = nodes.statusAction.hidden ? -1 : tabIndex;
         }
     },
 
@@ -288,6 +332,7 @@ const SourceController = {
     },
 
     reorderCard(sourceId, targetId, place) {
+        if(this._cardSearch.trim()) { this.announceCardChange('清除搜索后可调整拼接顺序'); return false; }
         const before = this._cardRects();
         this._clearCardDrag(false);
         const moved = dispatch('card:reorder', {sourceId, targetId, place});
@@ -295,6 +340,8 @@ const SourceController = {
             this.renderCards(); this.focusCard(sourceId);
             const index = Store.getActiveProject().cardIds.indexOf(sourceId) + 1;
             this.announceCardChange(`${Store.getCard(sourceId).title}已移至第 ${index} 位，拼接顺序已更新`);
+            const hint = $('cardReorderHint');
+            if(hint) { hint.textContent = `已移至第 ${index} 位 · 顺序决定数据拼接顺序`; hint.hidden = false; }
         }
         this._animateCardPositions(before);
         return moved;
@@ -332,6 +379,7 @@ const SourceController = {
         }
     },
     _startCardDrag(id, event) {
+        if(this._cardSearch.trim()) { event.preventDefault(); return; }
         this._clearCardDrag(false); this._stopCardMotion();
         const order = (Store.getActiveProject()?.cardIds || []).slice();
         if(!order.includes(id)) return;
@@ -345,6 +393,8 @@ const SourceController = {
         }
         root.classList.add('dragging');
         $('cardList').classList.add('card-list-dragging');
+        const hint = $('cardReorderHint');
+        if(hint) { hint.textContent = `当前位置：第 ${order.indexOf(id)+1} 位 · 顺序决定数据拼接顺序`; hint.hidden = false; }
     },
     /** Visual-only insertion preview. Store order changes once, on an accepted drop. */
     _previewCardDrag(event) {
@@ -374,6 +424,8 @@ const SourceController = {
             : {id:others[index] || others[others.length - 1], place:index < others.length ? 'before' : 'after'};
         this._animateCardPositions(before);
         this.announceCardChange(`放置到第 ${index + 1} 位以调整拼接顺序`);
+        const hint = $('cardReorderHint');
+        if(hint) { hint.textContent = `移至第 ${index+1} 位 · 顺序决定数据拼接顺序`; hint.hidden = false; }
     },
     _clearCardDrag(animate=true) {
         if(!this._cardDrag) return false;
@@ -384,6 +436,7 @@ const SourceController = {
         }
         $('cardList')?.classList.remove('card-list-dragging');
         this._cardDrag = null; this._dragCardId = null;
+        if($('cardReorderHint')) $('cardReorderHint').hidden = true;
         if(before) this._animateCardPositions(before);
         return true;
     },
@@ -391,6 +444,8 @@ const SourceController = {
     /** 点击删除或按 Delete，直接通过命令路径删除卡片。 */
     removeCard(id) {
         if(!Store.getCard(id)) return false;
+        const input = $('rawInput');
+        if(Store.getDocument() && input) dispatch('source:replace', {text:this.readText(input)});
         return dispatch('card:remove', { id }) === true;
     },
 
@@ -451,7 +506,12 @@ const SourceController = {
         const statusDot = createEl('span', 'card-status-dot');
         statusDot.setAttribute('aria-hidden', 'true');
         const statusLabel = createEl('span', 'card-status-label');
-        statusBadge.appendChild(statusDot); statusBadge.appendChild(statusLabel);
+        const statusAction = createEl('button', 'card-status-action');
+        statusAction.type = 'button'; statusAction.dataset.cardAct = 'diagnostics'; statusAction.hidden = true;
+        statusAction.setAttribute('aria-haspopup', 'dialog');
+        statusAction.innerHTML = '<svg viewBox="0 0 12 12" aria-hidden="true"><path d="m4 2 4 4-4 4"/></svg>';
+        statusAction.onclick = event => { event.stopPropagation(); this.requestCardDiagnostics(id); };
+        statusBadge.appendChild(statusDot); statusBadge.appendChild(statusLabel); statusBadge.appendChild(statusAction);
         const remove = createEl('button', 'card-remove');
         remove.type = 'button'; remove.dataset.cardAct = 'remove';
         remove.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"/></svg>';
@@ -481,7 +541,7 @@ const SourceController = {
                 this.moveCardBy(id, event.key === 'ArrowUp' ? -1 : 1);
                 return;
             }
-            const ids = Store.getActiveProject()?.cardIds || [];
+            const ids = (Store.getActiveProject()?.cardIds || []).filter(cardId => !this._cardNodes.get(cardId)?.root.hidden);
             const index = ids.indexOf(id);
             if(['ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key) && !event.altKey) {
                 event.preventDefault(); event.stopPropagation();
@@ -501,13 +561,13 @@ const SourceController = {
         drag.onclick = event => event.stopPropagation();
         drag.ondragstart = event => { event.stopPropagation(); this._startCardDrag(id, event); };
         drag.ondragend = () => { if(this._clearCardDrag()) this.announceCardChange('排序已取消，拼接顺序未改变'); };
-        return {root, title, remove, visible, summary, statusBadge, statusDot, statusLabel, drag};
+        return {root, title, remove, visible, summary, statusBadge, statusDot, statusLabel, statusAction, drag};
     },
 
     syncEditorContext() {
         const card = Store.getDocument();
         const label = $('sourceEditorLabel');
-        if(label) { label.textContent = card ? `原文 · ${card.title}` : '原文'; label.title = label.textContent; }
+        if(label) { label.textContent = card ? `原文 · ${card.title}` : '原文'; label.title = label.textContent; label.dataset.hasCard = String(Boolean(card)); }
         const editor = $('rawInput');
         if(editor) editor.setAttribute('aria-label', card ? `原文：${card.title}` : '原始表格数据');
         const sample = $('sampleBtn');
@@ -519,7 +579,25 @@ const SourceController = {
         if(!container) return;
         const project = Store.getActiveProject();
         const cards = (project?.cardIds || []).map(id => Store.getCard(id)).filter(Boolean);
+        if(this._cardProjectId !== project?.id) {
+            this._cardProjectId = project?.id;
+            this._cardSearch = ''; this._cardListExpanded = false;
+            this._clearCardDrag(false);
+            if($('cardReorderHint')) $('cardReorderHint').hidden = true;
+        } else if(project?.activeCardId && !this._cardNodes.has(project.activeCardId)) {
+            this._cardSearch = '';
+        }
+        if(this._renderedActiveCardId !== project?.activeCardId) {
+            this._cardListExpanded = false;
+            const active = cards.find(card => card.id === project?.activeCardId);
+            if(active && !active.title.toLocaleLowerCase().includes(this._cardSearch.trim().toLocaleLowerCase())) this._cardSearch = '';
+        }
+        const query = this._cardSearch.trim().toLocaleLowerCase();
+        const matching = cards.filter(card => !query || card.title.toLocaleLowerCase().includes(query));
+        const matchingIds = new Set(matching.map(card => card.id));
         const focused = document.activeElement;
+        let restoreFocus = focused;
+        const focusedCard = [...this._cardNodes.values()].find(nodes => nodes.root === focused || nodes.root.contains?.(focused));
         const ids = new Set(cards.map(card => card.id));
         if(this._cardDrag && this._cardDrag.order.join('\u0001') !== cards.map(card => card.id).join('\u0001')) this._clearCardDrag(false);
         for(const id of this._parsingCards.keys()) if(!Store.getCard(id)) this._parsingCards.delete(id);
@@ -542,6 +620,7 @@ const SourceController = {
             const active = card.id === project.activeCardId;
             const status = this.getCardStatus(card.id);
             nodes.root.className = `data-card${active ? ' active' : ''}${card.visible === false ? ' excluded-card' : ''}${card.id === this._dragCardId ? ' dragging' : ''}`;
+            nodes.root.hidden = !matchingIds.has(card.id);
             nodes.root.tabIndex = active ? 0 : -1;
             nodes.root.setAttribute('aria-current', String(active));
             nodes.root.setAttribute('aria-label', `${card.title}，${active ? '编辑中，' : ''}${card.visible === false ? '已隐藏' : '已显示'}，${status.label}${status.text ? `，${status.text}` : ''}`);
@@ -558,6 +637,15 @@ const SourceController = {
             nodes.statusDot.dataset.state = status.state;
             nodes.statusLabel.textContent = status.label;
             nodes.statusLabel.hidden = status.state === 'ready';
+            const actionable = ['confirm','error','unrecognized'].includes(status.state);
+            nodes.statusAction.hidden = !actionable;
+            if(!actionable && focused === nodes.statusAction) restoreFocus = nodes.root;
+            nodes.statusBadge.className = `card-status-badge${actionable ? ' is-actionable' : ''}`;
+            nodes.statusAction.setAttribute('aria-label', `${status.state === 'confirm' ? '确认' : '查看'} ${card.title} 的解析${status.state === 'confirm' ? '方式' : '详情'}`);
+            nodes.statusAction.title = status.state === 'confirm' ? '查看并确认解析候选' : '查看解析详情';
+            nodes.drag.disabled = Boolean(query);
+            nodes.drag.draggable = !query;
+            nodes.drag.title = query ? '清除搜索后可调整拼接顺序' : '拖拽调整数据拼接顺序，也可按 Alt+↑/↓';
             nodes.summary.textContent = status.text;
             nodes.summary.hidden = !status.text;
             nodes.summary.dataset.state = status.state;
@@ -569,17 +657,62 @@ const SourceController = {
         });
         this._syncCardTabStops();
         if(this._renderedActiveCardId !== project?.activeCardId) {
-            this._cardNodes.get(project?.activeCardId)?.root.scrollIntoView?.({block:'nearest'});
+            const active = this._cardNodes.get(project?.activeCardId)?.root;
+            if(active && !active.hidden) active.scrollIntoView?.({block:'nearest'});
             this._renderedActiveCardId = project?.activeCardId;
         }
-        if(focused?.isConnected && document.activeElement !== focused) focused.focus({preventScroll:true});
+        if(focusedCard?.root.isConnected === false) {
+            const next = matching.find(card => card.id === project?.activeCardId) || matching[0];
+            restoreFocus = this._cardNodes.get(next?.id)?.root || $('cardSearchInput');
+        }
+        if(restoreFocus?.isConnected && document.activeElement !== restoreFocus) restoreFocus.focus({preventScroll:true});
         const addBtn = $('addCardBtn');
         if(addBtn) {
             addBtn.disabled = !project;
-            addBtn.onclick = event => { event.preventDefault(); dispatch('card:create', {}); };
+            addBtn.onclick = event => { event.preventDefault(); this._cardSearch = ''; this._cardListExpanded = false; dispatch('card:create', {}); };
         }
         const cardCount = $('cardCount');
         if(cardCount) cardCount.textContent = String(cards.length);
+        const search = $('cardSearchInput'), searchRow = $('cardSearchRow');
+        if(searchRow) searchRow.hidden = cards.length < 8 && !this._cardSearch;
+        if(search) {
+            if(search.value !== this._cardSearch) search.value = this._cardSearch;
+            search.oninput = () => this.setCardSearch(search.value);
+            search.onkeydown = event => {
+                if(event.key === 'Escape' && this._cardSearch) { event.preventDefault(); event.stopPropagation(); this.setCardSearch(''); search.focus(); }
+                if(event.key === 'ArrowDown' && matching[0]) { event.preventDefault(); this.focusCard(matching[0].id); }
+            };
+        }
+        const clearSearch = $('clearCardSearchBtn');
+        if(clearSearch) {
+            clearSearch.hidden = !this._cardSearch;
+            clearSearch.onclick = () => { this.setCardSearch(''); (cards.length >= 8 ? search : $('addCardBtn'))?.focus(); };
+        }
+        const searchStatus = $('cardSearchStatus');
+        if(searchStatus) { searchStatus.hidden = !query; searchStatus.textContent = query ? `找到 ${matching.length} / ${cards.length} 张卡片` : ''; }
+        if($('cardSearchEmpty')) $('cardSearchEmpty').hidden = !query || matching.length > 0;
+        const controls = $('cardListControls'), expand = $('expandCardListBtn');
+        if(matching.length <= 3) this._cardListExpanded = false;
+        if(controls) controls.hidden = matching.length <= 3;
+        container.classList[this._cardListExpanded ? 'add' : 'remove']('is-expanded');
+        if(expand) {
+            expand.textContent = this._cardListExpanded ? '收起列表' : '展开列表';
+            expand.setAttribute('aria-expanded', String(this._cardListExpanded));
+            expand.onclick = () => {
+                this.setCardListExpanded(!this._cardListExpanded);
+                const active = this._cardNodes.get(Store.getDocument()?.id)?.root;
+                if(active && !active.hidden) active.scrollIntoView?.({block:'nearest'});
+            };
+        }
+        const removed = Store.getCardRemoval(), undoNotice = $('cardUndoNotice');
+        if(undoNotice) undoNotice.hidden = !removed;
+        const undoText = $('cardUndoText');
+        if(undoText) undoText.textContent = removed ? `已删除“${removed.title}”` : '';
+        const undo = $('undoCardRemovalBtn');
+        if(undo) { undo.onclick = () => this.undoCardRemoval(); undo.setAttribute('aria-label', removed ? `撤销删除卡片 ${removed.title}` : '撤销删除卡片'); }
+        if(!removed && focused === undo) {
+            if(!this.focusCard(Store.getDocument()?.id)) $('addCardBtn')?.focus();
+        }
         this.syncEditorContext();
     },
 
