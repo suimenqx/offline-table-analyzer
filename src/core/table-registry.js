@@ -5,7 +5,7 @@ OTA.define('table-registry', ["store", "joiner", "background-service", "table-ut
    candidates) and provides column/table metadata queries. It breaks the
    circular dependency between join-editor and app.
 
-   App.run() calls setResult() after each parse. All downstream consumers
+   ExtractionSession calls setResult() after each current parse. All downstream consumers
    read via getRaw() / getCols() / getAvailableTables() / getDiagnostics() etc.
 */
 
@@ -46,7 +46,7 @@ const TableRegistry = {
     _candidates: [],
 
     /**
-     * Store the full parse result. Called by App.run() after each parse.
+     * Store the full parse result or Worker descriptors published by ExtractionSession.
      * @param {Object} result — ImportEngine.parse() return value
      */
     setResult(result) {

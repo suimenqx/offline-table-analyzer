@@ -222,6 +222,20 @@ describe('Excel export prepares the current source', () => {
     assert.deepEqual(rows, [['validflag','ID'],[1,'009']]);
   });
 
+  it('preserves a matching temporary header confirmation when source notifications arrive late',async()=>{
+    replace('alpha,beta\none,two\nthree,four');
+    App.run(false);
+    App.rememberHeaderMode('first-row');
+    App.run(false);
+    await new Promise(resolve=>setTimeout(resolve,10));
+    assert.equal(App.getParseOptions().headerMode,'first-row');
+    assert.equal(TableRegistry.getFormat(),'csv');
+    await clickExport();
+    assert.equal(downloads.length,1);
+    assert.deepEqual((await readExcelFile(Buffer.from(await downloads[0].blob.arrayBuffer())))[0].data,
+      [['alpha','beta'],['one','two'],['three','four']]);
+  });
+
   it('respects explicit parser and header choices instead of forcing automatic detection', async () => {
     replace('id,name\n001,Alice'); App.run();
     Store.transition('import:setFormat', {format:'csv'}); dom.getElementById('formatSelect').value = 'csv';
@@ -241,6 +255,95 @@ describe('Excel export prepares the current source', () => {
     assert.equal(parses, 1); assert.equal(exports, 1); assert.equal(downloads.length, 1);
     assert.ok(messages.some(message => message.includes('导出正在进行')));
   });
+
+  it('shares one pending parse between export and diagnostics', async () => {
+    replace(large);
+    const pending=deferred(); let parses=0, opened=0;
+    BackgroundService.parse=()=>{parses++;return pending.promise;};
+    BackgroundService.export=async()=>new Blob(['xlsx']);
+    App.showDiagnostics=()=>{opened++;};
+    const parsing=App.run();
+    const exporting=clickExport();
+    const diagnostics=App.showCardDiagnostics(Store.curr().id);
+    await new Promise(resolve=>setTimeout(resolve,10));
+    assert.equal(parses,1);
+    pending.resolve(Parser.parse(large,{format:'auto'}));
+    assert.equal(await parsing,true);
+    assert.equal(await diagnostics,true);
+    await exporting;
+    assert.equal(parses,1);
+    assert.equal(opened,1);
+    assert.equal(downloads.length,1);
+  });
+
+  it('cancels export and diagnostics immediately even when a parse transport finishes late', async () => {
+    replace(large);
+    const late=deferred(); let opened=0;
+    BackgroundService.parse=()=>late.promise;
+    App.showDiagnostics=()=>{opened++;};
+    const exporting=clickExport();
+    const diagnostics=App.showCardDiagnostics(Store.curr().id);
+    await new Promise(resolve=>setTimeout(resolve,10));
+    dom.getElementById('cancelJobBtn').onclick();
+    const cancelled=await Promise.race([
+      Promise.all([exporting,diagnostics]).then(()=>true),
+      new Promise(resolve=>setTimeout(()=>resolve(false),40)),
+    ]);
+    // Always release the held transport, including on the old implementation.
+    late.resolve(Parser.parse(large,{format:'auto'}));
+    await Promise.all([exporting,diagnostics]);
+    assert.equal(cancelled,true,'waiting consumers must not depend on a late transport response');
+    assert.equal(SourceController.getCardStatus(Store.curr().id).state,'pending');
+    assert.equal(opened,0);
+    assert.equal(downloads.length,0);
+    assert.equal(Store.curr().raw,large);
+  });
+
+  it('does not let an old parse finish or clear a newer parse after cancel and retry', async () => {
+    replace(large);
+    const old=deferred(),next=deferred();let parses=0;
+    BackgroundService.parse=()=>++parses===1?old.promise:next.promise;
+    const first=App.run();
+    dom.getElementById('cancelJobBtn').onclick();
+    assert.equal(SourceController.getCardStatus(Store.curr().id).state,'pending');
+    const second=App.run();
+    old.resolve(Parser.parse(large,{format:'auto'}));
+    assert.equal(await first,false);
+    assert.equal(SourceController.getCardStatus(Store.curr().id).state,'parsing');
+    assert.equal(dom.getElementById('previewArea')['aria-busy'],'true');
+    next.resolve(Parser.parse(large,{format:'auto'}));
+    assert.equal(await second,true);
+    assert.equal(SourceController.getCardStatus(Store.curr().id).state,'ready');
+    assert.equal(dom.getElementById('previewArea')['aria-busy'],'false');
+  });
+
+  for(const mutation of ['source','card','format','header']) {
+    it(`rejects both waiting consumers when ${mutation} changes during extraction`,async()=>{
+      replace(large);
+      const held=deferred();let parses=0,opened=0;
+      BackgroundService.parse=payload=>++parses===1?held.promise:Promise.resolve(Parser.parse(payload.text,payload.options));
+      App.showDiagnostics=()=>{opened++;};
+      const exporting=clickExport();
+      const diagnostics=App.showCardDiagnostics(Store.curr().id);
+      await new Promise(resolve=>setTimeout(resolve,10));
+      if(mutation==='source') replace(small);
+      if(mutation==='card') Store.transition('card:create');
+      if(mutation==='format') {
+        Store.transition('import:setFormat',{format:'csv'});
+        dom.getElementById('formatSelect').value='csv';
+      }
+      if(mutation==='header') {
+        Store.transition('import:setHeaderMode',{mode:'none'});
+        dom.getElementById('headerModeSelect').value='none';
+      }
+      held.resolve(Parser.parse(large,{format:'auto'}));
+      assert.equal(await diagnostics,false);
+      await exporting;
+      assert.equal(opened,0);
+      assert.equal(downloads.length,0);
+      assert.ok(messages.some(message=>message.includes('数据源或解析设置已变化')));
+    });
+  }
 
   for(const format of ['auto','cli-table-data']) {
     it(`keeps rich clipboard table-data parsing and full Excel in the background (${format})`,async()=>{
@@ -270,6 +373,17 @@ describe('Excel export prepares the current source', () => {
     BackgroundService.parse = async () => Parser.parse(large, {format:'auto'});
     BackgroundService.export = async () => new Blob(['xlsx']);
     await clickExport(); assert.equal(downloads.length, 1);
+  });
+
+  it('clears the old preview when source changes after cancelling a completed extraction',async()=>{
+    replace(small);App.run();
+    await new Promise(resolve=>setTimeout(resolve,10));
+    assert.equal(TableRegistry.getRaw().length,1);
+    dom.getElementById('cancelJobBtn').onclick();
+    replace('table-data New\nvalidflag ID\n1 009');
+    await new Promise(resolve=>setTimeout(resolve,10));
+    assert.equal(TableRegistry.getFormat(),'empty');
+    assert.equal(TableRegistry.getRaw().length,0);
   });
 
   it('stops an export when the source changes while its initial parse is pending', async () => {

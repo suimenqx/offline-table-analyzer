@@ -19,6 +19,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
 | `BackgroundService` | Sole owner of local Blob Worker lifecycle, version handshake, cancellation and acknowledged transport |
 | `WorkerRuntime` | Background normalized dataset session, query/JOIN/statistics/XLSX and storage jobs |
+| `ExtractionSession` | Current-source extraction snapshot, Window/Worker routing, shared pending/completed work, result publication, cancellation and receipt validation; browser presentation is supplied by App. |
 | `QueryService` | Pure derived-result pipeline for JOIN resolution, filtering, focus projection, pagination metadata, bounded result caching, and raw/full/preview Excel table derivation. |
 | `dispatch` (`src/core/dispatch.js`) | Thin command bus: `dispatch(action, payload)` delegates to `Store.transition`. |
 
@@ -68,7 +69,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
 | `TabController` | Tab bar rendering, inline rename (F2/dblclick), drag-and-drop reorder, keyboard navigation (arrows/Enter/Delete) |
 | `ExportController` | Browser adaptation for XLSX preparation/download, workspace JSON backup/restore, config JSON export/import with title-based matching, copy format selection |
-| `App` | UI orchestration, parsing, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading, and centralized parse-error feedback. Calls `QueryService` for derived preview results and `TableBuilder` for table DOM. |
+| `App` | UI composition of ExtractionSession, editor snapshots and parse feedback, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading, and centralized parse-error feedback. Calls `QueryService` for derived preview results and `TableBuilder` for table DOM. |
 
 The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor.md); the complete acceptance checklist is in [Refactor requirements](../planning/refactor-requirements.md).
 
@@ -135,7 +136,7 @@ When the source text, imported file, parser format, or header mode changes, the 
 
 ### Card and preview summaries
 
-TableRegistry owns session-only card parse summaries (`recordParse` / `getCardSummary`) and full filtered preview counts (`setPreview` / `getPreviewSummary`). Summaries retain no raw text or table rows, and are checked against source revision and configured parser/header strategy. BackgroundService returns bounded descriptors for lazily parsed cards and checks resident source/configuration versions; QueryService cache keys also include ordered card names, source revisions and per-card UI/corrections. The card list consumes this metadata without reparsing or persisting counts. SourceController also owns transient drag geometry/preview, bounded move animations and context-identity-matched busy feedback; App notifies real background parse begin/end via `setCardParsing`, and preview movement never writes Store order before drop. These presentation states add no persisted fields. See the [classic-palette card polish baseline](../testing/card-polish-baseline.md). SourceController depends on the earlier TableRegistry, which uses the earlier TableUtils for shared descriptor row counts. See the [card interaction baseline](../testing/card-interaction-baseline.md) and [multi-card decision](multi-card-workspace.md).
+TableRegistry owns session-only card parse summaries (`recordParse` / `getCardSummary`) and full filtered preview counts (`setPreview` / `getPreviewSummary`). Summaries retain no raw text or table rows, and are checked against source revision and configured parser/header strategy. BackgroundService returns bounded descriptors for lazily parsed cards and checks resident source/configuration versions; QueryService cache keys also include ordered card names, source revisions and per-card UI/corrections. The card list consumes this metadata without reparsing or persisting counts. SourceController also owns transient drag geometry/preview, bounded move animations and context-identity-matched busy feedback; App adapts ExtractionSession begin/end notifications via `setCardParsing`, and preview movement never writes Store order before drop. These presentation states add no persisted fields. See the [classic-palette card polish baseline](../testing/card-polish-baseline.md). SourceController depends on the earlier TableRegistry, which uses the earlier TableUtils for shared descriptor row counts. See the [card interaction baseline](../testing/card-interaction-baseline.md) and [multi-card decision](multi-card-workspace.md).
 
 ### Sidebar presentation and command flow (2026-10-24)
 
@@ -203,7 +204,8 @@ reused accidentally.
 ```text
 paste / drop / file / fullscreen editor
   → source text + SourceSnapshot metadata + optional clipboard HTML
-  → App passes format/header options and any source-bound temporary region choice to ImportEngine
+  → App supplies the source/options snapshot to ExtractionSession
+  → ExtractionSession routes Window/Worker parsing through ImportEngine
   → ImportEngine bounded scoring and source-region discovery, or manual adapter choice
   → candidate/region/header ambiguity confirmation when evidence is weak
   → adapter parses selected source region(s); TextLayout supplies position-aware aligned parsing
@@ -221,7 +223,7 @@ Drag-and-drop of local files onto the source area is supported. A fullscreen sou
 
 The full processed result remains in memory for export, while only the selected page is materialized as table DOM.
 
-Excel buttons use `App.prepareExport()` through an injected `ExportController.init({prepareSource})` callback. App owns source synchronization and parse lifecycle: a completed matching parse is reused, and an export waits for a matching in-flight parse instead of restarting it. Matching includes document ID, source revision, original text, clipboard HTML, parser, header mode, and temporary region selection; the last successful format is not an option. `App.run()` reports successful completion as a boolean or a Promise of that boolean. Preparation returns a transient download validator or null after an already-reported parse failure/empty input. ExportController owns one lock and stage feedback across preparation and serialization, then invokes the validator immediately before download. Cancellation invalidates the validator; a changed source/options/tab rejects the old result. No new persisted fields, modules or dependencies are introduced.
+Excel buttons use `App.prepareExport()` through an injected `ExportController.init({prepareSource})` callback. App synchronizes the editor and delegates extraction to ExtractionSession. The same session supplies card diagnostics with matching work and source/lifetime validation. `App.run()` keeps its boolean or Promise-of-boolean contract. Preparation returns a transient download validator or null after an already-reported parse failure/empty input. ExportController owns one lock and stage feedback across preparation and serialization, then invokes the validator immediately before download. Cancellation invalidates the validator; a changed source/options/tab rejects the old result.
 
 ### Shared Excel table derivation (2026-10-25)
 
@@ -236,6 +238,31 @@ Decision: `QueryService.getExportTables(input, mode)` owns the pure raw/full/pre
 Rationale: Window previously derived full-export tables and JOINs independently, while Worker used QueryService's selected-table and aggregate JOIN budget. Sharing that implementation gives both execution contexts the same pre-projection aggregate guard and prevents allocating a JOIN that exceeds the remaining query/export budget. Existing TableUtils projection semantics remain: preserve requested order, skip missing columns and fall back to all columns if none match. The final serializer continues enforcing the existing XLSX budgets.
 
 The obsolete ExportController derivation helpers and unused App forwarding methods are removed. Their private-helper tests are replaced by tests through the shared interface and paired Window/Worker XLSX readback; source preparation/cancellation tests remain. No new module, execution adapter, manifest order, runtime dependency, schema field or migration is introduced. See the [export parity acceptance baseline](../testing/export-parity-baseline.md).
+
+### Shared extraction lifetime (2026-10-25)
+
+**Decision:** ExtractionSession owns one current-source extraction. It combines snapshot matching, Window/Worker routing, pending-work sharing, result publication to TableRegistry and `dispatch('parse:completed')`, invalidation and receipt validation. App supplies `readContext`, an `onStart` presentation callback returning its cleanup, and `onResult` for corrections and visible feedback. It retains editor synchronization, temporary confirmation choices, focus and modal presentation.
+
+```mermaid
+flowchart LR
+    UI[App: editor snapshot and presentation] --> Session[ExtractionSession]
+    Export[Export preparation] --> Session
+    Diagnostics[Card diagnostics] --> Session
+    Session --> Parser[Window Parser / ImportEngine]
+    Session --> Background[BackgroundService: Worker transport]
+    Session --> Registry[TableRegistry + Store dispatch]
+    Session --> Receipt[Validated extraction receipt]
+```
+
+The session interface is `run({reuse, retryFailed, render})`, `invalidate({ifChanged})` and `cancel()`. Window returns a receipt synchronously; Worker returns a Promise of a receipt. A receipt exposes only `ok`, `failed` and `validate()`, with no source rows or task state. Explicit parse runs restart work; export reuses a matching successful/pending extraction and retries reported failures; diagnostics may reuse a reported failure. Matching includes card id, source revision, complete text, clipboard HTML, parser/header selection, temporary region selection and configured strategy. Options are copied so later caller mutation cannot rewrite the original snapshot.
+
+`invalidate({ifChanged:true})` ignores queued source notifications that already match a newer extraction. Other invalidations immediately release waiters and the presentation cleanup, cancel parse/query jobs and clear derived queries while preserving other resident card datasets. User `cancel()` also terminates compute/export via BackgroundService, preserving its independent storage queue. Receipts distinguish changed source/options from cancellation of the same source. Late completion/rejection cannot publish a result or clean up a newer job.
+
+Cancellation keeps a source snapshot solely for change detection against any retained preview; it cannot be reused as a valid extraction. A later source event can therefore clear the old preview even after cancellation released the job. Invalidation or the next extraction releases that snapshot.
+
+**Rationale:** these rules previously appeared in App's parse, export and diagnostics flows. Keeping them behind one interface improves locality and gives all three callers the same leverage. Extending BackgroundService would mix source/editor validity with Worker lifetime and transport; extending the pure ImportEngine would mix extraction rules with browser/Store state. The new module earns its depth by hiding the protocol formerly repeated in those callers. No generic task framework, new runtime dependency, loading strategy or persisted field is introduced.
+
+The manifest places ExtractionSession after TableRegistry and before UI; it is excluded from the Worker package. Pure snapshot/lifetime scenarios use the public session interface; integration tests cover concurrent export/diagnostics, cancellation/retry, source/card/option changes and XLSX preparation. The [acceptance baseline](../testing/extraction-session-baseline.md) records regression and desktop-browser evidence. The architecture validator rejects direct App parse execution and reintroduced pending/token/generation bookkeeping.
 
 ## 5. Persistence and migration
 
@@ -269,6 +296,7 @@ Node unit and integration tests use the built-in test runner under `tests/`:
 - `tests/unit/parser.test.js` and `parser-facade.test.js`: all 12 parser adapters, malformed input, diagnostics, normalization, and legacy compatibility.
 - `tests/unit/filter-engine.test.js`, `joiner.test.js`, and `query-service.test.js`: filtering, JOIN semantics, the shared preview result contract, and bounded-cache invalidation.
 - `tests/unit/clipboard.test.js` and `export-tables.test.js`: copy formats, HTML clipboard payloads, formula protection, Lua serialization, shared Excel scopes, projections and aggregate budgets.
+- `tests/unit/extraction-session.test.js`: shared extraction, snapshot invalidation, cancellation, late completion, and failure/retry through the session interface.
 - `tests/integration/export-source.test.js`: paired Window/Worker workbook readback, latest-source preparation, in-flight reuse, cancellation and stale-download rejection.
 - `tests/unit/worker-runtime.test.js` and `workspace-async.test.js`: bounded transport, aggregate budgets, correction/undo, stale datasets, durable publication, latest-settings recovery, storage failure and save races.
 - `tests/unit/store.test.js`, `dispatch.test.js`, `source-snapshot.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, clipboard/file snapshot capture, browser adaptation, command/event behavior, and tab lifecycle.

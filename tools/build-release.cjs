@@ -59,6 +59,7 @@ const MODULES = [
 
   // ── Shared data access (breaks circular dep between app ↔ join-editor) ──
   ['core/table-registry.js',      'shared table/column metadata access'],
+  ['core/extraction-session.js',  'source extraction lifetime and shared preparation'],
 
   // ── UI layer ──
   ['ui/table-builder.js',         'preview table DOM construction'],

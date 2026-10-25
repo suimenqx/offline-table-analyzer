@@ -115,6 +115,9 @@ for(const filename of fs.readdirSync(uiDir).filter(name => name.endsWith('.js'))
 const appSource = read(path.join(uiDir, 'app.js'));
 if(/ExportController\._getPreviewProcessedTables\s*\(/.test(appSource)) fail('App must query QueryService directly, not use ExportController preview internals');
 if(!/QueryService\.getPreview\s*\(/.test(appSource)) fail('App preview must use the shared QueryService contract');
+if(/\b(?:_parseToken|_parseGeneration|_pendingParse|matchesSourceContext|runBackground)\b/.test(appSource)) fail('App must keep extraction identity, pending work and stale-result checks in ExtractionSession');
+if(/\b(?:Parser|BackgroundService)\.parse\s*\(/.test(appSource)) fail('App must extract through ExtractionSession, not call parse executors directly');
+if(!/ExtractionSession\.create\s*\(/.test(appSource)) fail('App must compose the shared ExtractionSession contract');
 
 const sourceText = MODULES.map(([file]) => read(path.join(srcRoot, file))).join('\n');
 if(/\b(?:fetch|XMLHttpRequest|WebSocket|EventSource)\b/.test(sourceText)) fail('runtime source must not use network APIs');

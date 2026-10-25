@@ -1057,7 +1057,7 @@ const Store = {
 
             // ── Parse ──
             case 'parse:completed': {
-                // Emitted by App.run() after a parse attempt settles, including failures.
+                // Emitted by ExtractionSession after a current parse settles, including failures.
                 // Payload: { tables, elapsed, diagnostics, format }
                 const doc = this.getDocument(payload && payload.docId);
                 if(!doc) return false;

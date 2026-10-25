@@ -9,8 +9,8 @@ OTA.define('source-controller', ["runtime", "store", "dispatch", "source-snapsho
    - Input height persistence and resizer
    - Source change → dispatch('source:changed')
 
-   Non-responsibilities (stay in App):
-   - Parsing orchestration (App.run)
+   Non-responsibilities:
+   - Extraction lifetime/routing (ExtractionSession, composed by App.run)
    - Cell edit invalidation on source change (App)
 */
 

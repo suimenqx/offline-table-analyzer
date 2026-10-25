@@ -9,7 +9,7 @@
 - 领域代码难以复用到 Node 测试或未来的 XLSX 导入模块。
 - 发布单文件的约束与开发源文件的可维护性相互冲突。
 
-这些问题推动了源模块拆分。现在由 `src/` 维护业务代码，`tools/build-release.cjs` 将 46 个源模块内联为单文件发布产物；Node 测试通过同一构建清单加载源模块。发布产物仍可直接打开，保持零运行时依赖、v20 工作区契约、解析器与 JOIN 回归覆盖以及隐私边界。
+这些问题推动了源模块拆分。现在由 `src/` 维护业务代码，`tools/build-release.cjs` 将 47 个源模块内联为单文件发布产物；Node 测试通过同一构建清单加载源模块。发布产物仍可直接打开，保持零运行时依赖、v20 工作区契约、解析器与 JOIN 回归覆盖以及隐私边界。
 
 ## 2. 重构时的方案比较
 
@@ -48,7 +48,7 @@ HeaderResolver / TextLayout → parser adapters → ImportEngine
       ↓
 Joiner → QueryService
       ↓
-TableRegistry
+TableRegistry → ExtractionSession
       ↓
 TableBuilder / Select / JoinEditor / other UI controllers
       ↓
@@ -66,7 +66,7 @@ App orchestrator → bootstrap
 
 ## 5. 已落地模块地图
 
-当前发布构建包含 42 个源模块，按目录分层：
+当前发布构建包含 47 个源模块，按目录分层：
 
 | 目录 | 文件 | 职责 | 主要公开对象 |
 | --- | --- | --- | --- |
@@ -78,6 +78,7 @@ App orchestrator → bootstrap
 | | `query-service.js` | 统一 JOIN、过滤、Focus、分页和预览结果缓存 | `QueryService` |
 | | `dispatch.js` | UI 到 Store 的命令入口 | `dispatch` |
 | | `table-registry.js` | 解析结果及表/列元数据访问 | `TableRegistry` |
+| | `extraction-session.js` | 当前来源提取、复用、取消、过期检查及结果发布 | `ExtractionSession` |
 | `state/` | `store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
 | `export/` | `exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
 | | `clipboard.js` | 剪贴板序列化 | `ClipboardFormatter` |
@@ -118,6 +119,8 @@ App orchestrator → bootstrap
 
 2026-10-25 Excel 派生深化：raw/full/preview 的表选择、JOIN、完整筛选记录、列投影和聚合预算归于既有 QueryService 的 `getExportTables` interface；Window ExportController 和 WorkerRuntime 共用该 implementation。ExportController 删除重复派生与动态 Joiner 查找，App 删除无实际调用者的导出转发；下载、原文准备和 Worker 生命周期仍由各自已有 module 拥有。无新增模块或 manifest 重排，规则测试转向共享 interface 与两条路径的独立 XLSX 读回。决策与理由见[架构说明](architecture.md#shared-excel-table-derivation-2026-10-25)。
 
+2026-10-25 提取会话深化：新增 ExtractionSession module，集中原先散落于 App 解析、导出准备与卡片诊断中的来源快照、在途任务、取消和过期检查。App 通过读取原文及呈现回调组成会话；BackgroundService 保留 Worker 生命周期/传输，ImportEngine 保留纯表格提取。manifest 在 TableRegistry 后、UI 前加入新 module，Worker 清单不包含它。取消立即结束等待与忙碌反馈，晚完成结果不能覆盖新作业；Store schema 22 和单文件离线交付不变。[决策与理由](architecture.md#shared-extraction-lifetime-2026-10-25)。
+
 结构性拆分和运行时模块隔离已落地：业务代码通过 `OTA.define()` 声明依赖，`OTA.require()` 按需解析并缓存；`TableRegistry` 为 App 与 JoinEditor 提供共享的解析表访问边界，避免彼此直接依赖。
 
 ## 6. 状态与事件设计
@@ -137,7 +140,7 @@ DOM event
 
 - `source:replace` 更新原文与来源修订号，并清理不再有效的单元格修正；`SourceController` 管理临时粘贴来源快照。
 - `App.setImportFormat()` 和 `App.setHeaderMode()` 先清理旧行索引修正，再通过 `import:setFormat`、`import:setHeaderMode` 更新解析选项。
-- `App.run()` 调用 `ImportEngine` 获取表、候选和诊断；`parse:completed` 拒绝来源修订号已过期的结果。
+- `App.run()` 组合 `ExtractionSession`，由它调用 Window/Worker 获取表、候选和诊断并发布当前结果；`parse:completed` 拒绝来源修订号已过期的结果。
 - `tab:activate` 切换当前文档；相关 UI 控制器同步输入并清理短生命周期状态。
 - `view:upsert`、`view:replaceAll` 等命令更新 JOIN 视图；`workspace:save` 报告存储失败，同时保留内存工作区。
 

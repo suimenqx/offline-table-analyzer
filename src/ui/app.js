@@ -1,4 +1,4 @@
-OTA.define('app', ["runtime","exporter","store","parser-facade","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service","background-service","import-engine","table-utils"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_IMPORT_BYTES, COPY_FORMATS, Store}, {Parser}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}, {BackgroundService}, {ImportEngine}, {TableUtils}) => {
+OTA.define('app', ["runtime","exporter","store","joiner","join-editor","clipboard","selection","filter-engine","table-builder","source-controller","cell-edit-controller","filter-controller","modal-controller","tab-controller","export-controller","dispatch","table-registry","keyboard-controller","view-manager","query-service","background-service","table-utils","extraction-session"], ({$, createEl, escapeHtml, formatBytes, Tooltip, Toast}, {Exporter}, {APP_VERSION, WORKSPACE_SCHEMA_VERSION, COPY_FORMATS, Store}, {Joiner}, {JoinEditor}, {ClipboardFormatter}, {Select}, {FilterEngine}, {TableBuilder}, {SourceController}, {CellEditController}, {FilterController}, {ModalController}, {TabController}, {ExportController}, {dispatch}, {TableRegistry}, {KeyboardController}, {ViewManager}, {QueryService}, {BackgroundService}, {TableUtils}, {ExtractionSession}) => {
 /* Main App */
 const App = {
     raw: [], rendered: [],
@@ -6,8 +6,6 @@ const App = {
     tabDrag: { sourceId:null },
     _renderQueued: false,
     _renderPending: false,
-    _parseGeneration:0,
-    _pendingParse:null,
     _renderGeneration:0,
     _jobGeneration:0,
     _regionSelection:null,
@@ -153,13 +151,16 @@ const App = {
                     SourceController.renderCards();
                     if (!payload || payload.docId === Store.getDocument()?.id) {
                         if(payload && payload.sourceRevision!==Store.getDocument()?.sourceRevision)break;
-                        this._regionSelection=null;
-                        this._headerModeConfirmation=null;
-                        if(this._parseToken && this._parseToken.sourceRevision!==payload.sourceRevision) {
+                        // A queued notification may describe a source already parsed and confirmed.
+                        const source=Store.getDocument();
+                        for(const key of ['_regionSelection','_headerModeConfirmation']) {
+                            const choice=this[key];
+                            if(choice && (choice.docId!==source?.id || choice.sourceRevision!==source?.sourceRevision || choice.text!==source?.raw)) this[key]=null;
+                        }
+                        if(this._getExtractionSession().invalidate({ifChanged:true})) {
                             // 作业级取消 + 只作废该卡的数据集（其他卡的数据不受影响）
-                            BackgroundService.cancelQueries();BackgroundService.cancelParses();
                             if(payload && payload.docId) BackgroundService.removeCard(payload.docId);
-                            this._parseGeneration++;TableRegistry.setResult(null);this.requestRender();
+                            TableRegistry.setResult(null);this.requestRender();
                         }
                         CellEditController.reset();
                         // Paste lifetime follows the source text, not the transition that
@@ -618,48 +619,25 @@ const App = {
             config:{format:doc.ui.importFormat || 'auto', headerMode:doc.ui.importHeaderMode || 'auto'}};
     },
 
-    matchesSourceContext(a,b) {
-        return !!a && !!b && a.docId===b.docId && a.sourceRevision===b.sourceRevision && a.text===b.text
-            && ['format','headerMode','html'].every(key=>a.options[key]===b.options[key])
-            && JSON.stringify(a.options.regionSelection||null)===JSON.stringify(b.options.regionSelection||null);
-    },
-
     /** Resolve the current parse and return a validator for the eventual download. */
     async prepareExport() {
         if(!Store.getDocument()) { Toast.show('请先新增卡片并导入数据', true); return null; }
-        SourceController.clearAutoParse();
-        const text=SourceController.readText();
-        if(Store.getDocument().raw!==text)dispatch('source:replace',{text});
-        const requested=this.getSourceContext(text);
+        const requestedId=Store.getDocument().id;
         // An empty or excluded editor must not block other participating sources.
         const canUseOtherSources=()=>TableRegistry.isBackground()
             && (!Store.getDocument()?.raw || Store.getDocument()?.visible === false)
-            && TableRegistry.getBackgroundInput().cards.some(card=>card.id!==requested.docId);
-        if(!this._parseToken?.completed || !this.matchesSourceContext(this._parseToken,requested)) {
-            const pending=this._pendingParse;
-            const parsed=await (this.matchesSourceContext(pending?.context,requested)?pending.promise:this.run());
-            if(!this.matchesSourceContext(requested,this.getSourceContext())) {
-                throw new Error('数据源或解析设置已变化，请重新导出');
-            }
-            if(!parsed && !(canUseOtherSources() && this._parseToken?.failedGeneration === this._parseGeneration)) return null;
-        }
-        const token=this._parseToken, generation=this._parseGeneration;
-        const validate=()=>{
-            if(!this.matchesSourceContext(token,requested) || !this.matchesSourceContext(token,this.getSourceContext())) {
-                throw new Error('数据源或解析设置已变化，请重新导出');
-            }
-            if(generation!==this._parseGeneration || token!==this._parseToken) {
-                throw Object.assign(new Error('操作已取消'),{name:'AbortError'});
-            }
-        };
-        validate();
+            && TableRegistry.getBackgroundInput().cards.some(card=>card.id!==requestedId);
+        const extraction=await this._extractSource({reuse:true});
+        if(!extraction) return null;
+        extraction.validate();
+        if(!extraction.ok && !(extraction.failed && canUseOtherSources())) return null;
         const noVisibleTables = TableRegistry.isBackground() ? !TableRegistry.getBackgroundInput().cards.length : !TableRegistry.getQueryTables().length;
         if(noVisibleTables || (!TableRegistry.getRaw().length && !canUseOtherSources())){
             if(TableRegistry.getFormat()==='ambiguous')Toast.show('请先在解析详情中确认格式、表格区域或表头',true);
             else Toast.show('无数据可导出',true);
             return null;
         }
-        return {validate}; // Rechecked by ExportController immediately before download.
+        return {validate:extraction.validate}; // Rechecked immediately before download.
     },
 
     showPasteSource() {
@@ -746,7 +724,7 @@ const App = {
         };
         if($('persistRawToggle'))$('persistRawToggle').onchange=e=>dispatch('ui:persistRaw',{enabled:e.target.checked});
         if($('cancelJobBtn'))$('cancelJobBtn').onclick=()=>{
-            this._parseGeneration++;this._renderGeneration++;BackgroundService.cancel();QueryService.clearCache();
+            this._getExtractionSession().cancel();this._renderGeneration++;
             if($('backgroundJob'))$('backgroundJob').hidden=true;
             if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
             Toast.show('操作已取消，完整原文仍保留');
@@ -1042,11 +1020,9 @@ validflag Time      Level   Message                 Code
         this.updatePasteSourceButton();
         SourceController.renderCards();
         if(!d) {
-            this._parseGeneration++;
-            this._pendingParse=null;this._parseToken=null;
+            this._getExtractionSession().invalidate();
             this._regionSelection=null;this._headerModeConfirmation=null;
-            BackgroundService.cancelQueries();BackgroundService.cancelParses();
-            QueryService.clearCache();TableRegistry.setResult(null);
+            TableRegistry.setResult(null);
             if($('backgroundJob')) $('backgroundJob').hidden=true;
             this.updSelects();this.updChips();this.updateImportSummary();
             this.renderPreview();this.updateStorageStatus();
@@ -1088,17 +1064,16 @@ validflag Time      Level   Message                 Code
         // Activation is delivered through Store's existing batched events.
         await new Promise(resolve => setTimeout(resolve, 0));
         if(Store.getDocument()?.id !== id || Store.getCard(id)?.sourceRevision !== revision) return false;
-        const context = this.getSourceContext();
         try {
-            const pending = this._pendingParse;
-            if(this.matchesSourceContext(pending?.context, context)) await pending.promise;
-            else if(!this.matchesSourceContext(this._parseToken, context) || TableRegistry.getFormat() === 'empty') await this.run(false);
-            if(request !== this._diagnosticsRequest || !this.matchesSourceContext(context, this.getSourceContext()) || TableRegistry.getFormat() === 'empty') return false;
+            const extraction=await this._extractSource({reuse:true,retryFailed:false,render:false});
+            if(!extraction || request !== this._diagnosticsRequest) return false;
+            extraction.validate();
+            if(TableRegistry.getFormat() === 'empty') return false;
             SourceController.focusCard(id, 'statusAction');
             this.showDiagnostics();
             return true;
         } catch(error) {
-            Toast.show(`无法打开解析详情：${error.message || error}`, true);
+            if(!['AbortError','SourceChangedError'].includes(error.name)) Toast.show(`无法打开解析详情：${error.message || error}`, true);
             return false;
         }
     },
@@ -1184,139 +1159,60 @@ validflag Time      Level   Message                 Code
         </div>`);
     },
 
-    run(render=true) {
-        if(!Store.getDocument()) return false;
-        if($('parseStatus')) $('parseStatus').hidden = true;
-        if($('sourceDiagnosticsBtn')) $('sourceDiagnosticsBtn').disabled = true;
-        let parseContext = null;
-        try {
-            SourceController.clearAutoParse();
-            const started = performance.now();
-            const sourceText = SourceController.readText();
-            if(sourceText.length * 2 > MAX_IMPORT_BYTES) throw new Error('数据源超过 128 MiB 安全限制，请拆分后再分析');
-            if(Store.curr().raw !== sourceText) dispatch('source:replace', { text:sourceText });
-            parseContext = {...this.getSourceContext(sourceText),started};
-            const options=parseContext.options;
-            // 多可见卡片时同样走后台：表池派生只在 Worker 内实现（单 owner）。
-            const project = Store.getActiveProject();
-            const useBackground = (BackgroundService.isLarge(sourceText) || (project?.cardIds.length || 0) > 1)
-                && !ImportEngine.requiresDOMParser(sourceText,options);
-            if(useBackground) {
-                const pending={context:parseContext};
-                this._pendingParse=pending;
-                pending.promise=this.runBackground(sourceText,options,parseContext,render);
-                return pending.promise;
-            }
-            this._pendingParse=null;
-            BackgroundService.cancel();QueryService.clearCache();this._parseGeneration++;this._parseToken=parseContext;
-            const result = Parser.parse(sourceText, options);
-            if (result.format === 'error') {
-                const message = result.diagnostics && result.diagnostics.find(item => item.severity === 'error')?.message;
-                throw new Error(message || result.label || '解析失败');
-            }
-            TableRegistry.setResult(result);
-            TableRegistry.recordParse(parseContext, result);
-            SourceController.renderCards();
-            CellEditController.setRawTables(result.tables);
-            this.applyStoredCellEdits();
-            this.updateImportSummary();
-            const elapsed = Math.round(performance.now() - started);
-            dispatch('parse:completed', {
-                docId:Store.curr().id,
-                sourceRevision:Store.curr().sourceRevision,
-                format:result.format,
-                tables: result.tables,
-                elapsed: elapsed,
-            });
-            if(render) {
-                this.updSelects();
-                this.updChips();
-                this.requestRender();
-            }
-            if(TableRegistry.getRaw().length && elapsed > 800) Toast.show(`解析完成 · ${elapsed} ms`);
-            parseContext.completed=true;
-            return true;
-        } catch(e) {
-            console.error(e);
-            const msg = e.message || String(e);
-            TableRegistry.setResult({
-                tables: [],
-                format: 'error',
-                label: '解析失败',
-                diagnostics: [{ severity: 'error', code: 'PARSE_ERROR', message: msg }],
-                candidates: [],
-            });
-            if (parseContext) {
-                dispatch('parse:completed', {
-                    docId: parseContext.docId,
-                    sourceRevision: parseContext.sourceRevision,
-                    format: 'error',
-                    tables: [],
-                    elapsed: Math.round(performance.now() - parseContext.started),
-                });
-            }
-            if(parseContext) TableRegistry.recordParse(parseContext, TableRegistry.getLastResult());
-            SourceController.renderCards();
-            CellEditController.setRawTables([]);
-            this.updateImportSummary();
-            this.updSelects();
-            this.updChips();
-            this.renderPreview();
-            // Map common errors to user-friendly Chinese messages
-            const friendly =
-                /超过.*128.*MiB|MAX_IMPORT/i.test(msg)   ? '数据过大，请将输入控制在 128 MiB 以内' :
-                /quota|storage.*full/i.test(msg)        ? '浏览器存储空间不足；当前数据仍在内存中，请立即备份工作区' :
-                /Unexpected.*token|JSON.*parse/i.test(msg) ? '数据格式无法识别，请尝试手动选择格式' :
-                /URI.*malformed/i.test(msg)             ? '文件名包含不支持字符' :
-                '';
-            Toast.show(friendly || `解析失败：${msg}`, true);
-            return false;
-        }
+    _getExtractionSession() {
+        if(!this._extractionSession) this._extractionSession=ExtractionSession.create({
+            readContext:()=>this.getSourceContext(),
+            onStart:({context,background})=>{
+                if($('parseStatus')) $('parseStatus').hidden=true;
+                if($('sourceDiagnosticsBtn')) $('sourceDiagnosticsBtn').disabled=true;
+                if(!background) return;
+                const job=this.showJob('正在后台解析完整原文…');
+                SourceController.setCardParsing(context,true);
+                if($('previewArea')) $('previewArea').setAttribute('aria-busy','true');
+                return ()=>{
+                    SourceController.setCardParsing(context,false);
+                    this.finishJob(job);
+                    if($('previewArea')) $('previewArea').setAttribute('aria-busy','false');
+                };
+            },
+            onResult:({background,ok,error,render,elapsed})=>{
+                SourceController.renderCards();
+                if(!background) CellEditController.setRawTables(TableRegistry.getRaw());
+                if(ok) this.applyStoredCellEdits();
+                this.updateImportSummary();
+                if(ok) {
+                    if(render) {
+                        if(!background) {this.updSelects();this.updChips();}
+                        this.requestRender();
+                    }
+                    if(!background && TableRegistry.getRaw().length && elapsed>800) Toast.show(`解析完成 · ${elapsed} ms`);
+                    return;
+                }
+                if(background) this.requestRender();
+                else {this.updSelects();this.updChips();this.renderPreview();}
+                const msg=error.message || String(error);
+                const friendly=
+                    /超过.*128.*MiB|MAX_IMPORT/i.test(msg) ? '数据过大，请将输入控制在 128 MiB 以内' :
+                    /quota|storage.*full/i.test(msg) ? '浏览器存储空间不足；当前数据仍在内存中，请立即备份工作区' :
+                    /Unexpected.*token|JSON.*parse/i.test(msg) ? '数据格式无法识别，请尝试手动选择格式' :
+                    /URI.*malformed/i.test(msg) ? '文件名包含不支持字符' : '';
+                Toast.show(friendly || `解析失败：${msg}`,true);
+            },
+        });
+        return this._extractionSession;
     },
 
-    async runBackground(text,options,context,render) {
-        // 作业级取消：拒绝在途/排队的解析与查询，但保留其他卡片的数据集
-        BackgroundService.cancelQueries();BackgroundService.cancelParses();
-        QueryService.clearCache();
-        const generation=++this._parseGeneration;this._parseToken=context;
-        const job=this.showJob('正在后台解析完整原文…');
-        TableRegistry.setResult(null);
-        SourceController.setCardParsing(context,true);
-        if($('previewArea'))$('previewArea').setAttribute('aria-busy','true');
-        const key=`${context.docId}:${context.sourceRevision}:${JSON.stringify(options)}`;
-        try {
-            // 会话键 = 卡片 id（Worker 多数据集会话按 cardId 寻址）；
-            // 复合 key 仅作为 TableRegistry 的 datasetKey 标识。
-            const result=await BackgroundService.parse({text,options,key:context.docId,sourceRevision:context.sourceRevision,config:context.config});
-            const doc=Store.getDocument();
-            if(generation!==this._parseGeneration || !this.matchesSourceContext(context,this.getSourceContext()))return false;
-            TableRegistry.setResult({...result,background:true,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision});
-            TableRegistry.recordParse(context, result);
-            SourceController.renderCards();
-            this.applyStoredCellEdits();
-            this.updateImportSummary();
-            dispatch('parse:completed',{docId:doc.id,sourceRevision:doc.sourceRevision,format:result.format,tables:result.tables,elapsed:Math.round(performance.now()-context.started)});
-            if(render)this.requestRender();
-            context.completed=true;
-            return true;
-        } catch(error) {
-            console.error('[runBackground]', error && error.message || error);
-            if(generation!==this._parseGeneration || error.name==='AbortError' || !this.matchesSourceContext(context,this.getSourceContext()))return false;
-            context.failedGeneration = generation;
-            const keepPool = Store.getDocument()?.visible === false;
-            TableRegistry.setResult({format:'error',label:'解析失败',tables:[],
-                background:keepPool,datasetKey:key,parseOptions:options,sourceRevision:context.sourceRevision,
-                diagnostics:[{severity:'error',code:'PARSE_ERROR',message:error.message}]});
-            TableRegistry.recordParse(context, TableRegistry.getLastResult());
-            SourceController.renderCards();
-            Toast.show(error.message,true);this.updateImportSummary();this.requestRender();
-            return false;
-        } finally {
-            SourceController.setCardParsing(context,false);
-            if(this._pendingParse?.context===context)this._pendingParse=null;
-            this.finishJob(job);
-            if(generation===this._parseGeneration && $('previewArea'))$('previewArea').setAttribute('aria-busy','false');
-        }
+    _extractSource(options={}) {
+        if(!Store.getDocument()) return null;
+        SourceController.clearAutoParse();
+        const text=SourceController.readText();
+        if(Store.getDocument().raw!==text) dispatch('source:replace',{text});
+        return this._getExtractionSession().run(options);
+    },
+
+    run(render=true) {
+        const extraction=this._extractSource({render});
+        return extraction?.then?extraction.then(result=>!!result?.ok):!!extraction?.ok;
     },
 
     updSelects() {
