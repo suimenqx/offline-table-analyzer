@@ -691,13 +691,6 @@ const App = {
     },
 
 
-    getExportPrefix(kind) { return ExportController._getPrefix(kind); },
-
-    getEnabledJoinTables(full) { return ExportController._getEnabledJoinTables(full); },
-    projectTableForExport(table, shownOnly) { return ExportController._projectTableForExport(table, shownOnly); },
-
-    getFullExportTables() { return ExportController._getFullExportTables(); },
-
     getPreviewProcessedTables() {
         const doc = Store.curr();
         return QueryService.getPreview({
@@ -711,13 +704,6 @@ const App = {
             queryRevision: Store.queryRevision,
         }).tables;
     },
-
-    getPreviewExportTables() { return ExportController._getPreviewExportTables(); },
-
-
-
-
-
 
     invalidateCellEdits() {
         if(!Store.clearCellEdits()) return false;

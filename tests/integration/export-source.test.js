@@ -1,6 +1,6 @@
 import {afterEach, beforeEach, describe, it} from 'node:test';
 import {strict as assert} from 'node:assert/strict';
-import {readSheet} from 'read-excel-file/node';
+import readExcelFile, {readSheet} from 'read-excel-file/node';
 import {createDOMSandbox} from '../mocks/dom.js';
 import {createStorageMock} from '../mocks/storage.js';
 import {loadModules} from '../helpers/load-modules.mjs';
@@ -11,7 +11,7 @@ const deferred = () => {
   const promise = new Promise((yes, no) => {resolve = yes; reject = no;});
   return {promise, resolve, reject};
 };
-let App, Store, Parser, SourceController, ExportController, Exporter, BackgroundService, TableRegistry, WorkerRuntime, dom, downloads, messages;
+let App, Store, Parser, SourceController, ExportController, Exporter, BackgroundService, TableRegistry, WorkerRuntime, QueryService, dom, downloads, messages;
 
 beforeEach(() => {
   dom = createDOMSandbox();
@@ -21,6 +21,7 @@ beforeEach(() => {
   ({SourceController} = OTA.require('source-controller')); ({ExportController} = OTA.require('export-controller'));
   ({BackgroundService} = OTA.require('background-service')); ({TableRegistry} = OTA.require('table-registry'));
   ({WorkerRuntime} = OTA.require('worker-runtime'));
+  ({QueryService} = OTA.require('query-service'));
   downloads = []; messages = [];
   ({Exporter} = OTA.require('exporter'));
   Exporter.download = (filename, blob, type) => downloads.push({filename,blob,type});
@@ -43,6 +44,78 @@ function replace(text) {
 const clickExport = () => dom.getElementById('exportFullBtn').onclick();
 const small = 'table-data Items\nvalidflag ID Name\n1 001 Alice\n1 002 Bob';
 const large = createLargeTableData({rows:2000}).text;
+
+const exportSource=JSON.stringify({
+  Orders:[{id:'001',key:'A',status:'ok'},{id:'002',key:'B',status:'hold'},{id:'003',key:'A',status:'ok'}],
+  Products:[{key:'A',label:'Alpha'},{key:'B',label:'Beta'}],
+});
+const orderSheet={sheet:'Orders',data:[['id','key','status'],['001','A','ok'],['002','B','hold'],['003','A','ok']]};
+const productSheet={sheet:'Products',data:[['key','label'],['A','Alpha'],['B','Beta']]};
+const projectedOrders={sheet:'Orders',data:[['status','id'],['ok','001'],['hold','002'],['ok','003']]};
+const projectedJoin={sheet:'JOIN_OrderLabels',data:[['label','id'],['Alpha','001'],['Beta','002'],['Alpha','003']]};
+function prepareExportPair(overrides={}) {
+  replace(exportSource);
+  Store.transition('document:replaceUI',{docId:Store.curr().id,ui:{
+    ...Store.getActiveUI(),displayTables:['Orders'],exportOnlyChecked:true,exportCols:'shown',globalFilter:'status=ok',
+    rules:{Orders:{focus:['status','Missing','id']},'JOIN:OrderLabels':{focus:['label','id']}},
+    pageSize:1,tablePages:{Orders:3},collapsedTables:{Orders:true},...overrides,
+  }});
+  Store.transition('view:upsert',{view:{view:'OrderLabels',left:'Orders',right:'Products',type:'inner',on:'key=key',select:'left.id,left.status,right.label'}});
+  Store.transition('view:setEnabled',{enabledViews:overrides.enabledViews || ['OrderLabels']});
+  assert.equal(App.run(false),true);
+  assert.equal(TableRegistry.isBackground(),false);
+  const session=WorkerRuntime.createSession();
+  session.parse({cardId:'export-pair',text:exportSource});
+  const ui=Store.getActiveUI();
+  return {session,input:{visible:[{id:'export-pair',name:'Data'}],cardUis:{'export-pair':ui},globalViews:Store.getViews(),ui}};
+}
+
+describe('Window and Worker Excel export parity', () => {
+  const cases=[
+    {name:'raw ignores all analysis/export settings',mode:'raw',ui:{},expected:[orderSheet,productSheet]},
+    {name:'full selects tables and projects ordered columns plus JOIN',mode:'full',ui:{},expected:[projectedOrders,projectedJoin]},
+    {name:'full includes every source when table selection is disabled',mode:'full',ui:{exportOnlyChecked:false},expected:[projectedOrders,productSheet,projectedJoin]},
+    {name:'full can export only an enabled JOIN',mode:'full',ui:{displayTables:[]},expected:[projectedJoin]},
+    {name:'full ignores disabled JOINs and keeps all source rows/columns',mode:'full',ui:{enabledViews:[],exportCols:'all'},expected:[orderSheet]},
+    {name:'full falls back to all columns when no requested column exists',mode:'full',ui:{enabledViews:[],rules:{Orders:{focus:['Missing']}}},expected:[orderSheet]},
+    {name:'preview includes all filtered records regardless of page, collapse and full-export column settings',mode:'preview',ui:{exportCols:'all'},expected:[
+      {sheet:'Orders',data:[['status','id'],['ok','001'],['ok','003']]},
+      {sheet:'JOIN_OrderLabels',data:[['label','id'],['Alpha','001'],['Alpha','003']]},
+    ]},
+  ];
+  for(const {name,mode,ui,expected} of cases) {
+    it(name,async()=>{
+      const {session,input}=prepareExportPair(ui);
+      const before=structuredClone(TableRegistry.getRaw());
+      await ExportController.exportExcel(mode);
+      assert.equal(downloads.length,1,messages.join('\n'));
+      assert.match(downloads[0].filename,new RegExp(`_${mode}_\\d{8}_\\d{6}\\.xlsx$`));
+      const workerBytes=session.excel({...input,mode});
+      assert.deepEqual(await readExcelFile(Buffer.from(await downloads[0].blob.arrayBuffer())),expected);
+      assert.deepEqual(await readExcelFile(Buffer.from(workerBytes)),expected);
+      assert.deepEqual(TableRegistry.getRaw(),before);
+      assert.equal(Store.curr().raw,exportSource);
+    });
+  }
+
+  for(const [mode,limit] of [['raw',12],['full',17],['preview',17]]) {
+    it(`${mode} reports the same aggregate budget failure without downloading or losing source`,async()=>{
+      const {session,input}=prepareExportPair();
+      const before=structuredClone(TableRegistry.getRaw());
+      const previous=QueryService.MAX_CELLS;
+      try {
+        QueryService.MAX_CELLS=limit;
+        QueryService.clearCache();
+        assert.throws(()=>session.excel({...input,mode}),/预算/);
+        await ExportController.exportExcel(mode);
+        assert.equal(downloads.length,0);
+        assert.ok(messages.some(message=>/预算/.test(message)),messages.join('\n'));
+        assert.deepEqual(TableRegistry.getRaw(),before);
+        assert.equal(Store.curr().raw,exportSource);
+      } finally { QueryService.MAX_CELLS=previous; }
+    });
+  }
+});
 
 describe('Copy formula-protection preference', () => {
   it('writes the existing global preference through the copy control and Store command', () => {

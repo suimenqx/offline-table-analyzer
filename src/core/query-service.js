@@ -1,5 +1,5 @@
 OTA.define('query-service', ["filter-engine", "joiner", "table-utils"], ({FilterEngine}, {Joiner}, {TableUtils}) => {
-/* QueryService — the single derived-data contract for preview and preview export.
+/* QueryService — the single derived-data contract for preview and Excel exports.
    It deliberately receives snapshots and has no DOM, Store, or persistence access.
 */
 
@@ -103,6 +103,18 @@ const QueryService = {
             if(table){cells+=table.rows.length*table.headers.length;tables.push(table);}
         }
         return tables;
+    },
+    /** Derive complete workbook tables in either execution context; never paginate or mutate the input. */
+    getExportTables(input={}, mode='full') {
+        const {rawTables=[], globalViews=[], ui={}} = input;
+        if(mode === 'raw') return this.collectTables(rawTables, [], {}, false);
+        if(mode === 'preview') return this.getPreview(input).tables.map(({table, res}) => ({
+            name:table.name || 'Sheet', headers:res.headers, rows:res.rows.map(row => row.d),
+        }));
+        const tables = this.collectTables(rawTables, globalViews, ui, !!ui.exportOnlyChecked);
+        return ui.exportCols === 'shown'
+            ? tables.map(table => TableUtils.projectColumns(table, ui.rules?.[table.name]?.focus))
+            : tables;
     },
     clearCache() { cache.clear(); asyncCache.clear(); },
 

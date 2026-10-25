@@ -143,13 +143,15 @@ describe('Card parse and preview UI metadata', () => {
   });
 
   it('keeps an excluded single card editable but out of preview and export', () => {
-    const {App,Store,TableRegistry,SourceController}=setup();
+    const {App,Store,TableRegistry,SourceController,OTA}=setup();
     SourceController.displayText('[{"id":"1"}]');
     App.run(false);
     Store.transition('card:visible',{id:Store.curr().id,visible:false});
     App.renderPreview();
     assert.deepEqual(App.rendered, []);
-    assert.deepEqual(App.getFullExportTables(), []);
+    assert.deepEqual(OTA.require('query-service').QueryService.getExportTables({
+      rawTables:TableRegistry.getQueryTables(),globalViews:Store.getViews(),ui:Store.getActiveUI(),
+    },'full'), []);
     assert.equal(Store.curr().raw, '[{"id":"1"}]');
     assert.equal(TableRegistry.getRaw().length, 1, 'source parse details remain available');
   });

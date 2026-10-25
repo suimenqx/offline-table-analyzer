@@ -98,18 +98,7 @@ const WorkerRuntime = {
             },
             excel(payload) {
                 applyEdits(payload);
-                const ui=payload.ui || {};
-                const { tables } = buildPool(payload.visible, payload.sources);
-                let out;
-                if(payload.mode==='preview')out=query(payload).map(({table,res})=>({name:table.name,headers:res.headers,rows:res.rows.map(row=>row.d)}));
-                else {
-                    out=tables;
-                    if(payload.mode!=='raw') {
-                        out=QueryService.collectTables(tables,payload.globalViews || [],ui,!!ui.exportOnlyChecked);
-                        if(ui.exportCols==='shown')out=out.map(table=>TableUtils.projectColumns(table,ui.rules?.[table.name]?.focus));
-                    }
-                }
-                return Exporter.createExcelBytes(out);
+                return Exporter.createExcelBytes(QueryService.getExportTables(queryInput(payload), payload.mode));
             }
         };
     },

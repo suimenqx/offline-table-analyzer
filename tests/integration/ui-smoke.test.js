@@ -228,19 +228,13 @@ describe('App bootstrap', () => {
     setupDOM();
     const { App } = OTA.require('app');
     const { QueryService } = OTA.require('query-service');
-    const { ExportController } = OTA.require('export-controller');
     const expected = [{ table: { name: 'Preview' }, res: { headers: ['id'], rows: [] }, tIdx: 0 }];
     const previousGetPreview = QueryService.getPreview;
-    const previousExportPreview = ExportController._getPreviewProcessedTables;
     QueryService.getPreview = () => ({ tables: expected });
-    ExportController._getPreviewProcessedTables = () => {
-      throw new Error('App must not use ExportController preview internals');
-    };
     try {
       assert.equal(App.getPreviewProcessedTables(), expected);
     } finally {
       QueryService.getPreview = previousGetPreview;
-      ExportController._getPreviewProcessedTables = previousExportPreview;
     }
   });
 

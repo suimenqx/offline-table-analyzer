@@ -116,6 +116,8 @@ App orchestrator → bootstrap
 
 2026-10-19 卡片交互深化：SourceController → TableRegistry → TableUtils 的依赖均指向 manifest 中较早模块，不新增或重排模块。SourceController 拥有稳定卡片 DOM、焦点和排序交互；TableRegistry 拥有非持久化的修订绑定解析摘要及完整预览计数；BackgroundService 返回有界解析描述并校验驻留来源版本。命名兼容及可选字段的决策见[多卡片 ADR](multi-card-workspace.md)。
 
+2026-10-25 Excel 派生深化：raw/full/preview 的表选择、JOIN、完整筛选记录、列投影和聚合预算归于既有 QueryService 的 `getExportTables` interface；Window ExportController 和 WorkerRuntime 共用该 implementation。ExportController 删除重复派生与动态 Joiner 查找，App 删除无实际调用者的导出转发；下载、原文准备和 Worker 生命周期仍由各自已有 module 拥有。无新增模块或 manifest 重排，规则测试转向共享 interface 与两条路径的独立 XLSX 读回。决策与理由见[架构说明](architecture.md#shared-excel-table-derivation-2026-10-25)。
+
 结构性拆分和运行时模块隔离已落地：业务代码通过 `OTA.define()` 声明依赖，`OTA.require()` 按需解析并缓存；`TableRegistry` 为 App 与 JoinEditor 提供共享的解析表访问边界，避免彼此直接依赖。
 
 ## 6. 状态与事件设计

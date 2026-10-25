@@ -1,4 +1,4 @@
-OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "filter-engine", "query-service", "background-service", "table-utils"], ({$, Toast}, {Store, APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_WORKSPACE_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {FilterEngine}, {QueryService}, {BackgroundService}, {TableUtils}) => {
+OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "dispatch", "table-registry", "query-service", "background-service"], ({$, Toast}, {Store, APP_VERSION, WORKSPACE_SCHEMA_VERSION, MAX_WORKSPACE_BYTES, COPY_FORMATS}, {Exporter}, {ClipboardFormatter}, {dispatch}, {TableRegistry}, {QueryService}, {BackgroundService}) => {
 /* ExportController — file exports, workspace/config backup, copy format.
 
    Responsibilities:
@@ -6,7 +6,7 @@ OTA.define('export-controller', ["runtime", "store", "exporter", "clipboard", "d
    - Export/import workspace JSON
    - Export/import config JSON
    - Copy format selection
-   - Export helper methods (getFullExportTables, projectTableForExport, etc.)
+   - Browser adaptation for Excel export; QueryService owns workbook table derivation
 
    Preview exports are rebuilt from the current TableRegistry and UI state so
    they always use the same data as the visible preview.
@@ -35,7 +35,11 @@ const ExportController = {
             validate();
             updateLabel(TableRegistry.isBackground()?'正在后台生成 Excel…':'正在生成 Excel…');
             if(TableRegistry.isBackground())return BackgroundService.export(TableRegistry.getBackgroundInput(),mode);
-            const tables=mode==='raw'?TableRegistry.getQueryTables():mode==='full'?this._getFullExportTables():this._getPreviewExportTables();
+            const doc=Store.getDocument();
+            const tables=QueryService.getExportTables({
+                rawTables:TableRegistry.getQueryTables(), globalViews:Store.getViews(), ui:Store.getActiveUI(),
+                docId:doc?.id, sourceRevision:doc?.sourceRevision, viewRevision:Store.viewRevision,
+            },mode);
             return Exporter.createExcelBytes(tables);
         },this._getPrefix(mode),'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','xlsx',validate);
     },
@@ -194,64 +198,11 @@ const ExportController = {
         };
     },
 
-    // ── Export helpers (used by App.renderPreview and other methods) ──
+    // ── Download naming ──
 
     _getPrefix(kind) {
         const title = Store.getExportTitle();
         return Exporter.sanitizeFilePrefix(`${title}_${kind}`);
-    },
-
-    _getEnabledJoinTables(full) {
-        const ui = Store.getActiveUI();
-        if (!ui.enabledViews || !ui.enabledViews.length) return [];
-        // Joiner is required at runtime; accessed via OTA to avoid circular dep
-        const Joiner = (typeof window !== 'undefined' && window.OTA)
-            ? window.OTA.require('joiner').Joiner : null;
-        if (!Joiner) return [];
-        return ui.enabledViews.map(v => {
-            const cfg = Store.getViews().find(g => g.view === v);
-            return cfg ? Joiner.run(TableRegistry.getQueryTables(), cfg, Store.getViews()) : null;
-        }).filter(x => x);
-    },
-
-    _projectTableForExport(table, shownOnly) {
-        const focus=shownOnly?Store.getActiveUI().rules?.[table.name]?.focus:[];
-        return TableUtils.projectColumns(table,focus);
-    },
-
-    _getFullExportTables() {
-        const ui = Store.getActiveUI();
-        let tables = TableRegistry.getQueryTables();
-        if (ui.exportOnlyChecked && Array.isArray(ui.displayTables)) {
-            const selected = new Set(ui.displayTables);
-            tables = tables.filter(t => selected.has(t.name));
-        }
-        const joins = ExportController._getEnabledJoinTables(true);
-        const shownOnly = ui.exportCols === 'shown';
-        return [...tables, ...joins].map(table => ExportController._projectTableForExport(table, shownOnly));
-    },
-
-    _getPreviewProcessedTables() {
-        const doc = Store.getDocument();
-        if(!doc) return [];
-        return QueryService.getPreview({
-            rawTables:TableRegistry.getQueryTables(),
-            globalViews:Store.getViews(),
-            ui:Store.getActiveUI(),
-            docId:doc.id,
-            sourceRevision:doc.sourceRevision,
-            stateRevision:Store.revision,
-            viewRevision:Store.viewRevision,
-            queryRevision:Store.queryRevision,
-        }).tables;
-    },
-
-    _getPreviewExportTables() {
-        return ExportController._getPreviewProcessedTables().map(({table, res}) => ({
-            name: table.name || 'Sheet',
-            headers: res.headers,
-            rows: res.rows.map(row => row.d)
-        }));
     },
 
     // ── Pure business-logic helpers (testable without FileReader/DOM) ──

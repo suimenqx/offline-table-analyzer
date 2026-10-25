@@ -19,7 +19,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
 | `BackgroundService` | Sole owner of local Blob Worker lifecycle, version handshake, cancellation and acknowledged transport |
 | `WorkerRuntime` | Background normalized dataset session, query/JOIN/statistics/XLSX and storage jobs |
-| `QueryService` | Pure derived-result pipeline for JOIN resolution, filtering, focus projection, pagination metadata, and bounded result caching. |
+| `QueryService` | Pure derived-result pipeline for JOIN resolution, filtering, focus projection, pagination metadata, bounded result caching, and raw/full/preview Excel table derivation. |
 | `dispatch` (`src/core/dispatch.js`) | Thin command bus: `dispatch(action, payload)` delegates to `Store.transition`. |
 
 ### State (`src/state/`)
@@ -67,7 +67,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `FilterController` | Per-column "contains" filter popover positioned near column headers, apply/clear/close actions |
 | `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
 | `TabController` | Tab bar rendering, inline rename (F2/dblclick), drag-and-drop reorder, keyboard navigation (arrows/Enter/Delete) |
-| `ExportController` | XLSX export (raw/full/preview), workspace JSON backup/restore, config JSON export/import with title-based matching, copy format selection |
+| `ExportController` | Browser adaptation for XLSX preparation/download, workspace JSON backup/restore, config JSON export/import with title-based matching, copy format selection |
 | `App` | UI orchestration, parsing, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading, and centralized parse-error feedback. Calls `QueryService` for derived preview results and `TableBuilder` for table DOM. |
 
 The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor.md); the complete acceptance checklist is in [Refactor requirements](../planning/refactor-requirements.md).
@@ -223,6 +223,20 @@ The full processed result remains in memory for export, while only the selected 
 
 Excel buttons use `App.prepareExport()` through an injected `ExportController.init({prepareSource})` callback. App owns source synchronization and parse lifecycle: a completed matching parse is reused, and an export waits for a matching in-flight parse instead of restarting it. Matching includes document ID, source revision, original text, clipboard HTML, parser, header mode, and temporary region selection; the last successful format is not an option. `App.run()` reports successful completion as a boolean or a Promise of that boolean. Preparation returns a transient download validator or null after an already-reported parse failure/empty input. ExportController owns one lock and stage feedback across preparation and serialization, then invokes the validator immediately before download. Cancellation invalidates the validator; a changed source/options/tab rejects the old result. No new persisted fields, modules or dependencies are introduced.
 
+### Shared Excel table derivation (2026-10-25)
+
+Decision: `QueryService.getExportTables(input, mode)` owns the pure raw/full/preview workbook-table contract. Window supplies current query tables, project views, card options and source identity; WorkerRuntime applies source corrections, derives its resident table pool, then calls the same interface. ExportController retains source preparation, the export lock, stage feedback, filename construction, final stale-source validation and browser download. Exporter retains XLSX serialization and its output-byte/cell protection. Complete Worker tables remain in Worker.
+
+| Mode | Source scope | Row/column policy |
+| --- | --- | --- |
+| `raw` | All visible source tables, without JOIN views | All rows and columns; ignore table selection and analysis rules. |
+| `full` | All sources or checked raw tables according to `exportOnlyChecked`, plus enabled views | All rows; project ordered focus columns only when `exportCols` is `shown`. |
+| `preview` | Checked raw tables plus enabled views | Complete filtered/projected results, independent of current page, collapse state and full-export column preference. |
+
+Rationale: Window previously derived full-export tables and JOINs independently, while Worker used QueryService's selected-table and aggregate JOIN budget. Sharing that implementation gives both execution contexts the same pre-projection aggregate guard and prevents allocating a JOIN that exceeds the remaining query/export budget. Existing TableUtils projection semantics remain: preserve requested order, skip missing columns and fall back to all columns if none match. The final serializer continues enforcing the existing XLSX budgets.
+
+The obsolete ExportController derivation helpers and unused App forwarding methods are removed. Their private-helper tests are replaced by tests through the shared interface and paired Window/Worker XLSX readback; source preparation/cancellation tests remain. No new module, execution adapter, manifest order, runtime dependency, schema field or migration is introduced. See the [export parity acceptance baseline](../testing/export-parity-baseline.md).
+
 ## 5. Persistence and migration
 
 `ota_v21_workspace` is the authoritative small workspace key; startup falls back to `ota_v20_workspace` and `v16_4_store`, migrating to schema 21. Large original text uses immutable IndexedDB snapshots through WorkspaceStorage on an independent Worker queue. A reference is published only after the transaction commits. Unchanged raw text reuses the same snapshot while the local settings remain authoritative; recovery combines matching document IDs/revisions with the latest settings. Missing snapshots block automatic overwrite. A legacy key is removed only after the new storage succeeds. `clearLocalData()` removes current/legacy keys, `v16_4_inputHeight`, and background raw snapshots.
@@ -254,7 +268,8 @@ Node unit and integration tests use the built-in test runner under `tests/`:
 
 - `tests/unit/parser.test.js` and `parser-facade.test.js`: all 12 parser adapters, malformed input, diagnostics, normalization, and legacy compatibility.
 - `tests/unit/filter-engine.test.js`, `joiner.test.js`, and `query-service.test.js`: filtering, JOIN semantics, the shared preview result contract, and bounded-cache invalidation.
-- `tests/unit/clipboard.test.js` and `export-controller.test.js`: copy formats, HTML clipboard payloads, formula protection, Lua serialization, and export projections.
+- `tests/unit/clipboard.test.js` and `export-tables.test.js`: copy formats, HTML clipboard payloads, formula protection, Lua serialization, shared Excel scopes, projections and aggregate budgets.
+- `tests/integration/export-source.test.js`: paired Window/Worker workbook readback, latest-source preparation, in-flight reuse, cancellation and stale-download rejection.
 - `tests/unit/worker-runtime.test.js` and `workspace-async.test.js`: bounded transport, aggregate budgets, correction/undo, stale datasets, durable publication, latest-settings recovery, storage failure and save races.
 - `tests/unit/store.test.js`, `dispatch.test.js`, `source-snapshot.test.js`, `source-controller.test.js`, and `tab-controller.test.js`: migration, persistence, source-revision isolation, clipboard/file snapshot capture, browser adaptation, command/event behavior, and tab lifecycle.
 - `tests/unit/modal-controller.test.js`, `filter-controller.test.js`, and `cell-edit-controller.test.js`: dialog, filter, and correction-controller contracts.
