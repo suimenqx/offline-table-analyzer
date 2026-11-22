@@ -350,6 +350,11 @@
         .parse-feedback-title { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.5; }
         .parse-feedback-source { margin: 6px 0 0; font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
         .parse-feedback-description { margin: 8px 0 16px; max-width: 65ch; color: color-mix(in srgb, var(--text-strong) 75%, var(--warning)); font-size: 13px; line-height: 1.8; }
+        .parse-feedback-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .parse-feedback-candidates { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin: 12px 0; }
+        .parse-feedback-candidate { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg-card); }
+        .parse-feedback-candidate > strong { display: block; overflow-wrap: anywhere; }
+        .parse-feedback-preview { max-height: 100px; overflow: auto; margin: 8px 0; padding: 8px; border-radius: 6px; background: var(--bg-elevated); color: var(--text-weak); font: 11px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
         .parse-feedback-action { height: auto; min-height: 34px; padding: 7px 12px; white-space: normal; text-align: left; }
         .parse-feedback-action.primary { --feedback-action: color-mix(in srgb, var(--primary) 82%, var(--text-strong)); background: var(--feedback-action); border-color: var(--feedback-action); color: var(--bg-card); }
         .parse-feedback-action.primary:hover { background: color-mix(in srgb, var(--primary) 65%, var(--text-strong)); }
@@ -357,7 +362,7 @@
             .parse-feedback:not(.is-empty) .parse-feedback-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; }
             .parse-feedback:not(.is-empty) .parse-feedback-title, .parse-feedback:not(.is-empty) .parse-feedback-source, .parse-feedback:not(.is-empty) .parse-feedback-description { grid-column: 1; }
             .parse-feedback:not(.is-empty) .parse-feedback-description { margin-bottom: 0; }
-            .parse-feedback:not(.is-empty) .parse-feedback-action { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+            .parse-feedback:not(.is-empty) .parse-feedback-actions { grid-column: 2; grid-row: 1 / span 3; align-self: center; justify-content: flex-end; }
         }
 
         /* --- v20 Workbench --- */

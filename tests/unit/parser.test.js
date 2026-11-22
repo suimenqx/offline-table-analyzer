@@ -246,10 +246,11 @@ describe('Header resolution', () => {
     assert.equal(firstTable(r).rows.length, 2);
   });
 
-  it('asks before deciding ambiguous string-first rows are headers or data', () => {
+  it('keeps an inferred string-first table visible and offers header or data choices', () => {
     const r = parse('Alice,NY\nBob,LA');
-    assert.equal(r.format, 'ambiguous');
-    assert.deepEqual(r.tables, []);
+    assert.equal(r.format, 'csv');
+    assert.equal(r.tables.length, 1);
+    assert.ok(r.diagnostics.some(item => item.code === 'HEADER_AMBIGUOUS'));
     assert.ok(r.candidates.some(item => item.kind === 'header-mode' && item.headerMode === 'first-row'));
     assert.ok(r.candidates.some(item => item.kind === 'header-mode' && item.headerMode === 'none'));
   });
@@ -265,12 +266,10 @@ describe('Header resolution', () => {
     assert.equal(firstTable(r).rows[0][0], 'id');
   });
 
-  it('asks before accepting irregular rows, then preserves overflow values', () => {
+  it('accepts irregular rows immediately and preserves overflow values', () => {
     const input='id,name,age\n1,Alice,20\n2,Bob\n3,Cindy,25,extra';
-    const unresolved=parse(input);
-    assert.equal(unresolved.format,'ambiguous');
-    assert.deepEqual(unresolved.tables,[]);
-    const r=parse(input,{regionSelection:unresolved.candidates[0].regionSelection});
+    const r=parse(input);
+    assert.equal(r.format,'csv');
     assert.equal(firstTable(r).rows[2][3], 'extra');
     assert.ok(r.diagnostics.some(d=>d.code==='ROW_WIDTH_MISMATCH'));
   });
@@ -298,9 +297,9 @@ describe('Pipe table (Markdown) parser', () => {
     assert.ok(r.candidates.some(item => item.id === 'pipe-table'));
   });
 
-  it('falls back to plain text for horizontal rule prose', () => {
+  it('leaves horizontal-rule prose unrecognized instead of showing a guessed table', () => {
     const r = parse('Title\n---\nparagraph text');
-    assert.equal(r.format, 'ambiguous');
+    assert.equal(r.format, 'empty');
     assert.deepEqual(r.tables, []);
     assert.ok(r.candidates.some(item => item.id === 'plain-text'));
   });

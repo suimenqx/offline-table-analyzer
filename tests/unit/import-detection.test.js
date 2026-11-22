@@ -114,19 +114,15 @@ describe('bounded automatic detection',()=>{
     assert.equal(result.tables[0].meta.sourceRange.start,text.indexOf('ID    Name'));
   });
 
-  it('asks before accepting a delimited region with unstable row widths, then preserves overflow when confirmed',()=>{
+  it('parses a delimited region with unstable row widths and preserves overflow immediately',()=>{
     const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
     const text='报告\nid,name\n1,Alice\nbad,too,many,fields\n2,Bob\n结束';
     const result=ImportEngine.parse(text);
-    assert.equal(result.format,'ambiguous');
-    assert.deepEqual(result.tables,[]);
-    assert.equal(result.candidates[0].kind,'region-set');
-    assert.ok(result.candidates[0].preview.includes('bad,too,many,fields'));
-    assert.equal(Object.hasOwn(result.candidates[0],'score'),false);
-    const confirmed=ImportEngine.parse(text,{regionSelection:result.candidates[0].regionSelection});
-    assert.equal(confirmed.format,'csv');
-    assert.deepEqual(confirmed.tables[0].rows[1],['bad','too','many','fields']);
-    assert.ok(confirmed.diagnostics.some(item=>item.code==='ROW_WIDTH_MISMATCH'));
+    assert.equal(result.format,'csv');
+    assert.equal(result.tables.length,1);
+    assert.deepEqual(result.tables[0].rows[1],['bad','too','many','fields']);
+    assert.ok(result.diagnostics.some(item=>item.code==='ROW_WIDTH_MISMATCH'));
+    assert.equal(result.tables[0].meta.sourceRange.start,text.indexOf('id,name'));
   });
 
   it('asks for format confirmation on a small delimiter tie even when a format was used previously',()=>{
@@ -158,16 +154,20 @@ describe('bounded automatic detection',()=>{
     assert.ok(result.diagnostics.some(item=>item.code==='TABLE_REGIONS_EXTRACTED'));
   });
 
-  it('asks whether an ambiguous first row is a header before returning a table',()=>{
+  it('shows the inferred header result and offers an inline header alternative',()=>{
     const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
     const text='alpha,beta\none,two\nthree,four';
     const result=ImportEngine.parse(text);
-    assert.equal(result.format,'ambiguous');
-    assert.deepEqual(result.tables,[]);
+    assert.equal(result.format,'csv');
+    assert.equal(result.tables.length,1);
+    assert.equal(result.tables[0].meta.headerAmbiguous,true);
+    assert.ok(result.diagnostics.some(item=>item.code==='HEADER_AMBIGUOUS'));
     assert.deepEqual(result.candidates.filter(item=>item.kind==='header-mode').map(item=>item.headerMode),['first-row','none']);
-    const confirmed=ImportEngine.parse(text,{headerMode:'first-row'});
-    assert.equal(confirmed.format,'csv');
-    assert.deepEqual(confirmed.tables[0].headers,['alpha','beta']);
-    assert.deepEqual(confirmed.tables[0].rows,[['one','two'],['three','four']]);
+    assert.deepEqual(result.tables[0].headers,['Column1','Column2']);
+    assert.deepEqual(result.tables[0].rows,[['alpha','beta'],['one','two'],['three','four']]);
+    const changed=ImportEngine.parse(text,{headerMode:'first-row'});
+    assert.equal(changed.format,'csv');
+    assert.deepEqual(changed.tables[0].headers,['alpha','beta']);
+    assert.deepEqual(changed.tables[0].rows,[['one','two'],['three','four']]);
   });
 });

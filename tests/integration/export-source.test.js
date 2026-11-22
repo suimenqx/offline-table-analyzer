@@ -435,13 +435,13 @@ describe('Excel export prepares the current source', () => {
     assert.ok(messages.some(message => message.includes('解析失败')));
   });
 
-  it('blocks workbook export until an ambiguous header interpretation is confirmed', async () => {
+  it('exports the best-effort table while keeping an uncertain header warning visible', async () => {
     const ambiguous = 'alpha,beta\none,two\nthree,four';
     replace(ambiguous);
     await clickExport();
-    assert.equal(downloads.length, 0);
-    assert.equal(TableRegistry.getFormat(), 'ambiguous');
-    assert.ok(messages.some(message => message.includes('请先在解析详情中确认')));
+    assert.equal(downloads.length, 1);
+    assert.equal(TableRegistry.getFormat(), 'csv');
+    assert.ok(TableRegistry.getLastResult().diagnostics.some(item => item.code === 'HEADER_AMBIGUOUS'));
     assert.equal(Store.getDocument().raw, ambiguous);
   });
 

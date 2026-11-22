@@ -46,9 +46,9 @@ The **Format** dropdown includes fourteen options:
 13. **Aligned fixed width** — delimiter-free aligned output whose column positions are inferred from the header row.
 14. **Whitespace text** — splits each line on whitespace; useful for simple columnar logs.
 
-**When auto-detection needs help:** Use the direct confirmation/error action beside the parse notice, or **更多 → 解析详情** beside the original-text heading. The dialog lists format candidates with heuristic ranking references, which are not correctness probabilities. If the format, table region, or header is ambiguous, no guessed table is loaded; choose a candidate to re-parse the current source. Confirmation choices for detected headers and regions do not change the saved automatic settings.
+**When auto-detection needs help:** The app shows the best usable table first and places corrections beside the preview. If two formats would produce materially different tables, choose one of the sample results shown there. For an uncertain header, use **首行作为表头** or **首行作为数据**; the choice applies only to the current input. Irregular row widths are parsed automatically, with overflow values retained and a visible warning. Open **更多 → 解析详情** for candidate reasons and all diagnostics; heuristic scores rank candidates and are not correctness probabilities.
 
-Automatic selection verifies bounded samples and expands them within a fixed budget. The final parser reads the complete source or identified table regions. Unresolved format, region, or header ambiguity keeps the original and asks you to choose in Details; no guessed workbook is produced.
+Automatic selection verifies bounded samples and expands them within a fixed budget. The final parser reads the complete source or identified table regions. A blocking format choice appears beside the preview only when close/weak candidates produce materially different tables. The original source remains unchanged. A single best result can be reviewed or switched before export.
 
 CLI `table-data` mode additionally auto-detects each data block's internal format (TSV, CSV, pipe, or fixed-width) based on the content of the `validflag` header row.
 
@@ -81,7 +81,7 @@ Duplicate or empty header names receive numeric suffixes (e.g., `Name_2`).
 
 ### 1.6 Diagnostics
 
-The editor shows a notice for malformed quotes, rows with mismatched column counts, and other issues needing attention. Ordinary successful parse counts appear once in the card summary. Open **更多 → 解析详情** for all diagnostics, including informational notes; unresolved format, region and header choices retain their direct confirmation actions.
+The editor shows a notice for malformed quotes, rows with mismatched column counts, and other issues needing attention. Irregular rows remain available in the table, including overflow cells. Ordinary successful parse counts appear once in the card summary. Open **更多 → 解析详情** for all diagnostics, including informational notes; format and header corrections are also available beside the preview when needed.
 
 ---
 

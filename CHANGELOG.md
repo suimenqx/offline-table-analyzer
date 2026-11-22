@@ -4,6 +4,12 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## Unreleased
 
+### 解析确认体验
+
+- Show the strongest usable parse by default; block only close or weak format candidates that produce materially different normalized tables, and show bounded candidate samples with direct choices beside the preview.
+- Keep uncertain header results visible with source-bound header/data switches. Parse irregular-width regions automatically, preserve overflow cells, and surface the existing row-width warning.
+- Keep the full diagnostics view available for inspection while moving common correction actions into the preview flow.
+
 ### 侧栏信息简化
 
 - Replace repeated participation labels with accessible eye buttons; mute hidden-card surfaces and text while preserving editing, selection, keyboard focus and visible error states.

@@ -4,14 +4,20 @@ import {loadModules} from '../helpers/load-modules.mjs';
 import {createDOMSandbox} from '../mocks/dom.js';
 import {createStorageMock} from '../mocks/storage.js';
 
-let Store, SourceController;
-afterEach(() => { clearTimeout(Store?.saveTimer); SourceController?.resetPendingInput(); });
+let Store, SourceController, previousOption;
+afterEach(() => {
+  clearTimeout(Store?.saveTimer); SourceController?.resetPendingInput();
+  if(previousOption===undefined)delete globalThis.Option;else globalThis.Option=previousOption;
+  previousOption=undefined;
+});
 function setup() {
   const dom = createDOMSandbox();
   const target = dom.getElementById('targetTableSelect');
   target.options = []; target.add = option => target.options.push(option);
   const {OTA} = loadModules(['app'], {document:dom.document, window:dom.window,
     localStorage:createStorageMock(), CustomEvent:dom.MockCustomEvent});
+  previousOption=globalThis.Option;
+  globalThis.Option=function(text,value){ return {text,value}; };
   ({Store} = OTA.require('store')); ({SourceController} = OTA.require('source-controller'));
   Store.init();
   return {App:OTA.require('app').App, TableRegistry:OTA.require('table-registry').TableRegistry, dom};
@@ -22,6 +28,7 @@ const byClass = (root, name) => {
   return null;
 };
 const headerText = 'alpha,beta\none,two\nthree,four';
+const tiedFormatText = 'id,name;state\n1,Alice;ok';
 
 describe('Visible parse status and confirmation feedback', () => {
   it('keeps icon actions with the name and one compact status row without repeated instructions', () => {
@@ -126,28 +133,57 @@ describe('Visible parse status and confirmation feedback', () => {
     assert.match(dom.getElementById('sourcePreviewNotice').textContent, /粘贴.*替换整卡/);
   });
 
-  for(const text of [headerText, 'id,name;state\n1,Alice;ok', '报告\nid,name\n1,Alice\nbad,too,many,fields\n2,Bob\n结束']) {
-    it(`explains the withheld preview and opens existing confirmation choices for ${text.split('\n')[0]}`, () => {
-      const {App, TableRegistry, dom} = setup();
-      SourceController.displayText(text);
-      assert.equal(App.run(false), true);
-      assert.equal(TableRegistry.getFormat(), 'ambiguous');
-      App.renderPreview();
-      const notice = byClass(dom.getElementById('previewArea'), 'parse-feedback');
-      assert.ok(notice, 'ambiguity must not look like a broken or first-use empty preview');
-      assert.match(byClass(notice, 'parse-feedback-title').textContent, /待确认/);
-      assert.match(byClass(notice, 'parse-feedback-description').textContent, /确认.*表格/);
-      assert.match(byClass(notice, 'parse-feedback-description').textContent, /原文已保留/);
-      assert.equal(dom.getElementById('diagnosticsBtn').textContent, '确认候选');
-      assert.match(dom.getElementById('parseStatus').className, /confirm/);
-      let shown;
-      App.modal = (title, content) => { shown = {title, content}; };
-      notice.querySelector('button').onclick();
-      assert.equal(shown.title, '解析详情');
-      assert.match(shown.content, /diagnostic-candidate-btn/);
-      assert.equal(Store.curr().raw, text);
-    });
-  }
+  it('shows materially different format choices beside the preview and resolves them in one step', () => {
+    const {App, TableRegistry, dom} = setup();
+    SourceController.displayText(tiedFormatText);
+    assert.equal(App.run(false), true);
+    assert.equal(TableRegistry.getFormat(), 'ambiguous');
+    App.renderPreview();
+    const notice = byClass(dom.getElementById('previewArea'), 'parse-feedback');
+    assert.ok(notice);
+    assert.match(byClass(notice, 'parse-feedback-title').textContent, /选择/);
+    const choices = byClass(notice, 'parse-feedback-candidates');
+    assert.ok(choices);
+    assert.equal(choices.children.length, 2);
+    assert.ok(choices.children.every(option => byClass(option, 'parse-feedback-preview')));
+    const apply = choices.children[0].querySelector('button');
+    assert.match(apply.textContent, /使用/);
+    apply.onclick();
+    assert.notEqual(TableRegistry.getFormat(), 'ambiguous');
+    assert.equal(Store.curr().ui.importFormat, TableRegistry.getFormat());
+    assert.equal(Store.curr().raw, tiedFormatText);
+  });
+
+  it('shows uncertain header output immediately and switches header mode beside the preview', () => {
+    const {App, TableRegistry, dom} = setup();
+    SourceController.displayText(headerText);
+    assert.equal(App.run(false), true);
+    assert.equal(TableRegistry.getFormat(), 'csv');
+    assert.deepEqual(TableRegistry.getRaw()[0].headers, ['Column1', 'Column2']);
+    App.renderPreview();
+    const notice = byClass(dom.getElementById('previewArea'), 'parse-feedback');
+    assert.ok(notice);
+    const actions = byClass(notice, 'parse-feedback-actions');
+    const chooseHeader = actions.children.find(button => button.textContent === '首行作为表头');
+    assert.ok(chooseHeader);
+    chooseHeader.onclick();
+    assert.deepEqual(TableRegistry.getRaw()[0].headers, ['alpha', 'beta']);
+    assert.equal(Store.getActiveUI().importHeaderMode, 'auto', 'the source-bound confirmation leaves the saved auto setting intact');
+  });
+
+  it('renders irregular-width rows without a confirmation gate and shows the preservation warning', () => {
+    const {App, TableRegistry, dom} = setup();
+    const text='报告\nid,name\n1,Alice\nbad,too,many,fields\n2,Bob\n结束';
+    SourceController.displayText(text);
+    assert.equal(App.run(false), true);
+    assert.equal(TableRegistry.getFormat(), 'csv');
+    assert.deepEqual(TableRegistry.getRaw()[0].rows[1], ['bad', 'too', 'many', 'fields']);
+    App.renderPreview();
+    const notice = byClass(dom.getElementById('previewArea'), 'parse-feedback');
+    assert.ok(notice);
+    assert.match(byClass(notice, 'parse-feedback-title').textContent, /已保留/);
+    assert.match(byClass(notice, 'parse-feedback-description').textContent, /溢出单元格已保留/);
+  });
 
   it('offers diagnostics rather than promising a choice when no candidates are available', () => {
     const {App, TableRegistry, dom} = setup();
@@ -155,9 +191,9 @@ describe('Visible parse status and confirmation feedback', () => {
     App.updateImportSummary();
     App.renderPreview();
     const notice = byClass(dom.getElementById('previewArea'), 'parse-feedback');
-    assert.equal(byClass(notice, 'parse-feedback-title').textContent, '解析方式待确认');
-    assert.equal(notice.querySelector('button').textContent, '查看解析详情');
-    assert.match(byClass(notice, 'parse-feedback-description').textContent, /手动选择格式/);
+    assert.equal(byClass(notice, 'parse-feedback-title').textContent, '解析方式需要指定');
+    assert.equal(notice.querySelector('button').textContent, '解析详情');
+    assert.match(byClass(notice, 'parse-feedback-description').textContent, /手动选择左侧格式/);
     assert.equal(dom.getElementById('diagnosticsBtn').classList.contains('hidden'), false);
   });
 
@@ -166,7 +202,7 @@ describe('Visible parse status and confirmation feedback', () => {
     SourceController.displayText('[{"id":"001","name":"Alice"}]');
     App.run(false);
     const tables = App.getPreviewProcessedTables();
-    SourceController.displayText(headerText);
+    SourceController.displayText(tiedFormatText);
     App.run(false);
     App.renderPreview(tables);
     const preview = dom.getElementById('previewArea');

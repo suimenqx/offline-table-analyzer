@@ -465,11 +465,16 @@ const App = {
             status.hidden = !attention;
         }
         if(text) {
-            text.textContent = failed ? '解析失败' : needsConfirmation ? '需要确认解析方式' : unrecognized ? '未识别表格，可手动选择格式'
-                : diagnostics.length ? `${result.diagnosticCount ?? diagnostics.length} 项解析提示` : '';
+            const headerReview=diagnostics.some(item=>item.code==='HEADER_AMBIGUOUS');
+            const formatReview=diagnostics.some(item=>item.code==='FORMAT_REVIEW');
+            const widthReview=diagnostics.some(item=>item.code==='ROW_WIDTH_MISMATCH');
+            text.textContent = failed ? '解析失败' : needsConfirmation ? '请选择解析格式' : unrecognized ? '未识别表格，可手动选择格式'
+                : headerReview ? '表格已显示，首行可切换' : widthReview ? '列数不一致，内容已保留'
+                    : formatReview ? '已显示最匹配结果，请检查' : diagnostics.length ? `${result.diagnosticCount ?? diagnostics.length} 项解析提示` : '';
         }
         if(details) {
-            details.textContent = needsConfirmation && result.candidates?.length ? '确认候选' : failed ? '查看错误' : '查看详情';
+            const hasQuickChoice=diagnostics.some(item=>['FORMAT_AMBIGUOUS','HEADER_AMBIGUOUS','FORMAT_REVIEW'].includes(item.code));
+            details.textContent = hasQuickChoice ? '调整解析' : failed ? '查看错误' : '查看详情';
             details.classList.toggle('hidden', !attention);
         }
         const sourceDetails = $('sourceDiagnosticsBtn');
@@ -544,6 +549,42 @@ const App = {
         dispatch('import:setFormat', { format: next });
         this.syncImportControls();
         this.run();
+    },
+
+    applyParseCandidate(candidate) {
+        if(!candidate || !Store.getDocument()) return false;
+        if(candidate.kind==='header-mode') {
+            this.invalidateCellEdits();
+            this.rememberRegionSelection(candidate.regionSelection);
+            this.rememberHeaderMode(candidate.headerMode);
+            return this.run();
+        }
+        if(candidate.kind==='region-set') {
+            this.rememberRegionSelection(candidate.regionSelection);
+            return this.run();
+        }
+        return this.setImportFormat(candidate.id);
+    },
+
+    focusFormatChoices() {
+        const area=$('previewArea');
+        const findNotice=node=>{
+            if(node?.className?.split(/\s+/).includes('parse-feedback'))return node;
+            for(const child of node?.children||[]) {const nested=findNotice(child);if(nested)return nested;}
+            return null;
+        };
+        const find=node=>{
+            for(const child of node?.children||[]) {
+                if(child.tagName==='BUTTON' && !['解析详情','选中卡片'].includes(child.textContent))return child;
+                const nested=find(child);if(nested)return nested;
+            }
+            return null;
+        };
+        const first=find(findNotice(area));
+        if(!first)return false;
+        first.focus?.({preventScroll:true});
+        first.scrollIntoView?.({block:'center'});
+        return true;
     },
 
     setCopyFormat(format='default') {
@@ -633,7 +674,7 @@ const App = {
         if(!extraction.ok && !(extraction.failed && canUseOtherSources())) return null;
         const noVisibleTables = TableRegistry.isBackground() ? !TableRegistry.getBackgroundInput().cards.length : !TableRegistry.getQueryTables().length;
         if(noVisibleTables || (!TableRegistry.getRaw().length && !canUseOtherSources())){
-            if(TableRegistry.getFormat()==='ambiguous')Toast.show('请先在解析详情中确认格式、表格区域或表头',true);
+            if(TableRegistry.getFormat()==='ambiguous')Toast.show('请先在预览区选择解析格式',true);
             else Toast.show('无数据可导出',true);
             return null;
         }
@@ -824,7 +865,7 @@ const App = {
         const pasteSourceBtn = $('pasteSourceBtn');
         if(pasteSourceBtn) pasteSourceBtn.onclick = () => this.showPasteSource();
         const diagnosticsBtn = $('diagnosticsBtn');
-        if(diagnosticsBtn) diagnosticsBtn.onclick = () => this.showDiagnostics();
+        if(diagnosticsBtn) diagnosticsBtn.onclick = () => { if(!this.focusFormatChoices())this.showDiagnostics(); };
         if($('sourceDiagnosticsBtn')) $('sourceDiagnosticsBtn').onclick = () => this.showDiagnostics();
         if($('ruleHelpBtn')) $('ruleHelpBtn').onclick = () => this.showRuleHelp();
         const formatSelect = $('formatSelect');
@@ -1099,14 +1140,7 @@ validflag Time      Level   Message                 Code
                 if(!candidate)return;
                 this.closeModal();
                 if(fromPreview) $('parseBtn')?.focus({preventScroll:true});
-                if(candidate.kind==='header-mode') {
-                    this.rememberRegionSelection(candidate.regionSelection);
-                    this.rememberHeaderMode(candidate.headerMode);
-                    this.run();
-                } else if(candidate.kind==='region-set') {
-                    this.rememberRegionSelection(candidate.regionSelection);
-                    this.run();
-                } else this.setImportFormat(candidate.id);
+                this.applyParseCandidate(candidate);
             };
         });
     },
@@ -1279,11 +1313,28 @@ validflag Time      Level   Message                 Code
         const active = Store.getDocument();
         const result = TableRegistry.getLastResult();
         const current = result.format === 'ambiguous';
+        const diagnostics=result.diagnostics||[];
+        const currentHasGuidance=!current && diagnostics.some(item=>['HEADER_AMBIGUOUS','ROW_WIDTH_MISMATCH','FORMAT_REVIEW','TABLE_REGION_BUDGET'].includes(item.code));
         const unresolved = (Store.getActiveProject()?.cardIds || []).map(id => Store.getCard(id))
             .filter(card => card && card.visible !== false && TableRegistry.getCardSummary(card.id)?.format === 'ambiguous');
-        const card = current ? active : unresolved.find(item => item.id !== active?.id);
+        const otherUnresolved=unresolved.find(item=>item.id!==active?.id);
+        const card = current ? active : otherUnresolved || (currentHasGuidance ? active : null);
         if(!card) return null;
-        const notice = createEl('section', 'parse-feedback is-empty');
+        const isCurrent=current || card.id===active?.id;
+        const currentDiagnostics=isCurrent?diagnostics:[];
+        const candidates=isCurrent?(result.candidates||[]):[];
+        const formatTie=current && currentDiagnostics.some(item=>item.code==='FORMAT_AMBIGUOUS')
+            ? candidates.filter(item=>item.id && item.kind!=='header-mode' && item.kind!=='region-set').filter((item,index,array)=>array.findIndex(other=>other.id===item.id)===index).slice(0,2)
+            : [];
+        const headerChoices=currentDiagnostics.some(item=>item.code==='HEADER_AMBIGUOUS')
+            ? candidates.filter(item=>item.kind==='header-mode').slice(0,2)
+            : [];
+        const widthWarnings=currentDiagnostics.filter(item=>item.code==='ROW_WIDTH_MISMATCH');
+        const formatReview=currentDiagnostics.some(item=>item.code==='FORMAT_REVIEW');
+        const regionBudget=currentDiagnostics.some(item=>item.code==='TABLE_REGION_BUDGET');
+        const hasCurrentGuidance=isCurrent && (current || headerChoices.length || widthWarnings.length || formatReview || regionBudget);
+        if(isCurrent && !hasCurrentGuidance) return null;
+        const notice = createEl('section', `parse-feedback${current ? ' is-empty' : ''}`);
         notice.setAttribute('aria-labelledby', 'parseFeedbackTitle');
         const icon = createEl('span', 'parse-feedback-icon');
         icon.setAttribute('aria-hidden', 'true');
@@ -1291,25 +1342,62 @@ validflag Time      Level   Message                 Code
         const body = createEl('div', 'parse-feedback-body');
         const title = createEl('h2', 'parse-feedback-title');
         title.id = 'parseFeedbackTitle';
-        title.textContent = current && !result.candidates.length ? '解析方式待确认' : '有候选结果待确认';
+        title.textContent = !isCurrent ? '有候选结果待确认'
+            : regionBudget ? '这份输入包含太多表格区域'
+                : formatTie.length ? '请选择更符合原文的解析结果'
+                    : current ? '解析方式需要指定'
+                        : headerChoices.length ? '已显示表格，可调整首行解释'
+                            : widthWarnings.length ? '列数不一致的内容已保留'
+                                : '已先显示最匹配的结果';
         const source = createEl('p', 'parse-feedback-source');
         const others = unresolved.filter(item => item.id !== card.id).length;
-        source.textContent = `${current ? '当前卡片' : '待确认卡片'}：${card.title}${others ? ` · 另有 ${others} 张卡片待确认` : ''}`;
+        source.textContent = `${isCurrent ? '当前卡片' : '待确认卡片'}：${card.title}${others ? ` · 另有 ${others} 张卡片待确认` : ''}`;
         const description = createEl('p', 'parse-feedback-description');
-        description.textContent = card.visible === false
-            ? '此卡片未参与分析。可先确认解析方式；勾选“参与分析”后才会显示表格，原文已保留。'
-            : current && !result.candidates.length
-                ? '自动识别还不能确定解析方式。请查看详情，或手动选择格式后再生成表格，原文已保留。'
-                : '检测到多种可能的解析方式。确认候选后才会显示这张卡片的表格，原文已保留。';
-        const button = createEl('button', 'primary parse-feedback-action');
-        button.type = 'button';
-        button.textContent = current ? (result.candidates.length ? '查看并确认候选' : '查看解析详情') : '选中卡片并确认';
-        if(current) button.setAttribute('aria-haspopup', 'dialog');
-        button.onclick = () => {
-            if(current) this.showDiagnostics();
-            else if(this.activateCard(card.id)) SourceController.focusCard(card.id);
+        if(!isCurrent) description.textContent='选中这张卡片后，可在预览区直接选择格式。原文已保留。';
+        else if(regionBudget) description.textContent='为保持响应速度，请减少输入中的独立表格区域后再解析。原文已保留。';
+        else if(formatTie.length) description.textContent='不同格式会产生不同列或单元格。选择一个结果后即可继续分析。';
+        else if(current) description.textContent='请手动选择左侧格式后再解析，原文已保留。';
+        else {
+            const notes=[];
+            if(card.visible===false)notes.push('当前卡片未参与结果合并。');
+            if(headerChoices.length)notes.push('当前表格已可用；首行解释不合适时可直接切换，选择只作用于当前输入。');
+            if(widthWarnings.length)notes.push('部分记录的列数不同，溢出单元格已保留，请检查有提示的行。');
+            if(formatReview)notes.push('识别依据较弱，已先显示最匹配的结果；如果列结构不对，可切换格式。');
+            description.textContent=notes.join(' ');
+        }
+
+        const actions=createEl('div','parse-feedback-actions');
+        const addAction=(label,handler,primary=false)=>{
+            const button=createEl('button',`${primary?'primary':'tonal'} parse-feedback-action`);
+            button.type='button';button.textContent=label;button.onclick=handler;actions.appendChild(button);
+            return button;
         };
-        body.appendChild(title); body.appendChild(source); body.appendChild(description); body.appendChild(button);
+        body.appendChild(title); body.appendChild(source); body.appendChild(description);
+        if(!isCurrent) addAction('选中卡片',()=>{if(this.activateCard(card.id))SourceController.focusCard(card.id);},true);
+        else if(formatTie.length) {
+            const choices=createEl('div','parse-feedback-candidates');
+            formatTie.forEach((candidate,index)=>{
+                const option=createEl('div','parse-feedback-candidate');
+                const label=createEl('strong');label.textContent=candidate.label;option.appendChild(label);
+                if(candidate.preview) {const preview=createEl('pre','parse-feedback-preview');preview.textContent=candidate.preview;option.appendChild(preview);}
+                const button=createEl('button',`${index===0?'primary':'tonal'} parse-feedback-action`);
+                button.type='button';button.textContent=`使用${candidate.label}`;
+                button.onclick=()=>this.applyParseCandidate(candidate);
+                option.appendChild(button);choices.appendChild(option);
+            });
+            body.appendChild(choices);
+        }
+        if(headerChoices.length) {
+            headerChoices.forEach(candidate=>addAction(candidate.headerMode==='first-row'?'首行作为表头':'首行作为数据',()=>this.applyParseCandidate(candidate)));
+        }
+        if(formatReview) {
+            const alternative=candidates.find(item=>item.id && item.id!==result.format);
+            if(alternative)addAction(`切换为${alternative.label}`,()=>this.applyParseCandidate(alternative));
+        }
+        if(isCurrent && (current || formatReview || headerChoices.length || widthWarnings.length || regionBudget)) {
+            addAction('解析详情',()=>this.showDiagnostics());
+        }
+        if(actions.children.length)body.appendChild(actions);
         notice.appendChild(icon); notice.appendChild(body); container.appendChild(notice);
         return notice;
     },

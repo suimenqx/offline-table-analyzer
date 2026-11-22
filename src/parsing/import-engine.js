@@ -96,13 +96,6 @@ function findParserRegions(text,parserId) {
     return delimiter?findDelimitedRegions(text,delimiter):{regions:[],overBudget:false};
 }
 
-function previewRegion(text,region) {
-    return text.slice(region.start,region.end).split('\n').slice(0,4).map(line=>{
-        const clean=line.replace(/\r$/,'');
-        return clean.length>180?`${clean.slice(0,177)}…`:clean;
-    }).join('\n');
-}
-
 function mapNormalizedOffsetsToSource(originalText,offsets) {
     const targets=[...new Set(offsets.filter(Number.isInteger))].sort((a,b)=>a-b);
     const mapped=new Map();
@@ -167,6 +160,44 @@ function collectDiagnostics(...groups) {
         if(!keys.has(key)){keys.add(key);diagnostics.push(item);}
     }
     return diagnostics;
+}
+
+function fingerprintTables(tables) {
+    let primary=2166136261,secondary=2246822519;
+    const add=value=>{
+        const text=String(value??'');
+        for(let i=0;i<text.length;i++) {
+            const code=text.charCodeAt(i);
+            primary=Math.imul(primary^code,16777619)>>>0;
+            secondary=Math.imul(secondary^(code+(primary>>>24)),3266489917)>>>0;
+        }
+        primary=Math.imul(primary^0xFF,16777619)>>>0;
+        secondary=Math.imul(secondary^0xFF,3266489917)>>>0;
+    };
+    add((tables||[]).length);
+    for(const table of tables||[]) {
+        const headers=Array.isArray(table.headers)?table.headers:[];
+        const rows=Array.isArray(table.rows)?table.rows:[];
+        add(headers.length);
+        headers.forEach(add);
+        add(rows.length);
+        for(const row of rows) {
+            add(Array.isArray(row)?row.length:0);
+            (Array.isArray(row)?row:[]).forEach(add);
+        }
+    }
+    return `${primary.toString(16)}:${secondary.toString(16)}`;
+}
+
+function previewTables(tables) {
+    const lines=[];
+    for(const table of (tables||[]).slice(0,2)) {
+        if(lines.length)lines.push('…');
+        lines.push((table.headers||[]).map(value=>String(value??'')).join(' | '));
+        for(const row of (table.rows||[]).slice(0,2))lines.push(row.map(value=>String(value??'')).join(' | '));
+    }
+    const preview=lines.join('\n');
+    return preview.length>480?`${preview.slice(0,477)}…`:preview;
 }
 
 const ImportEngine = {
@@ -244,7 +275,7 @@ const ImportEngine = {
                 try {
                     const detectedRegions=findParserRegions(sample.text,parser.id);
                     const regions=detectedRegions.regions;
-                    const parsed=regions.length && regions.every(region=>region.rectangular)
+                    const parsed=regions.length
                         ? parseRegions(parser,sample.text,regions,options)
                         : parser.parse({text:sample.text,html:''},options);
                     const quality=this.parseQuality(parsed);
@@ -253,8 +284,10 @@ const ImportEngine = {
                     const regionEvidence=regions.length && regions.every(region=>region.rectangular)?Math.min(REGION_EVIDENCE.max,regions.length*REGION_EVIDENCE.perRegion):0;
                     const shapeEvidence=Math.min(SHAPE_EVIDENCE.max,Math.log2(Math.max(1,width))*SHAPE_EVIDENCE.perLog2Width);
                     const score=Math.min(1,c.score*SCORE_WEIGHTS.sniff+quality*SCORE_WEIGHTS.quality+shapeEvidence+regionEvidence*SCORE_WEIGHTS.region);
-                    // Retain evidence only; candidate tables can be collected now.
-                    evaluations.push({parser,score,quality,structural:c.structural,reason:c.reason,regions});
+                    // Keep only bounded evidence from each probe, not its table rows.
+                    evaluations.push({parser,score,quality,structural:c.structural,reason:c.reason,regions,
+                        irregular:collectDiagnostics(parsed.diagnostics,parsed.tables.flatMap(table=>table.diagnostics||[])).some(item=>item.code==='ROW_WIDTH_MISMATCH'),
+                        fingerprint:fingerprintTables(parsed.tables),preview:previewTables(parsed.tables)});
                 } catch (_) { /* An incompatible bounded probe is not a source failure. */ }
             };
             sniff.candidates.slice(0,6).forEach(evaluate);
@@ -271,13 +304,20 @@ const ImportEngine = {
                 break;
             }
         }
-        const scoreGap=evaluations.length>1?evaluations[0].score-evaluations[1].score:Infinity;
-        const lowScore=Boolean(evaluations[0] && !evaluations[0].structural && evaluations[0].score<0.55);
-        const ambiguous=Boolean(evaluations[0] && !evaluations[0].structural && (scoreGap<0.12 || lowScore));
-        const diagnostics=[...(sniff.diagnostics || [])];
-        if(ambiguous && !diagnostics.some(item=>item.code==='FORMAT_AMBIGUOUS'))diagnostics.push({severity:'warning',code:'FORMAT_AMBIGUOUS',message:'格式证据不足或多个候选接近；请在解析详情中选择格式后重试'});
+        const top=evaluations[0];
+        const lowScore=Boolean(top && !top.structural && top.score<0.55);
+        const tieAlternative=top && !top.structural
+            ? evaluations.slice(1).find(item=>item.fingerprint!==top.fingerprint && (lowScore || top.score-item.score<0.12))
+            : null;
+        const ambiguous=Boolean(tieAlternative);
+        const unrecognizedProse=Boolean(top && top.parser.id==='plain-text' && top.irregular && lowScore && !ambiguous);
+        const diagnostics=(sniff.diagnostics || []).filter(item=>item.code!=='FORMAT_AMBIGUOUS');
+        if(ambiguous)diagnostics.push({severity:'warning',code:'FORMAT_AMBIGUOUS',message:'几个格式候选会产生不同的表格内容；请在预览区选一个结果。'});
+        else if(unrecognizedProse)diagnostics.push({severity:'warning',code:'FORMAT_UNRECOGNIZED',message:'输入没有足够稳定的表格结构；可手动选择格式，原文仍完整保留。'});
+        else if(lowScore)diagnostics.push({severity:'warning',code:'FORMAT_REVIEW',message:`已先按“${top.parser.label}”显示结果；识别依据较弱，请检查列结构。`});
         if(truncated && !evaluations.length && source.text.length)diagnostics.push({severity:'warning',code:'DETECTION_BUDGET',message:'识别样本中没有完整可解析记录，请手动选择格式'});
-        return {format:ambiguous?'ambiguous':evaluations[0]?.parser.id || 'empty',candidates:evaluations.slice(0,3).map(item=>candidate(item.parser,item.score,{reason:item.reason,ambiguous})),diagnostics,sampleLength};
+        const ordered=ambiguous?[top,tieAlternative,...evaluations.filter(item=>item!==top&&item!==tieAlternative)]:evaluations;
+        return {format:ambiguous?'ambiguous':unrecognizedProse?'empty':top?.parser.id || 'empty',candidates:ordered.slice(0,3).map(item=>candidate(item.parser,item.score,{reason:item.reason,ambiguous,preview:item.preview})),diagnostics,sampleLength};
     },
     parse(input, options={}) {
         const source=typeof input==='string'?{text:input,html:options.html || ''}:{text:input.text || '',html:input.html || ''};
@@ -301,15 +341,6 @@ const ImportEngine = {
         if(regionScan.overBudget) {
             return {tables:[],format:'ambiguous',label:'表格区域过多，需确认',diagnostics:collectDiagnostics(detection.diagnostics,[{severity:'warning',code:'TABLE_REGION_BUDGET',message:`检测到超过 ${MAX_TABLE_REGIONS} 个候选区域；为避免误合并，请拆分输入后再解析。`}]),candidates:detection.candidates,sourceLength:source.text.length};
         }
-        if(regionScan.regions.length && !regionScan.regions.every(region=>region.rectangular)) {
-            const regionSelection={format:chosen.id,regions:regionScan.regions.map(({start,end})=>({start,end}))};
-            const offsetMap=mapNormalizedOffsetsToSource(originalText,regionScan.regions.flatMap(region=>[region.start,region.end]));
-            const irregular=regionScan.regions.map((region,index)=>({region,index})).filter(item=>!item.region.rectangular);
-            const regionSummary=irregular.slice(0,5).map(({region,index})=>`区域 ${index+1}：原文字符 ${offsetMap.get(region.start)+1}–${offsetMap.get(region.end)}，${region.rowCount} 条记录，主列数 ${region.width}，列宽一致率 ${Math.round(region.coverage*100)}%`).join('；');
-            const extraRegions=irregular.length>5?`；另有 ${irregular.length-5} 个宽度不稳定区域` : '';
-            const candidate={kind:'region-set',id:chosen.id,format:chosen.id,label:`确认 ${regionScan.regions.length} 个表格区域`,reason:`检测到行列宽度变化。${regionSummary}${extraRegions}。确认后会保留溢出值并显示诊断。`,preview:previewRegion(source.text,irregular[0]?.region||regionScan.regions[0]),regionSelection};
-            return {tables:[],format:'ambiguous',label:'表格区域需要确认',diagnostics:collectDiagnostics(detection.diagnostics,[{severity:'warning',code:'TABLE_REGION_AMBIGUOUS',message:'候选表格行列宽度不一致。请在解析详情中确认区域后继续，系统不会静默合并或丢弃异常行。'}]),candidates:[candidate],sourceLength:source.text.length};
-        }
         if(regionScan.regions.length) parsed=parseRegions(chosen,source.text,regionScan.regions,options);
         else parsed=chosen.parse(source,options);
         const tables=parsed.tables || [];
@@ -317,7 +348,7 @@ const ImportEngine = {
         const outsideText=regionScan.regions.length && (
             regionScan.regions.length>1 || source.text.slice(0,regionScan.regions[0].start).trim() || source.text.slice(regionScan.regions.at(-1).end).trim()
         );
-        const regionDiagnostics=outsideText?[{severity:'info',code:'TABLE_REGIONS_EXTRACTED',message:`已从混杂文本中提取 ${regionScan.regions.length} 个结构稳定的表格区域；原文仍完整保留。`}]:[];
+        const regionDiagnostics=outsideText?[{severity:'info',code:'TABLE_REGIONS_EXTRACTED',message:`已从混杂文本中提取 ${regionScan.regions.length} 个表格区域；原文仍完整保留。`}]:[];
         const diagnostics=collectDiagnostics(detection.diagnostics,parsed.diagnostics,tables.flatMap(table=>table.diagnostics||[]),regionDiagnostics);
         const result={tables,format:chosen.id,label:chosen.label,diagnostics,candidates:detection.candidates,sourceLength:source.text.length};
         return this.resolveHeaderAmbiguity(result,options,regionScan.regions.length?{format:chosen.id,regions:regionScan.regions.map(({start,end})=>({start,end}))}:null);
@@ -328,10 +359,10 @@ const ImportEngine = {
         if(!uncertain.length)return result;
         const reasonTables=uncertain.map(table=>table.name).join('、');
         const candidates=[
-            {kind:'header-mode',id:result.format,format:result.format,headerMode:'first-row',label:'本次解析：首行作为表头',reason:`${reasonTables} 的首行既可能是字段名，也可能是数据；选择会应用于当前输入中的所有表格，不更改之后的自动设置。`,regionSelection},
-            {kind:'header-mode',id:result.format,format:result.format,headerMode:'none',label:'本次解析：首行作为数据',reason:`${reasonTables} 的首行既可能是字段名，也可能是数据；选择会应用于当前输入中的所有表格，不更改之后的自动设置。`,regionSelection}
+            {kind:'header-mode',id:result.format,format:result.format,headerMode:'first-row',label:'首行作为表头',reason:`${reasonTables} 的首行也可能是数据；可在预览区直接切换，本次选择不更改之后的自动设置。`,regionSelection},
+            {kind:'header-mode',id:result.format,format:result.format,headerMode:'none',label:'首行作为数据',reason:`${reasonTables} 的首行也可能是字段名；可在预览区直接切换，本次选择不更改之后的自动设置。`,regionSelection}
         ];
-        return {tables:[],format:'ambiguous',resolvedFormat:result.format,label:'表头需要确认',diagnostics:collectDiagnostics(result.diagnostics,[{severity:'warning',code:'HEADER_AMBIGUOUS',message:`${reasonTables} 的首行表头证据不足；请选择首行作为表头或数据后重试。`}]),candidates,sourceLength:result.sourceLength};
+        return {...result,diagnostics:collectDiagnostics(result.diagnostics,[{severity:'warning',code:'HEADER_AMBIGUOUS',message:`${reasonTables} 的首行可能是字段名，也可能是数据；已显示自动选择结果，可在预览区切换。`}]),candidates:[...(result.candidates||[]),...candidates],sourceLength:result.sourceLength};
     }
 };
 

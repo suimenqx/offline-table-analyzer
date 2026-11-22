@@ -12,7 +12,7 @@ async function assertTwoRows(card) {
     const badge = root.querySelector('.card-status-badge');
     return {
       statusOnSecondRow:!!badge.closest('.data-card-detail') && status.top >= head.bottom,
-      statusFits:badge.scrollWidth <= badge.clientWidth,
+      statusFits:badge.querySelector('.card-status-label').hidden || badge.querySelector('.card-status-label').scrollWidth <= badge.querySelector('.card-status-label').clientWidth,
       visibilityBeforeDelete:visibility.right <= remove.left,
       nameBeforeVisibility:title.right <= visibility.left,
       nameHasRoom:title.width >= 60,
@@ -62,15 +62,16 @@ test('轻量双行卡片移除重复装饰，正常状态安静，异常状态�
   await expect(page.locator('#sourceEditorLabel')).toHaveText(`原文 · ${name}`);
   await page.locator('#rawInput').fill('alpha,beta\none,two\nthree,four');
   await page.locator('#parseBtn').click();
-  await expect(card.locator('.card-status-label')).toHaveText('待确认');
-  await assertAttentionStatus(card);
-  await expect(page.locator('#previewArea .parse-feedback-action')).toBeVisible();
+  await expect(card.locator('.card-status-label')).toHaveText('解析完成');
+  await assertQuietStatus(card);
+  await expect(page.locator('#previewArea .parse-feedback')).toContainText('首行解释');
+  await expect(page.locator('#previewArea .parse-feedback').getByRole('button', {name:'首行作为数据'})).toBeVisible();
   for(const width of [1440, 1024, 680]) {
     await page.setViewportSize({width, height:900});
     for(const theme of ['light', 'dark']) {
       if(await page.locator('html').getAttribute('data-theme') !== theme) await page.locator('#themeBtn').click();
       await assertTwoRows(card);
-      await expect(card.locator('.card-status-label')).toHaveText('待确认');
+      await expect(card.locator('.card-status-label')).toHaveText('解析完成');
       await expect(card.locator('.card-visibility')).toHaveAttribute('aria-pressed','true');
       await expect(card.locator('.data-card-title')).toHaveText(name);
     }

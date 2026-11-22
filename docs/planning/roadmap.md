@@ -4,7 +4,7 @@ v21 delivered the first wave of architecture modularisation: domain logic extrac
 
 v22 completed the reliability pass: a command/event protocol (`Store.transition` / `onChange` / `dispatch`), source-revision isolation, the pure `QueryService` preview pipeline, 42 deterministic source modules, accessible status/chips/dialog behavior, and architecture validation.
 
-v23 releases the validated large-data workflow with background text parsing and Excel export, exact original recovery, visible storage failures, and shared export column projection. Existing schema 21 workspaces remain compatible. Release 23.1 adds budgeted adaptive format detection, incremental CSV/TSV and CLI consumption, and Worker-owned tables with page-only transport. Release 23.2 adds source-region extraction for common delimited/aligned formats and asks users to resolve ambiguous format, region, or header choices before continuing.
+v23 releases the validated large-data workflow with background text parsing and Excel export, exact original recovery, visible storage failures, and shared export column projection. Existing schema 21 workspaces remain compatible. Release 23.1 adds budgeted adaptive format detection, incremental CSV/TSV and CLI consumption, and Worker-owned tables with page-only transport. Release 23.2 adds source-region extraction for common delimited/aligned formats. The current detection refinement keeps usable best-effort tables visible, reserves a blocking choice for materially different format candidates, and moves format/header correction next to the preview.
 
 ## 23.x — extraction reliability and browser coverage (current, 23.2.0)
 

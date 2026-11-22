@@ -134,7 +134,7 @@ describe('App bootstrap', () => {
     assert.equal(Object.hasOwn(App.getParseOptions(),'lastSuccessfulFormat'), false);
   });
 
-  it('lets the user resolve an ambiguous header from parse details before tables are loaded', () => {
+  it('shows an uncertain header result and applies a preview choice only to the current source', () => {
     setupDOM();
     const { App } = OTA.require('app');
     const { Store } = OTA.require('store');
@@ -146,23 +146,14 @@ describe('App bootstrap', () => {
     target.options = [];
     target.add = option => target.options.push(option);
 
-    const previousModal = App.modal;
-    const previousClose = App.closeModal;
-    const previousQuerySelectorAll = document.querySelectorAll;
     const previousOption = globalThis.Option;
-    const buttons = [];
-    App.modal = () => {};
-    App.closeModal = () => {};
     globalThis.Option = function(text,value){ return {text,value}; };
-    document.querySelectorAll = selector => selector === '.diagnostic-candidate-btn' ? buttons : previousQuerySelectorAll(selector);
     try {
       assert.equal(App.run(false), true);
-      assert.equal(TableRegistry.getFormat(), 'ambiguous');
-      assert.equal(TableRegistry.getRaw().length, 0);
-      const candidate = TableRegistry.getLastResult().candidates[0];
-      buttons.push({ dataset:{ candidateIndex:'0' }, onclick:null });
-      App.showDiagnostics();
-      buttons[0].onclick();
+      assert.equal(TableRegistry.getFormat(), 'csv');
+      assert.equal(TableRegistry.getRaw().length, 1);
+      const candidate = TableRegistry.getLastResult().candidates.find(item => item.kind==='header-mode' && item.headerMode==='first-row');
+      App.applyParseCandidate(candidate);
       assert.equal(Store.curr().ui.importHeaderMode, 'auto');
       assert.equal(App.getParseOptions().headerMode, 'first-row');
       assert.equal(TableRegistry.getFormat(), 'csv');
@@ -172,14 +163,11 @@ describe('App bootstrap', () => {
       document.getElementById('rawInput').value = `${text}\nnew input`;
       assert.equal(App.getParseOptions().headerMode, 'auto');
     } finally {
-      App.modal = previousModal;
-      App.closeModal = previousClose;
-      document.querySelectorAll = previousQuerySelectorAll;
       if(previousOption===undefined)delete globalThis.Option;else globalThis.Option=previousOption;
     }
   });
 
-  it('lets the user confirm an irregular mixed-text region and preserves overflow cells', () => {
+  it('parses an irregular mixed-text region immediately and preserves overflow cells', () => {
     setupDOM();
     const { App } = OTA.require('app');
     const { Store } = OTA.require('store');
@@ -192,34 +180,23 @@ describe('App bootstrap', () => {
     target.add = option => target.options.push(option);
 
     const previousModal = App.modal;
-    const previousClose = App.closeModal;
-    const previousQuerySelectorAll = document.querySelectorAll;
     const previousOption = globalThis.Option;
-    const buttons = [];
     let modalContent='';
     App.modal = (title,content) => { modalContent=content; };
-    App.closeModal = () => {};
     globalThis.Option = function(text,value){ return {text,value}; };
-    document.querySelectorAll = selector => selector === '.diagnostic-candidate-btn' ? buttons : previousQuerySelectorAll(selector);
     try {
       assert.equal(App.run(false), true);
-      assert.equal(TableRegistry.getFormat(), 'ambiguous');
-      assert.equal(TableRegistry.getLastResult().candidates[0].kind, 'region-set');
-      buttons.push({ dataset:{ candidateIndex:'0' }, onclick:null });
-      App.showDiagnostics();
-      assert.ok(modalContent.includes('&lt;b&gt;too&lt;/b&gt;'));
-      assert.equal(modalContent.includes('<b>too</b>'), false);
-      buttons[0].onclick();
       assert.equal(TableRegistry.getFormat(), 'csv');
       assert.deepEqual(TableRegistry.getRaw()[0].rows[1], ['bad','<b>too</b>','many','fields']);
       assert.ok(TableRegistry.getLastResult().diagnostics.some(item => item.code === 'ROW_WIDTH_MISMATCH'));
+      App.showDiagnostics();
+      assert.ok(modalContent.includes('&lt;b&gt;too&lt;/b&gt;'));
+      assert.equal(modalContent.includes('<b>too</b>'), false);
       assert.equal(Object.hasOwn(Store.curr().ui,'regionSelection'), false);
       document.getElementById('rawInput').value = `${text}\nnew source`;
       assert.equal(App.getParseOptions().regionSelection, null);
     } finally {
       App.modal = previousModal;
-      App.closeModal = previousClose;
-      document.querySelectorAll = previousQuerySelectorAll;
       if(previousOption===undefined)delete globalThis.Option;else globalThis.Option=previousOption;
     }
   });

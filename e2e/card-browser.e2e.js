@@ -3,6 +3,11 @@ import {test, expect} from '@playwright/test';
 const cards=page=>page.locator('#cardList .data-card');
 const shownCards=page=>page.locator('#cardList .data-card:visible');
 const raw=name=>JSON.stringify([{id:'001',name}]);
+const durableWorkspace=page=>page.evaluate(()=>{
+  const state=OTA.require('store').Store.serializeState();
+  state.lastSavedAt=null;
+  return JSON.stringify(state);
+});
 async function parse(page,text) {
   await page.locator('#rawInput').fill(text);
   await page.locator('#parseBtn').click();
@@ -49,13 +54,13 @@ test('名称搜索保留分析范围与拼接顺序，方向键只经过匹配�
   await cards(page).first().dblclick();
   await page.getByRole('textbox',{name:'卡片名称'}).fill('Orders October');
   await page.getByRole('textbox',{name:'卡片名称'}).press('Enter');
-  const saved=await page.evaluate(()=>JSON.stringify(OTA.require('store').Store.serializeState()));
+  const saved=await durableWorkspace(page);
   const summary=await page.locator('#datasetSummary').textContent();
   const search=page.getByRole('searchbox',{name:'搜索卡片名称'});
   await search.fill('ORDERS');
   await expect(shownCards(page)).toHaveCount(1);
   await expect(page.locator('#cardSearchStatus')).toHaveText('找到 1 / 8 张卡片');
-  expect(await page.evaluate(()=>JSON.stringify(OTA.require('store').Store.serializeState()))).toBe(saved);
+  expect(await durableWorkspace(page)).toBe(saved);
   await expect(page.locator('#datasetSummary')).toHaveText(summary);
   await expect(shownCards(page).locator('.card-drag-handle')).toBeDisabled();
   await search.press('ArrowDown');
@@ -71,7 +76,7 @@ test('名称搜索保留分析范围与拼接顺序，方向键只经过匹配�
 });
 
 test('异常状态可直接用鼠标和键盘打开当前或其他卡片的正确解析详情',async({page})=>{
-  await page.locator('#rawInput').fill('a,b\n1,2,3\n4,5');
+  await page.locator('#rawInput').fill('id,name;state\n1,Alice;ok');
   await page.locator('#parseBtn').click();
   await expect(cards(page).first()).toHaveAttribute('data-parse-state','confirm');
   const firstId=await cards(page).first().getAttribute('data-card-id');

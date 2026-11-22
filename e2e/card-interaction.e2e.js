@@ -16,7 +16,7 @@ test.beforeEach(async ({page}) => {
   await page.locator('#autoParseToggle').uncheck();
 });
 
-test('普通粘贴按光标插入，全选才替换；大段粘贴切换明确的整卡替换提示', async ({page,context}) => {
+test('普通粘贴按光标插入；大段粘贴保留原文并显示只读预览', async ({page,context}) => {
   await context.grantPermissions(['clipboard-read','clipboard-write'],{origin:'http://127.0.0.1:4173'});
   const editor=page.locator('#rawInput');
   await editor.fill('left|right');
@@ -43,10 +43,11 @@ test('普通粘贴按光标插入，全选才替换；大段粘贴切换明确�
   await editor.press('Control+V');
   await expect(editor).toHaveJSProperty('readOnly',true);
   await expect(page.locator('#sourcePreviewNotice')).toContainText('只读预览');
-  expect(await page.evaluate(()=>OTA.require('store').Store.getDocument().raw.length)).toBe(large.length);
+  const pasted=await page.evaluate(()=>OTA.require('store').Store.getDocument().raw);
+  expect(pasted.replace(/\r\n/g,'\n')).toBe(large);
 });
 
-test('解析失败与待确认状态显示在对应卡片上，原文保留', async ({page}) => {
+test('解析失败显示错误；表头不确定时保留可用表格和快速切换', async ({page}) => {
   await page.locator('#formatSelect').selectOption('json');
   await page.locator('#rawInput').fill('{broken');
   await page.locator('#parseBtn').click();
@@ -54,7 +55,10 @@ test('解析失败与待确认状态显示在对应卡片上，原文保留', as
   await expect(page.locator('#rawInput')).toHaveValue('{broken');
   await page.locator('#rawInput').fill('alpha,beta\none,two\nthree,four');
   await page.locator('#formatSelect').selectOption('csv');
-  await expect(cards(page).first().locator('.card-status-label')).toHaveText('待确认');
+  await expect(cards(page).first().locator('.card-status-label')).toHaveText('解析完成');
+  await expect(page.locator('#previewArea tbody')).toContainText('one');
+  await expect(page.locator('#previewArea .parse-feedback')).toContainText('首行解释');
+  await expect(page.locator('#previewArea .parse-feedback').getByRole('button', {name:'首行作为数据'})).toBeVisible();
   await expect(page.locator('#rawInput')).toHaveValue('alpha,beta\none,two\nthree,four');
 });
 
