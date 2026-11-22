@@ -63,13 +63,13 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed page data from `QueryService` and renders filterable `<table>` elements. |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
-| `SourceController` | Source input, keyed compact card DOM, independent editing/participation state, keyboard/focus/rename/reorder, clipboard/FileReader adaptation, file drag-and-drop, input resizer and extension-based format detection |
+| `SourceController` | Source input, keyed compact card DOM, independent editing/participation state, keyboard/focus/rename/reorder, clipboard/FileReader adaptation, full-source modal editing and source undo, file drag-and-drop, input resizer and extension-based format detection |
 | `CellEditController` | Inline cell editing with Enter/Tab/Escape/blur, non-destructive overlay persistence, 100-step undo/redo stacks |
 | `FilterController` | Per-column "contains" filter popover positioned near column headers, apply/clear/close actions |
 | `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
 | `TabController` | Tab bar rendering, inline rename (F2/dblclick), drag-and-drop reorder, keyboard navigation (arrows/Enter/Delete) |
 | `ExportController` | Browser adaptation for XLSX preparation/download, workspace JSON backup/restore, config JSON export/import with title-based matching, copy format selection |
-| `App` | UI composition of ExtractionSession, editor snapshots and parse feedback, pagination, corrections, file/workspace/config flows, fullscreen source editor, drag-and-drop import, edit undo/redo, sample data loading, and centralized parse-error feedback. Calls `QueryService` for derived preview results and `TableBuilder` for table DOM. |
+| `App` | UI composition of ExtractionSession, editor snapshots and parse feedback, pagination, corrections, file/workspace/config flows, drag-and-drop import, cell-edit undo/redo, sample data loading, and centralized parse-error feedback. Calls `QueryService` for derived preview results and `TableBuilder` for table DOM. |
 
 The refactor decision, module manifest, dependency rules, migration phases, and branch/worktree policy are recorded in [Refactor architecture](refactor.md); the complete acceptance checklist is in [Refactor requirements](../planning/refactor-requirements.md).
 
@@ -202,7 +202,7 @@ reused accidentally.
 ## 4. Data flow
 
 ```text
-paste / drop / file / fullscreen editor
+paste / drop / file / full-source modal
   → source text + SourceSnapshot metadata + optional clipboard HTML
   → App supplies the source/options snapshot to ExtractionSession
   → ExtractionSession routes Window/Worker parsing through ImportEngine
@@ -219,7 +219,7 @@ paste / drop / file / fullscreen editor
   → ClipboardFormatter text/HTML payload or preview XLSX / full XLSX / workspace JSON / config JSON
 ```
 
-Drag-and-drop of local files onto the source area is supported. A fullscreen source editor is available for working with large inputs. Config import/export (`table-tool-config` kind, 5 MB limit) transfers rules, filters, views, and UI settings across documents.
+Drag-and-drop of local files onto the source area is supported. Large inputs use a bounded preview with an explicit full-source editor; the modal commits once on Save and leaves Store untouched on Cancel/Escape. Config import/export (`table-tool-config` kind, 5 MB limit) transfers rules, filters, views, and UI settings across documents.
 
 The full processed result remains in memory for export, while only the selected page is materialized as table DOM.
 
@@ -285,7 +285,7 @@ Temporary mode serializes an empty `raw` value for every document while retainin
 
 ## 7. Performance model
 
-The accepted [large-data ADR](large-data.md) extends the single-file model with embedded Blob Workers and asynchronous raw storage. Text above 128 Ki characters is intercepted before textarea insertion and displayed as at most 100 lines/10,000 characters. Table-data/text parsing, filtering, JOIN statistics/execution and XLSX run in the Worker; DOMParser HTML remains on Window. Complete normalized tables and full-query results stay in Worker. Window receives descriptors with empty rows, rowCount and bounded column samples, then current-page source-indexed records. QueryService caches full results on Worker and pages on Window; page settings affect page fetching but do not invalidate the full query. TableRegistry owns current-page cell access for projected editing; undo/redo updates Store overlays even when the edited page has been released. Raw/full/preview Excel uses full Worker tables/results. The original source and normalized string-cell contract remain unchanged.
+The accepted [large-data ADR](large-data.md) extends the single-file model with embedded Blob Workers and asynchronous raw storage. Text above 512 Ki characters is displayed as at most 100 lines/10,000 characters; cursor-based paste remains intact until the resulting source crosses that threshold, while paste in read-only preview replaces the whole source. Large-source editing uses a transactional native-textarea modal, without a runtime dependency. Table-data/text parsing, filtering, JOIN statistics/execution and XLSX run in the Worker; DOMParser HTML remains on Window. Complete normalized tables and full-query results stay in Worker. Window receives descriptors with empty rows, rowCount and bounded column samples, then current-page source-indexed records. QueryService caches full results on Worker and pages on Window; page settings affect page fetching but do not invalidate the full query. TableRegistry owns current-page cell access for projected editing; undo/redo updates Store overlays even when the edited page has been released. Raw/full/preview Excel uses full Worker tables/results. The original source and normalized string-cell contract remain unchanged.
 
 QueryService caches at most two results. Pagination and unrelated UI revisions reuse a complete query; source/configuration/correction changes invalidate it. DOM creation is limited to the current page. Combined query/export tables are budgeted before additional JOIN output allocation; caps and explicit failure behavior are specified in [requirements](../planning/requirements.md). Cancel terminates computation/export while the independent durable-storage queue continues. No main-thread fallback attempts the giant workload when Worker startup fails.
 

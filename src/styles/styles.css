@@ -181,17 +181,26 @@
         .floating-actions { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px; background: rgba(255,255,255,0.9); backdrop-filter: blur(6px); padding: 6px; border-radius: 999px; border: 1px solid var(--border); box-shadow: var(--shadow-xs); }
         [data-theme="dark"] .floating-actions { background: rgba(15,23,42,0.85); }
         .source-card-actions { display: flex; align-items: center; gap: 6px; }
-        .source-editor-shell { width: min(1180px, 94vw); height: 90vh; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; overflow: hidden; }
-        #sourceEditorModal.fullscreen-modal { padding: 0; background: var(--bg-app); backdrop-filter: none; }
-        #sourceEditorModal .source-editor-shell { width: 100vw; height: 100vh; border-radius: 0; border: 0; box-shadow: none; }
-        .source-editor-head { min-height: 54px; padding: 10px 14px; border-bottom: 1px solid var(--border); background: var(--bg-elevated); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-        .source-editor-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-        .source-editor-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+        #sourceEditorDialog { position:fixed; inset:0; width:100vw; max-width:none; height:100vh; max-height:none; margin:0; padding:0; border:0; color:var(--text-main); background:var(--bg-app); }
+        #sourceEditorDialog::backdrop { background:rgba(15,23,42,.72); }
+        .source-editor-shell { width:100%; height:100%; background:var(--bg-card); display:flex; flex-direction:column; overflow:hidden; }
+        .source-editor-head { min-height:64px; padding:10px 16px; border-bottom:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        .source-editor-title { display:flex; flex-direction:column; gap:2px; min-width:0; }
+        .source-editor-title h2 { margin:0; font-size:16px; color:var(--text-strong); }
+        .source-editor-title .muted { margin:0; font-size:12px; }
+        .source-editor-tools-panel { padding:8px 14px; border-bottom:1px solid var(--border); background:var(--bg-card); }
+        .source-editor-tools-panel > summary { width:max-content; cursor:pointer; color:var(--text-mid); font-size:12px; font-weight:650; }
+        .source-editor-tool-fields { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; padding-top:10px; }
+        .source-editor-tool-fields label { display:flex; flex-direction:column; gap:4px; color:var(--text-mid); font-size:11px; }
+        .source-editor-tool-fields input { min-width:150px; height:30px; padding:0 8px; }
+        #sourceJumpLineInput { min-width:84px; width:84px; }
+        .source-editor-feedback { min-height:18px; margin:0; padding:2px 14px; color:var(--text-mid); font-size:12px; }
         .copy-format-select { height: 28px; min-width: 112px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 12px; padding: 0 8px; }
-        .source-editor-body { flex: 1; min-height: 0; padding: 12px; background: var(--bg-app); }
-        #rawInputLarge { width: 100%; height: 100%; min-height: 0; resize: none; border-radius: 12px; padding: 14px; line-height: 1.55; white-space: pre; overflow: auto; font-family: var(--font-mono); background: var(--bg-card); border: 1px solid var(--border); }
-        .source-editor-foot { padding: 10px 14px; border-top: 1px solid var(--border); background: var(--bg-elevated); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .source-editor-body { flex:1; min-height:0; padding:10px 12px; background:var(--bg-app); }
+        #fullSourceInput { width:100%; height:100%; min-height:0; resize:none; border-radius:8px; padding:14px; line-height:1.5; white-space:pre; overflow:auto; tab-size:4; font-family:var(--font-mono); background:var(--bg-card); border:1px solid var(--border); }
+        .source-editor-foot { min-height:54px; padding:8px 14px; border-top:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
         .source-editor-foot .muted { font-size: 12px; }
+        .source-editor-footer-actions { display:flex; align-items:center; gap:8px; }
 
         /* Accordion */
         .accordion { display: flex; flex-direction: column; gap: 8px; }
@@ -592,6 +601,8 @@
 /* Compact data cards: editing focus and analysis participation are independent. */
 .visually-hidden { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
 .source-help { color:var(--text-mid); font-size:12px; font-weight:400; line-height:1.5; margin:6px 0; }
+.source-preview-actions { display:flex; align-items:center; gap:8px; margin:2px 0 8px; }
+.source-preview-actions[hidden] { display:none; }
 .source-panel { padding:2px; }
 .source-section-heading { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:2px 0 10px; min-width:0; }
 .source-count { color:var(--text-mid); font-weight:400; margin-left:4px; font-variant-numeric:tabular-nums; }

@@ -82,6 +82,11 @@
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
                         <p id="sourcePreviewNotice" class="source-help" role="status" aria-live="polite" hidden></p>
+                        <div id="sourcePreviewActions" class="source-preview-actions" hidden>
+                            <button class="sm" id="editFullSourceBtn" type="button" aria-haspopup="dialog" aria-controls="sourceEditorDialog">编辑完整原文</button>
+                            <button class="sm text-button" id="undoSourceEditBtn" type="button" hidden>撤销上次修改</button>
+                        </div>
+                        <span id="sourceEditFeedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
                         <div class="source-options">
                             <select id="formatSelect" class="format-select" aria-label="输入格式" title="输入格式">
                                 <option value="auto">自动识别</option>
@@ -323,6 +328,41 @@
         </footer>
     </main>
 </div>
+
+<dialog id="sourceEditorDialog" aria-labelledby="sourceEditorTitle" aria-describedby="sourceEditorMeta sourceEditorFeedback">
+    <div class="source-editor-shell">
+        <header class="source-editor-head">
+            <div class="source-editor-title">
+                <h2 id="sourceEditorTitle">编辑完整原文</h2>
+                <p id="sourceEditorMeta" class="muted"></p>
+            </div>
+            <button class="sm text-button" id="sourceEditorCancelBtn" type="button">取消</button>
+        </header>
+        <details id="sourceEditorTools" class="source-editor-tools-panel">
+            <summary>查找、替换与跳转</summary>
+            <div class="source-editor-tool-fields">
+                <label>查找<input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文"></label>
+                <button class="sm" id="sourceFindNextBtn" type="button">查找下一个</button>
+                <label>替换为<input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本"></label>
+                <button class="sm" id="sourceReplaceCurrentBtn" type="button">替换当前</button>
+                <button class="sm" id="sourceReplaceAllBtn" type="button">全部替换</button>
+                <label>跳转到行<input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
+                <button class="sm" id="sourceJumpBtn" type="button">跳转</button>
+            </div>
+        </details>
+        <p id="sourceEditorFeedback" class="source-editor-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
+        <div class="source-editor-body">
+            <textarea id="fullSourceInput" wrap="off" spellcheck="false" aria-label="完整原文" placeholder="完整原文" autocomplete="off"></textarea>
+        </div>
+        <footer class="source-editor-foot">
+            <span class="muted">编辑内容只在保存后替换当前原文；取消或按 Esc 放弃草稿。</span>
+            <div class="source-editor-footer-actions">
+                <button class="sm" id="sourceEditorCancelFooterBtn" type="button">取消</button>
+                <button class="primary sm" id="sourceEditorSaveBtn" type="button">保存原文</button>
+            </div>
+        </footer>
+    </div>
+</dialog>
 
 <!-- Modal Container (Blocking) -->
 <div id="modalOverlay" class="modal-bg hidden" role="presentation">

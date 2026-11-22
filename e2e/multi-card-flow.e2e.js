@@ -10,7 +10,7 @@ const grant = async context => context.grantPermissions(['clipboard-read','clipb
 const paste = async (page, text) => {
   await page.evaluate(async t=>navigator.clipboard.writeText(t), text);
   await page.locator('#rawInput').click();
-  // 小文本粘贴是原生光标插入语义：全选后再粘贴 = 替换（大文本由 handlePaste 直接替换）
+  // Editable-source paste follows caret/selection semantics at every size; select all to replace.
   await page.locator('#rawInput').press('Control+A');
   await page.locator('#rawInput').press('Control+V');
 };

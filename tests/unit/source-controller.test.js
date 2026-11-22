@@ -130,7 +130,7 @@ describe('SourceController card status', () => {
 describe('SourceController auto-parse policy', () => {
   it('shows a bounded read-only preview while retaining complete original input', () => {
     const editor={value:'',readOnly:false,dataset:{},setAttribute(){},removeAttribute(){}};
-    const text='validflag ID\r\n1 001\r\n'.repeat(20000);
+    const text='validflag ID\r\n1 001\r\n'.repeat(30000);
     Store.curr().raw=text;
     SourceController.displayText(text,editor);
     assert.ok(editor.value.length<=10000);
@@ -139,6 +139,11 @@ describe('SourceController auto-parse policy', () => {
     SourceController.displayText('id\n002',editor);
     assert.equal(editor.readOnly,false);
     assert.equal(SourceController.readText(editor),'id\n002');
+  });
+  it('reads exact stored line endings when the textarea shows its normalized equivalent', () => {
+    const editor={value:'first\nsecond\n',dataset:{sourcePreview:'false'}};
+    Store.curr().raw='first\r\nsecond\r\n';
+    assert.equal(SourceController.readText(editor),'first\r\nsecond\r\n');
   });
   it('auto-parses small input by default', () => {
     Store.curr().ui.autoParse = true;

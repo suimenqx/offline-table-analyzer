@@ -34,4 +34,4 @@ Virtual scrolling, Arrow/SQL, external-memory query execution and streaming XLSX
 
 Accounts, remote synchronization, telemetry, server databases, and cloud connectors conflict with the default offline/private product model and are not planned for the core release.
 
-In-page editing of large pasted source text is not planned: users browse and edit data in their own local editor (e.g. Notepad++) before pasting; the product imports, parses, browses, and analyzes. The bounded read-only preview for large sources stays, and small-text editing plus page-scoped cell corrections remain supported.
+Large-source editing was previously out of scope. On 2026-11-22 the user approved a bounded, dependency-free implementation: a 512 Ki-character inline editing threshold, a transactional full-source modal with find/replace and line jump, and preview paste that replaces the complete source with one-step session undo when the previous source fits the 16 MiB undo budget. This keeps the one-file offline release boundary. Smooth editing of arbitrarily large inputs remains unpromised; a virtualized editor would require a separate architecture decision.

@@ -19,12 +19,18 @@ const SourceController = {
     AUTO_PARSE_DELAY: 500,
     CLIPBOARD_PREVIEW_LIMIT: SourceSnapshot.PREVIEW_LIMIT,
     CLIPBOARD_KNOWN_TYPES: SourceSnapshot.KNOWN_CLIPBOARD_TYPES,
-    EDITOR_LIMIT: 128 * 1024,
+    EDITOR_LIMIT: 512 * 1024,
+    SOURCE_UNDO_MAX_BYTES: 16 * 1024 * 1024,
 
     readText(editor=$('rawInput')) {
-        if (!editor) return Store.getDocument()?.raw || '';
-        return editor.dataset && editor.dataset.sourcePreview === 'true'
-            ? Store.getDocument()?.raw || '' : editor.value;
+        const raw = Store.getDocument()?.raw || '';
+        if (!editor || (editor.dataset && editor.dataset.sourcePreview === 'true')) return raw;
+        const value = editor.value;
+        if (value === raw) return raw;
+        // HTMLTextAreaElement normalizes CR/CRLF to LF on display. Treat that
+        // representation as the same source so parse/export never rewrites
+        // untouched line endings from Store.
+        return raw.includes('\r') && value === raw.replace(/\r\n?/g, '\n') ? raw : value;
     },
 
     displayText(text='', editor=$('rawInput')) {
@@ -37,8 +43,11 @@ const SourceController = {
         const notice = $('sourcePreviewNotice');
         if (notice) {
             notice.hidden = !large;
-            notice.textContent = large ? `只读预览，完整原文 ${formatBytes(text.length * 2)} 已保留。粘贴会替换整卡；也可导出原文后在本地编辑。` : '';
+            notice.textContent = large
+                ? `只读预览：显示前 100 行、最多 10,000 个字符；完整原文 ${formatBytes(text.length * 2)} 已保留。可编辑完整原文；在此粘贴会替换整卡原文。${this.isCurrentUndoUnavailable() ? '上一份原文过大，本次修改无法撤销。' : ''}`
+                : '';
         }
+        this.refreshSourceUndoButton();
     },
 
     handlePaste(event) {
@@ -46,13 +55,376 @@ const SourceController = {
         const snapshot = this.captureClipboard(event.clipboardData);
         if(!snapshot || !snapshot.plain) return;
         const editor = event.target;
-        if (snapshot.plain.length <= this.EDITOR_LIMIT && !(editor.dataset && editor.dataset.sourcePreview === 'true')) return;
+        const doc = Store.getDocument();
+        if (!doc) return;
+        if (editor.dataset && editor.dataset.sourcePreview === 'true') {
+            event.preventDefault();
+            if (snapshot.plain.length * 2 > MAX_IMPORT_BYTES) {
+                this.clearLastPaste();
+                Toast.show('粘贴内容超过 128 MiB 安全限制；当前原文保持不变', true);
+                return;
+            }
+            this.commitSourceEdit(snapshot.plain, {preservePaste:true, label:'粘贴'});
+            return;
+        }
+        const current = doc.raw || '';
+        const start = Number.isInteger(editor.selectionStart) ? editor.selectionStart : current.length;
+        const end = Number.isInteger(editor.selectionEnd) ? editor.selectionEnd : start;
+        const next = current.slice(0, start) + snapshot.plain + current.slice(end);
+        if (next.length <= this.EDITOR_LIMIT) return;
         event.preventDefault();
+        if (next.length * 2 > MAX_IMPORT_BYTES) {
+            this.clearLastPaste();
+            Toast.show('粘贴后原文会超过 128 MiB 安全限制；当前原文保持不变', true);
+            return;
+        }
+        this.commitSourceEdit(next, {preservePaste:next === snapshot.plain, label:'粘贴'});
+    },
+
+    commitSourceEdit(text, {preservePaste=false, label='原文修改', undoable=true}={}) {
+        const doc = Store.getDocument();
+        if (!doc || typeof text !== 'string') return false;
+        if (text.length * 2 > MAX_IMPORT_BYTES) {
+            this.setSourceEditorFeedback('原文超过 128 MiB 安全限制，修改未保存。');
+            Toast.show('原文超过 128 MiB 安全限制，修改未保存', true);
+            return false;
+        }
+        const previous = doc.raw || '';
+        const previousRevision = doc.sourceRevision;
+        if (previous === text) return false;
         this.clearAutoParse();
         clearTimeout(this._persistTimer);
-        dispatch('source:replace', { text:snapshot.plain, preservePaste:true });
-        this.displayText(snapshot.plain);
-        this.scheduleAutoParse({text:snapshot.plain});
+        this._sourceUndo = undoable && previous.length * 2 <= this.SOURCE_UNDO_MAX_BYTES
+            ? {docId:doc.id, raw:previous, sourceRevision:null, label}
+            : null;
+        this._sourceUndoUnavailable = undoable && previous.length * 2 > this.SOURCE_UNDO_MAX_BYTES;
+        dispatch('source:replace', {docId:doc.id, text, preservePaste});
+        const updated = Store.getDocument(doc.id);
+        if (!updated || updated.sourceRevision === previousRevision) {
+            this._sourceUndo = null;
+            this._sourceUndoUnavailable = false;
+            return false;
+        }
+        if (this._sourceUndo) this._sourceUndo.sourceRevision = updated.sourceRevision;
+        this._sourceUndoUnavailableDocId = this._sourceUndoUnavailable ? updated.id : null;
+        this._sourceUndoUnavailableRevision = this._sourceUndoUnavailable ? updated.sourceRevision : null;
+        this.displayText(updated.raw);
+        this.scheduleAutoParse({text:updated.raw});
+        this.refreshSourceUndoButton();
+        this.announceSourceEdit(`${label}已保存`);
+        if (this.isCurrentUndoUnavailable()) Toast.show(`${label}已保存；原文过大，本次修改无法撤销`, true);
+        return true;
+    },
+
+    _sourceUndo: null,
+    _sourceUndoUnavailable: false,
+    _sourceUndoUnavailableDocId: null,
+    _sourceUndoUnavailableRevision: null,
+    _sourceEditorSession: null,
+    _sourceEditorStatsTimer: null,
+    _savingSourceEditor: false,
+
+    getCurrentSourceUndo() {
+        const doc = Store.getDocument();
+        const undo = this._sourceUndo;
+        return doc && undo && undo.docId === doc.id && undo.sourceRevision === doc.sourceRevision ? undo : null;
+    },
+
+    isCurrentUndoUnavailable() {
+        const doc = Store.getDocument();
+        return Boolean(doc && this._sourceUndoUnavailable
+            && this._sourceUndoUnavailableDocId === doc.id
+            && this._sourceUndoUnavailableRevision === doc.sourceRevision);
+    },
+
+    refreshSourceUndoButton() {
+        const button = $('undoSourceEditBtn');
+        const actions = $('sourcePreviewActions');
+        const edit = $('editFullSourceBtn');
+        const editor = $('rawInput');
+        const large = Boolean(editor?.dataset?.sourcePreview === 'true');
+        const undo = this.getCurrentSourceUndo();
+        if (button) {
+            button.hidden = !undo;
+            button.disabled = !undo;
+            button.title = undo ? `撤销${undo.label || '原文修改'}` : '没有可撤销的原文修改';
+        }
+        if (edit) edit.hidden = !large;
+        if (actions) actions.hidden = !large && !undo;
+    },
+
+    undoSourceEdit() {
+        const undo = this.getCurrentSourceUndo();
+        if (!undo) {
+            this._sourceUndo = null;
+            this.refreshSourceUndoButton();
+            return false;
+        }
+        this._sourceUndo = null;
+        this._sourceUndoUnavailable = false;
+        const restored = undo.raw;
+        const changed = this.commitSourceEdit(restored, {preservePaste:false, label:'撤销', undoable:false});
+        if (changed) Toast.show('已撤销上次原文修改');
+        return changed;
+    },
+
+    _bindSourceEditor() {
+        const dialog = $('sourceEditorDialog');
+        if (!dialog) return;
+        $('editFullSourceBtn')?.addEventListener('click', () => this.openSourceEditor());
+        $('undoSourceEditBtn')?.addEventListener('click', () => this.undoSourceEdit());
+        $('sourceEditorCancelBtn')?.addEventListener('click', () => dialog.close('cancel'));
+        $('sourceEditorCancelFooterBtn')?.addEventListener('click', () => dialog.close('cancel'));
+        $('sourceEditorSaveBtn')?.addEventListener('click', () => this.saveSourceEditor());
+        $('sourceFindNextBtn')?.addEventListener('click', () => this.findSourceText());
+        $('sourceReplaceCurrentBtn')?.addEventListener('click', () => this.replaceCurrentSourceText());
+        $('sourceReplaceAllBtn')?.addEventListener('click', () => this.replaceAllSourceText());
+        $('sourceJumpBtn')?.addEventListener('click', () => this.jumpToSourceLine());
+        dialog.addEventListener('keydown', event => {
+            const mod = event.ctrlKey || event.metaKey;
+            if (!mod) {
+                if (event.target?.id === 'sourceFindInput' && event.key === 'Enter') {
+                    event.preventDefault();
+                    this.findSourceText();
+                } else if (event.target?.id === 'sourceJumpLineInput' && event.key === 'Enter') {
+                    event.preventDefault();
+                    this.jumpToSourceLine();
+                }
+                return;
+            }
+            const key = event.key.toLowerCase();
+            if (key === 's') {
+                event.preventDefault();
+                event.stopPropagation();
+                this.saveSourceEditor();
+                return;
+            }
+            const targetId = key === 'f' ? 'sourceFindInput' : key === 'h' ? 'sourceReplaceInput' : key === 'g' ? 'sourceJumpLineInput' : null;
+            if (targetId) {
+                event.preventDefault();
+                event.stopPropagation();
+                $('sourceEditorTools').open = true;
+                $(targetId)?.focus();
+                return;
+            }
+            const editingText = /^(INPUT|TEXTAREA)$/.test(event.target?.tagName || '');
+            if (['enter','n','o'].includes(key) || (!editingText && ['z','y'].includes(key))) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        });
+        $('fullSourceInput')?.addEventListener('input', () => {
+            clearTimeout(this._sourceEditorStatsTimer);
+            this._sourceEditorStatsTimer = setTimeout(() => this.updateSourceEditorMeta(), 120);
+        });
+        dialog.addEventListener('close', () => {
+            clearTimeout(this._sourceEditorStatsTimer);
+            this._sourceEditorStatsTimer = null;
+            this._sourceEditorSession = null;
+            const opener = this._sourceEditorOpener;
+            this._sourceEditorOpener = null;
+            if (opener?.isConnected) opener.focus();
+        });
+        Store.onChange((event, payload) => {
+            if (event === 'source:textChanged') {
+                const changedDoc = Store.getCard(payload?.docId);
+                const currentUndo = this._sourceUndo && changedDoc
+                    && this._sourceUndo.docId === changedDoc.id
+                    && this._sourceUndo.sourceRevision === changedDoc.sourceRevision;
+                const currentUndoUnavailable = this._sourceUndoUnavailable && changedDoc
+                    && this._sourceUndoUnavailableDocId === changedDoc.id
+                    && this._sourceUndoUnavailableRevision === changedDoc.sourceRevision;
+                if (!currentUndo && !currentUndoUnavailable) {
+                    this._sourceUndo = null;
+                    this._sourceUndoUnavailable = false;
+                    this._sourceUndoUnavailableDocId = null;
+                    this._sourceUndoUnavailableRevision = null;
+                }
+                this.refreshSourceUndoButton();
+                const session = this._sourceEditorSession;
+                if (!this._savingSourceEditor && session && payload?.docId === session.docId
+                    && payload.sourceRevision !== session.sourceRevision) {
+                    this.setSourceEditorFeedback('原文已在编辑器外发生变化。当前草稿未提交，请取消后重新打开编辑。');
+                }
+            } else if (event === 'card:activated' || event === 'project:activated' || event === 'card:removed') {
+                this.refreshSourceUndoButton();
+            }
+        });
+        this.refreshSourceUndoButton();
+    },
+
+    openSourceEditor() {
+        const dialog = $('sourceEditorDialog');
+        const input = $('fullSourceInput');
+        const doc = Store.getDocument();
+        if (!dialog || !input || !doc || dialog.open) return false;
+        this._sourceEditorSession = {
+            docId:doc.id,
+            sourceRevision:doc.sourceRevision,
+            raw:doc.raw || '',
+            lineEnding:this.dominantLineEnding(doc.raw || ''),
+        };
+        this._sourceEditorOpener = $('editFullSourceBtn');
+        input.value = doc.raw || '';
+        input.setSelectionRange(0, 0);
+        $('sourceEditorTools').open = false;
+        $('sourceFindInput').value = '';
+        $('sourceReplaceInput').value = '';
+        $('sourceJumpLineInput').value = '1';
+        this.setSourceEditorFeedback('');
+        this.updateSourceEditorMeta();
+        dialog.showModal();
+        requestAnimationFrame(() => input.focus({preventScroll:true}));
+        return true;
+    },
+
+    dominantLineEnding(text) {
+        let crlf=0, lf=0, cr=0;
+        for(let i=0;i<text.length;i++) {
+            if(text[i] === '\r') {
+                if(text[i+1] === '\n') { crlf++; i++; }
+                else cr++;
+            } else if(text[i] === '\n') lf++;
+        }
+        if(crlf >= lf && crlf >= cr && crlf > 0) return '\r\n';
+        if(cr > lf && cr > 0) return '\r';
+        return '\n';
+    },
+
+    updateSourceEditorMeta() {
+        const input = $('fullSourceInput');
+        const meta = $('sourceEditorMeta');
+        if(!input || !meta) return;
+        const text = input.value;
+        let lines = 1;
+        for(let i=0;i<text.length;i++) if(text[i] === '\n') lines++;
+        const bytes = text.length * 2;
+        const largeNotice = bytes >= 16 * 1024 * 1024
+            ? '超大文本在浏览器中编辑可能变慢。' : '';
+        meta.textContent = `${text.length.toLocaleString()} 个字符 · ${lines.toLocaleString()} 行 · ${formatBytes(bytes)}${largeNotice ? ` · ${largeNotice}` : ''}`;
+    },
+
+    setSourceEditorFeedback(message) {
+        const feedback = $('sourceEditorFeedback');
+        if (feedback) feedback.textContent = message || '';
+    },
+
+    announceSourceEdit(message) {
+        const feedback = $('sourceEditFeedback');
+        if (feedback) feedback.textContent = message || '';
+    },
+
+    saveSourceEditor() {
+        const session = this._sourceEditorSession;
+        const input = $('fullSourceInput');
+        const dialog = $('sourceEditorDialog');
+        const doc = Store.getDocument();
+        if (!session || !input || !dialog || !doc) return false;
+        if (doc.id !== session.docId || doc.sourceRevision !== session.sourceRevision) {
+            this.setSourceEditorFeedback('当前卡片或原文已变化；此草稿没有保存。请取消并重新打开编辑器。');
+            return false;
+        }
+        const canonical = value => String(value).replace(/\r\n?/g, '\n');
+        const draft = input.value;
+        if (canonical(draft) === canonical(session.raw)) {
+            dialog.close('saved');
+            this.setSourceEditorFeedback('');
+            return true;
+        }
+        const text = session.lineEnding === '\n' ? draft : draft.replace(/\n/g, session.lineEnding);
+        if (text.length * 2 > MAX_IMPORT_BYTES) {
+            this.setSourceEditorFeedback('原文超过 128 MiB 安全限制，修改未保存。');
+            return false;
+        }
+        this._sourceEditorSession = null;
+        this._savingSourceEditor = true;
+        let committed = false;
+        try { committed = this.commitSourceEdit(text, {preservePaste:false, label:'完整原文编辑'}); }
+        finally { this._savingSourceEditor = false; }
+        if (!committed) {
+            this.setSourceEditorFeedback('原文没有变化，未产生新的修订。');
+            dialog.close('saved');
+            return true;
+        }
+        this.setSourceEditorFeedback('');
+        dialog.close('saved');
+        return true;
+    },
+
+    findSourceText() {
+        const input = $('fullSourceInput');
+        const find = $('sourceFindInput')?.value || '';
+        if (!input || !find) { this.setSourceEditorFeedback('请输入要查找的文本。'); return false; }
+        const expression = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
+        const source = input.value;
+        const start = input.selectionEnd || 0;
+        expression.lastIndex = start;
+        let match = expression.exec(source);
+        if (!match && start > 0) { expression.lastIndex = 0; match = expression.exec(source); }
+        if (!match) { this.setSourceEditorFeedback('没有找到匹配文本。'); return false; }
+        input.focus();
+        input.setSelectionRange(match.index, match.index + match[0].length);
+        let line = 1;
+        for(let i=0;i<match.index;i++) if(source[i] === '\n') line++;
+        this.setSourceEditorFeedback(`已定位到第 ${line} 行。`);
+        return true;
+    },
+
+    replaceCurrentSourceText() {
+        const input = $('fullSourceInput');
+        const find = $('sourceFindInput')?.value || '';
+        const replace = $('sourceReplaceInput')?.value || '';
+        if (!input || !find) { this.setSourceEditorFeedback('请输入要查找的文本。'); return false; }
+        let start = input.selectionStart, end = input.selectionEnd;
+        const selected = input.value.slice(start, end);
+        if (!selected || selected.toLocaleLowerCase() !== find.toLocaleLowerCase()) {
+            if (!this.findSourceText()) return false;
+            start = input.selectionStart; end = input.selectionEnd;
+        }
+        input.setRangeText(replace, start, end, 'select');
+        this.updateSourceEditorMeta();
+        this.setSourceEditorFeedback('已替换当前匹配；点击“保存原文”后生效。');
+        input.focus();
+        return true;
+    },
+
+    replaceAllSourceText() {
+        const input = $('fullSourceInput');
+        const find = $('sourceFindInput')?.value || '';
+        const replace = $('sourceReplaceInput')?.value || '';
+        if (!input || !find) { this.setSourceEditorFeedback('请输入要查找的文本。'); return false; }
+        const expression = new RegExp(find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'giu');
+        let count = 0;
+        const source = input.value;
+        while(expression.exec(source)) count++;
+        if (!count) { this.setSourceEditorFeedback('没有找到匹配文本。'); return false; }
+        input.value = input.value.replace(expression, () => replace);
+        this.updateSourceEditorMeta();
+        this.setSourceEditorFeedback(`已替换 ${count.toLocaleString()} 处；点击“保存原文”后生效。`);
+        return true;
+    },
+
+    jumpToSourceLine() {
+        const input = $('fullSourceInput');
+        const lineField = $('sourceJumpLineInput');
+        const requested = Number(lineField?.value);
+        if (!input || !Number.isInteger(requested) || requested < 1) {
+            this.setSourceEditorFeedback('请输入大于 0 的行号。');
+            lineField?.focus();
+            return false;
+        }
+        const text = input.value;
+        let line=1, position=0;
+        while(position < text.length && line < requested) {
+            const next = text.indexOf('\n', position);
+            if(next < 0) { position = text.length; break; }
+            position = next + 1;
+            line++;
+        }
+        input.focus();
+        input.setSelectionRange(position, position);
+        this.setSourceEditorFeedback(`已跳转到第 ${line} 行。`);
+        return true;
     },
     resetPendingInput() {
         this.clearAutoParse();clearTimeout(this._persistTimer);clearTimeout(this._statsTimer);
@@ -185,6 +557,7 @@ const SourceController = {
      */
     init() {
         this._bindMainEditor();
+        this._bindSourceEditor();
         this._bindDragDrop();
         this._bindInputResizer();
         this._bindFilePicker();
@@ -722,7 +1095,14 @@ const SourceController = {
 
         // Input changes → dispatch source:changed
         rawInput.oninput = () => {
-            dispatch('source:changed', { text: rawInput.value, preservePaste:Boolean(SourceController.getCurrentPaste(rawInput.value)) });
+            const text = rawInput.value;
+            if (text.length * 2 > MAX_IMPORT_BYTES) {
+                SourceController.displayText(Store.getDocument()?.raw || '', rawInput);
+                Toast.show('原文超过 128 MiB 安全限制；超出部分未保留', true);
+                return;
+            }
+            dispatch('source:changed', { text, preservePaste:Boolean(SourceController.getCurrentPaste(text)) });
+            if (text.length > SourceController.EDITOR_LIMIT) SourceController.displayText(text, rawInput);
         };
 
         // Paste with HTML detection
@@ -737,7 +1117,7 @@ const SourceController = {
         rawInput.addEventListener('input', () => {
             // Debounced auto-parse: fire when input stabilises, unless disabled
             // or the source is large enough to require an explicit parse.
-            SourceController.scheduleAutoParse({ text: rawInput.value });
+            SourceController.scheduleAutoParse({ text: SourceController.readText(rawInput) });
         });
     },
 

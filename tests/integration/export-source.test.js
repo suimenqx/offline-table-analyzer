@@ -145,8 +145,9 @@ describe('Original source export filenames', () => {
   });
 
   it('timestamps each click and exports the full large source independently of parsing', () => {
-    replace(large);
-    assert.ok(dom.getElementById('rawInput').value.length<large.length);
+    const largeSource = large + 'x'.repeat(SourceController.EDITOR_LIMIT + 1);
+    replace(largeSource);
+    assert.ok(dom.getElementById('rawInput').value.length<largeSource.length);
     Exporter.getTimestamp=()=> '20261009_160708';
     dom.getElementById('exportSourceBtn').onclick();
     const title='Analysis 1';
@@ -154,8 +155,8 @@ describe('Original source export filenames', () => {
     dom.getElementById('exportSourceBtn').onclick();
     assert.equal(downloads[0].filename,`${title.replace(/\s+/g,'_')}_source_20261009_160708.txt`);
     assert.equal(downloads[1].filename,`${title.replace(/\s+/g,'_')}_source_20261009_160709.txt`);
-    assert.equal(downloads[0].blob,large);
-    assert.equal(downloads[1].blob,large);
+    assert.equal(downloads[0].blob,largeSource);
+    assert.equal(downloads[1].blob,largeSource);
     assert.equal(TableRegistry.getRaw().length,0);
   });
 });

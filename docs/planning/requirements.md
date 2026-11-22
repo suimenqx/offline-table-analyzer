@@ -137,7 +137,8 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - Full filtered result is exported regardless of the current page.
 - Source size is checked before parse: `sourceText.length * 2 > MAX_IMPORT_BYTES`.
 - For slow parses (>800 ms elapsed), a Toast notification shows the parse time.
-- Original text above 128 Ki characters uses at most 100 lines/10,000 characters of read-only preview; complete text remains the parse/save/export source. New paste replaces large text.
+- Original text above 512 Ki characters uses at most 100 lines/10,000 characters of read-only preview; complete text remains the parse/save/export source. Ordinary-editor paste follows caret/selection semantics until the resulting source exceeds the threshold; paste into the read-only preview replaces the complete source.
+- The full-source modal opens on explicit request, edits the complete source in a transaction, and provides find-next, replace-current, replace-all and line jump. Save commits once; Cancel/Escape makes no Store change. An unchanged save preserves the exact source and revision, including CRLF. Actual edits write using the source's dominant line ending. A matching one-step source undo is held in memory only when the previous raw source is at most 16 MiB; the application source limit remains 128 MiB.
 - Large table-data/text parsing, querying, JOIN and XLSX run in cancellable embedded Workers; large HTML retains its DOMParser Window path. Error/cancel/stale source results cannot discard original text or overwrite a newer source.
 - Non-table clipboard HTML does not force text onto Window. ImportEngine owns the DOMParser routing decision; a manual text parser remains authoritative even with an HTML table in the clipboard.
 - At most 8 million cells in parsed datasets, combined selected/query/export tables; 1 million rows per JOIN; 256 MiB XLSX output. Budget failures are explicit, without silent truncation. These are implementation protection budgets, not universal capacity guarantees.
@@ -155,7 +156,7 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - Window and Worker share TableUtils column projection: preserve requested order, ignore missing columns, fall back to all columns when none are valid, and leave the original table unchanged.
 - Export options (`exportOnlyChecked`, `exportCols`) are stored per-tab in the doc UI state and restored on tab changes.
 - HTML clipboard state is scoped to the current tab via `docId` tracking in `lastPaste`; it is cleared on tab switch or plain-text edit.
-- Full-screen source editor Escape behavior synchronizes back to the main input via `syncSourceTextFromLarge()` before closing with `closeSourceEditor()`.
+- Large-source modal Cancel/Escape discards its draft. Save checks the opening card ID and source revision before one Store source transition; no pass-through synchronization function or second source owner is introduced.
 - Cell corrections are persisted as a non-destructive overlay in `ui.cellEdits`, applied during `applyStoredCellEdits()`, and support session undo/redo.
 
 ### R7 — accessible responsive workbench

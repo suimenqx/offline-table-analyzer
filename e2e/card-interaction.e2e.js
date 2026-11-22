@@ -37,9 +37,10 @@ test('普通粘贴按光标插入；大段粘贴保留原文并显示只读预�
   await expect(editor).toHaveValue('new card');
   await cards(page).first().click();
   await expect(editor).toHaveValue('whole card');
-  const large='id,name\n'+'1,large\n'.repeat(20000);
+  const large='id,name\n'+'1,large\n'.repeat(60000);
   await page.evaluate(text=>navigator.clipboard.writeText(text),large);
   await editor.focus();
+  await editor.press('Control+A');
   await editor.press('Control+V');
   await expect(editor).toHaveJSProperty('readOnly',true);
   await expect(page.locator('#sourcePreviewNotice')).toContainText('只读预览');

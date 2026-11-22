@@ -106,7 +106,7 @@ App orchestrator → bootstrap
 | | `modal-controller.js` | 通用模态框、焦点与诊断展示 | `ModalController` |
 | | `view-manager.js` | JOIN 视图管理 | `ViewManager` |
 | | `join-editor.js` | JOIN 编辑器 UI | `JoinEditor` |
-| | `source-controller.js` | 源文本、文件/剪贴板浏览器适配、全屏编辑器和输入尺寸控制 | `SourceController` |
+| | `source-controller.js` | 源文本、文件/剪贴板浏览器适配、事务式完整原文编辑和输入尺寸控制 | `SourceController` |
 | | `cell-edit-controller.js` | 原始表单元格修正、撤销/重做和多行内联编辑 | `CellEditController` |
 | | `filter-controller.js` | 列筛选弹窗和交互 | `FilterController` |
 | | `tab-controller.js` | 页签创建、激活、排序与重命名 | `TabController` |
