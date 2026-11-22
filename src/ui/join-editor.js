@@ -59,6 +59,8 @@ const JoinEditor = {
     getTableData(name) {
         const raw = TableRegistry.getRaw().find(t => t.name === name);
         if(raw) return raw;
+        const pooled = TableRegistry.getAvailableRawTables().find(t => t.name === name);
+        if(pooled) return {...pooled,remote:true};
         const view = Store.getViews().find(v => v.view === name);
         if(view && TableRegistry.isBackground())return {headers:TableRegistry.getCols(name),rows:[],isView:true};
         if(view) return Joiner.run(TableRegistry.getRaw(), view, Store.getViews());
@@ -621,7 +623,7 @@ const JoinEditor = {
         if(this.state.order.length === 0) errors.push('❌ 至少选择一个输出列');
 
         const cfg = this.getCurrentConfig();
-        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.getViews(), TableRegistry.getRaw().map(t => t.name))) {
+        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.getViews(), TableRegistry.getAvailableRawTables().map(t => t.name))) {
             errors.push('❌ 视图依赖会形成循环引用');
         }
 
@@ -797,7 +799,7 @@ const JoinEditor = {
 
     /* ── Name conflict ── */
     isNameConflict(name, excludeIdx=-1) {
-        const rawNames = TableRegistry.getRaw().map(t => t.name);
+        const rawNames = TableRegistry.getAvailableRawTables().map(t => t.name);
         const viewNames = Store.getViews().filter((_,i)=>i!==excludeIdx).map(v => v.view);
         return rawNames.includes(name) || viewNames.includes(name);
     },

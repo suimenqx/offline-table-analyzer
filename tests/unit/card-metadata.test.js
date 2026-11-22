@@ -44,4 +44,25 @@ describe('TableRegistry card and pool metadata', () => {
     assert.equal(TableRegistry.getCardSummary('a'), null, 'changed source cannot reuse old counts');
     assert.equal(TableRegistry.recordParse(context(), result), false, 'late metadata must be rejected');
   });
+
+  it('exposes the ordered visible-card pool and column-only schemas to the view editor', () => {
+    const first=Store.curr();
+    const second=Store.transition('card:create',{title:'Right'});
+    const parse=(card,headers)=>TableRegistry.recordParse({docId:card.id,sourceRevision:card.sourceRevision,
+      config:{format:card.ui.importFormat || 'auto',headerMode:card.ui.importHeaderMode || 'auto'}},
+      {format:'csv',tables:[{name:'Shared',headers,rows:[['source row']]}]});
+    assert.equal(parse(first,['id','name']),true);
+    assert.equal(parse(second,['id','label']),true);
+    assert.deepEqual(TableRegistry.getAvailableTables(),['Shared','Shared (Right)']);
+    assert.deepEqual(TableRegistry.getCols('Shared (Right)'),['id','label']);
+    assert.deepEqual(TableRegistry.getAvailableRawTables().map(table=>table.rows),[[],[]],
+      'the Window catalog must not retain full parsed rows');
+
+    Store.transition('card:visible',{id:second.id,visible:false});
+    assert.deepEqual(TableRegistry.getAvailableTables(),['Shared']);
+    Store.transition('card:visible',{id:first.id,visible:false});
+    Store.transition('card:visible',{id:second.id,visible:true});
+    assert.deepEqual(TableRegistry.getAvailableTables(),['Shared (Right)'],
+      'a visible side table keeps the hidden structural baseline name used by the Worker pool');
+  });
 });

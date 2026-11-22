@@ -46,9 +46,9 @@ Exporter / ClipboardFormatter
       ↓
 HeaderResolver / TextLayout → parser adapters → ImportEngine
       ↓
-Joiner → QueryService
-      ↓
-TableRegistry → ExtractionSession
+Joiner → QueryService → WorkerRuntime
+              ↓
+       TableRegistry → ExtractionSession
       ↓
 TableBuilder / Select / JoinEditor / other UI controllers
       ↓
@@ -77,7 +77,7 @@ App orchestrator → bootstrap
 | | `filter-engine.js` | 纯过滤/高亮/列投影逻辑（token 解析、操作符匹配、正则），零 DOM 依赖 | `FilterEngine` |
 | | `query-service.js` | 统一 JOIN、过滤、Focus、分页和预览结果缓存 | `QueryService` |
 | | `dispatch.js` | UI 到 Store 的命令入口 | `dispatch` |
-| | `table-registry.js` | 解析结果及表/列元数据访问 | `TableRegistry` |
+| | `table-registry.js` | 解析结果及表/列元数据访问；用 QueryService 的表池规则派生列目录 | `TableRegistry` |
 | | `extraction-session.js` | 当前来源提取、复用、取消、过期检查及结果发布 | `ExtractionSession` |
 | `state/` | `store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
 | `export/` | `exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
@@ -120,6 +120,8 @@ App orchestrator → bootstrap
 2026-10-25 Excel 派生深化：raw/full/preview 的表选择、JOIN、完整筛选记录、列投影和聚合预算归于既有 QueryService 的 `getExportTables` interface；Window ExportController 和 WorkerRuntime 共用该 implementation。ExportController 删除重复派生与动态 Joiner 查找，App 删除无实际调用者的导出转发；下载、原文准备和 Worker 生命周期仍由各自已有 module 拥有。无新增模块或 manifest 重排，规则测试转向共享 interface 与两条路径的独立 XLSX 读回。决策与理由见[架构说明](architecture.md#shared-excel-table-derivation-2026-10-25)。
 
 2026-10-25 提取会话深化：新增 ExtractionSession module，集中原先散落于 App 解析、导出准备与卡片诊断中的来源快照、在途任务、取消和过期检查。App 通过读取原文及呈现回调组成会话；BackgroundService 保留 Worker 生命周期/传输，ImportEngine 保留纯表格提取。manifest 在 TableRegistry 后、UI 前加入新 module，Worker 清单不包含它。取消立即结束等待与忙碌反馈，晚完成结果不能覆盖新作业；Store schema 22 和单文件离线交付不变。[决策与理由](architecture.md#shared-extraction-lifetime-2026-10-25)。
+
+2026-11-23 跨卡 view 设计器目录：TableRegistry 缓存按来源修订和解析策略校验的表名/列名描述，并调用 QueryService.computePool 按工程顺序与可见状态派生设计器目录。JoinEditor 因而能选取其他可见卡片的表、读取其列并正确检测命名冲突；后台会话中的完整行仍留在 Worker。此依赖位于既有 QueryService 之后，不新增模块或运行时数据传输；跨卡 UI 创建和运行 view 由 Chromium 回归覆盖。
 
 结构性拆分和运行时模块隔离已落地：业务代码通过 `OTA.define()` 声明依赖，`OTA.require()` 按需解析并缓存；`TableRegistry` 为 App 与 JoinEditor 提供共享的解析表访问边界，避免彼此直接依赖。
 

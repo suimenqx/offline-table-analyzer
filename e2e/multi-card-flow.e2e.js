@@ -83,14 +83,26 @@ test('场景4：view 引用完整性——隐藏来源卡标记不可用、恢�
   await page.locator('#addCardBtn').click();
   const csvB='id,label\n1,标签一\n2,标签二';
   await paste(page, csvB);await parse(page);
-  // 直接经 Store 建立跨表 JOIN view 并启用（UI 建 view 由既有 JOIN 设计器覆盖）
-  await page.evaluate(()=>{
-    const Store=OTA.require('store').Store;
-    Store.transition('view:upsert',{view:{view:'V',left:'CSV Table 1',right:'CSV Table 1 (数据段 2)',type:'inner',on:'id=id',select:'left.id,right.label'}});
-    Store.transition('view:setEnabled',{enabledViews:['V']});
-  });
-  await expect(page.locator('#viewsTrigger')).toContainText('V');
+  // 设计器必须同时看到表池中来自不同卡片的原始表，而不只看当前卡片。
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#manageViewsBtn').click();
+  await page.locator('#jeAddNew').click();
+  await page.locator('#jeName').fill('CrossCardView');
+  await page.locator('#jeLeftTable').selectOption('CSV Table 1');
+  await page.locator('#jeRightTable').selectOption('CSV Table 1 (数据段 2)');
+  await page.locator('.je-rel-l').selectOption('id');
+  await page.locator('.je-rel-r').selectOption('id');
+  await page.locator('#jeLList input[value="name"]').check();
+  await page.locator('#jeRList input[value="label"]').check();
+  await page.locator('#jeSave').click();
+  await expect(page.locator('#joinModal')).toHaveClass(/hidden/);
+  await page.evaluate(()=>OTA.require('store').Store.transition('view:setEnabled',{enabledViews:['CrossCardView']}));
+  const joined=page.locator('#previewArea .table-container').filter({hasText:'JOIN:CrossCardView'});
+  await expect(joined).toContainText('标签一');
+  await expect(joined).toContainText('甲');
+  await expect(page.locator('#viewsTrigger')).toContainText('CrossCardView');
   // 隐藏右侧来源卡 → view 引用表不在表池 → 标记不可用
+  await page.locator('#sidebarDataTabBtn').click();
   await cardList(page).nth(1).locator('[data-card-act="visible"]').click();
   await expect(page.locator('#viewsTrigger .view-unavailable')).toContainText('不可用');
   // 恢复可见 → 自动复原

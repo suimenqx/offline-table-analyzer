@@ -1,4 +1,4 @@
-OTA.define('table-registry', ["store", "joiner", "background-service", "table-utils"], ({Store}, {Joiner}, {BackgroundService}, {TableUtils}) => {
+OTA.define('table-registry', ["store", "joiner", "background-service", "table-utils", "query-service"], ({Store}, {Joiner}, {BackgroundService}, {TableUtils}, {QueryService}) => {
 /* TableRegistry — single source of truth for parsed table data and metadata.
 
    This module holds local tables or Worker descriptors (tables, format, diagnostics,
@@ -14,6 +14,7 @@ const TableRegistry = {
     _raw: [],
     _pageCells:new Map(),
     _cardSummaries:new Map(),
+    _cardTables:new Map(),
     /** Session-only counts; never retain raw text or complete tables here. */
     recordParse(context, result) {
         const card = Store.getCard(context?.docId);
@@ -25,7 +26,10 @@ const TableRegistry = {
             summary:Object.freeze({format:result.format, label:result.label || result.format,
                 tableCount:(result.tables || []).length,
                 rowCount:(result.tables || []).reduce((sum, table) => sum + TableUtils.rowCount(table), 0)})});
-        for(const id of this._cardSummaries.keys()) if(!Store.getCard(id)) this._cardSummaries.delete(id);
+        this._cardTables.set(card.id, {sourceRevision:card.sourceRevision, format, headerMode,
+            tables:(result.tables || []).filter(table=>table && typeof table.name==='string' && Array.isArray(table.headers))
+                .map(table=>({name:table.name,headers:table.headers.slice(),rows:[]}))});
+        for(const id of this._cardSummaries.keys()) if(!Store.getCard(id)) {this._cardSummaries.delete(id);this._cardTables.delete(id);}
         return true;
     },
     getCardSummary(id) {
@@ -33,6 +37,23 @@ const TableRegistry = {
         if(!card || !saved || saved.sourceRevision !== card.sourceRevision
             || saved.format !== (card.ui.importFormat || 'auto') || saved.headerMode !== (card.ui.importHeaderMode || 'auto')) return null;
         return saved.summary;
+    },
+    /** Column-only catalog for visible cards; row data remains in Worker for multi-card sessions. */
+    getAvailableRawTables() {
+        const project=Store.getActiveProject();
+        if(!project) return this._raw;
+        const entries=[];
+        for(const id of project.cardIds || []) {
+            const card=Store.getCard(id),saved=this._cardTables.get(id);
+            if(!card || !saved || saved.sourceRevision!==card.sourceRevision
+                || saved.format!==(card.ui.importFormat || 'auto') || saved.headerMode!==(card.ui.importHeaderMode || 'auto'))continue;
+            for(const table of saved.tables)entries.push({cardId:id,cardName:card.title || id,visible:card.visible!==false,table});
+        }
+        if(!entries.length) {
+            const active=Store.getDocument();
+            if(active && active.visible!==false && (project.cardIds || []).includes(active.id)) return this._raw;
+        }
+        return QueryService.computePool(entries).map(entry=>({name:entry.displayName,headers:entry.columns.slice(),rows:[],isView:false}));
     },
     /** 最近一次预览的表池显示名（view 引用可用性判定用） */
     _poolNames: [],
@@ -80,7 +101,13 @@ const TableRegistry = {
     /** Window-only single-card query scope; source diagnostics still use getRaw(). */
     getQueryTables() { const card=Store.getDocument(); return card && card.visible !== false ? this._raw : []; },
     setPoolNames(names) { this._poolNames = (names || []).slice(); },
-    getPoolNames() { return this._poolNames; },
+    getPoolNames() {
+        if(Store.getActiveProject()) {
+            const names=this.getAvailableRawTables().map(table=>table.name);
+            if(names.length) return names;
+        }
+        return this._poolNames;
+    },
     isBackground() {return !!this._background;},
     getPreviewSummary() { return this._previewSummary || null; },
     setPreview(tables) {
@@ -168,7 +195,7 @@ const TableRegistry = {
 
     /** @returns {string[]} all table and view names (raw + global JOIN views) */
     getAvailableTables() {
-        const raws = this._raw.map(t => t.name);
+        const raws = this.getAvailableRawTables().map(t => t.name);
         const views = (Store.getViews() || []).map(v => v.view);
         return [...raws, ...views];
     },
@@ -176,12 +203,12 @@ const TableRegistry = {
     /** @returns {string[]} column headers for a table or view by name */
     getCols(tableName) {
         if (!tableName) return [];
-        const raw = this._raw.find(t => t.name === tableName);
+        const raw = this.getAvailableRawTables().find(t => t.name === tableName);
         if (raw) return raw.headers.slice();
         const views = Store.getViews() || [];
         const view = views.find(v => v.view === tableName);
         if (view) {
-            return Joiner.getHeaders(this._raw,view,views);
+            return Joiner.getHeaders(this.getAvailableRawTables(),view,views);
         }
         return [];
     },
