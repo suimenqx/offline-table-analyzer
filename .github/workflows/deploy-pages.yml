@@ -5,21 +5,18 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
+    permissions:
+      contents: read
+      pages: read
     runs-on: ubuntu-latest
+    outputs:
+      artifact_name: ${{ steps.site.outputs.artifact_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,15 +36,30 @@ jobs:
         uses: actions/configure-pages@v4
 
       - name: Prepare site
+        id: site
         run: |
           mkdir -p _site
           cp index.html _site/
+          echo "artifact_name=github-pages-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
+          name: ${{ steps.site.outputs.artifact_name }}
           path: _site
 
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
+        with:
+          artifact_name: ${{ needs.build.outputs.artifact_name }}
