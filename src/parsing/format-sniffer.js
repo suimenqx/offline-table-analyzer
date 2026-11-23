@@ -1,4 +1,4 @@
-OTA.define('format-sniffer', ["table-utils"], ({TableUtils}) => {
+OTA.define('format-sniffer', ["table-utils","cli-table-data-parser"], ({TableUtils}, CliTableDataParser) => {
 /* FormatSniffer — 基于统计指纹的单次扫描格式检测
  *
  * 核心原理：
@@ -221,7 +221,7 @@ function extractFeatures(rawText, {maxChars=DEFAULT_SCAN_CHARS,maxLines=MAX_SCAN
     const f = {
         M_json: /^\s*(?:\{\s*(?:["'}/]|[A-Za-z_$])|\[\s*(?:[\[{"'/]|-?\d|true\b|false\b|null\b|\])|(?:["'][^"'\n]{1,100}["']|[A-Za-z_$][\w$-]{0,99})\s*:\s*(?:["'{\[]|-?\d|true\b|false\b|null\b))/.test(chunk),
         M_html: /^\s*</.test(chunk) && /<table[\s>]/i.test(chunk),
-        M_cliTableData: /(?:^|\n)\s*(?:\[[^\]\n]{1,80}\]\s*)?(?:[>$#]\s*)?table[-_]data\b/i.test(chunk),
+        M_cliTableData: CliTableDataParser.hasSignature(chunk),
         M_dataBlock: false,
         M_mdSep: false,
         M_asciiBorder: false,

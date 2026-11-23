@@ -51,6 +51,7 @@ The **Format** dropdown includes fourteen options:
 Automatic selection verifies bounded samples and expands them within a fixed budget. The final parser reads the complete source or identified table regions. A blocking format choice appears beside the preview only when close/weak candidates produce materially different tables. The original source remains unchanged. A single best result can be reviewed or switched before export.
 
 CLI `table-data` mode additionally auto-detects each data block's internal format (TSV, CSV, pipe, or fixed-width) based on the content of the `validflag` header row.
+For fixed-width CLI output, a selection starting at the `validflag` header and including a record whose flag is 0 or 1 is enough for auto detection. The app uses the header's column positions for the copied records.
 
 JSON object fields become columns in first-seen order; missing fields become empty cells. Nested arrays and objects appear as compact JSON text inside one cell. Two-dimensional arrays use the selected header mode. Invalid JSON and non-tabular arrays show a parse error.
 

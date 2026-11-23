@@ -31,7 +31,6 @@ const MODULES = [
   // ── Parsing infrastructure ──
   ['parsing/header-resolver.js',  'header inference'],
   ['parsing/text-layout.js',      'position-aware text layout inference'],
-  ['parsing/format-sniffer.js',   'statistical fingerprint format detection'],
   ['parsing/delimited-utils.js',  'quote-aware delimited parsing'],
   ['parsing/parser-helpers.js',   'shared parser helpers'],
 
@@ -49,6 +48,7 @@ const MODULES = [
   ['parsing/parsers/cli-table-data-parser.js',    'CLI table-data legacy parser'],
 
   // ── Import orchestration ──
+  ['parsing/format-sniffer.js',   'statistical fingerprint format detection'],
   ['parsing/import-engine.js',    'parser selection and diagnostics'],
   ['parsing/legacy-facade.js',    'legacy parser facade'],
 

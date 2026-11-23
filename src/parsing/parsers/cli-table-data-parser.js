@@ -1,13 +1,23 @@
 OTA.define('cli-table-data-parser', ["table-utils","delimited","parser-helpers"], ({TableUtils}, {Delimited}, {splitPipeCells}) => {
 /* CLI table-data legacy format parser */
+const TABLE_DECLARATION = /^[ \t\uFEFF]*(?:\[[^\]\r\n]{1,80}\][ \t]*)?(?:[>$#][ \t]*)?table[-_]data(?:[ \t]+table[-_]data)*(?=[ \t:]|$)/im;
+const VALIDFLAG_HEADER = /^validflag(?=$|[\s,|])/i;
+const FIXED_WIDTH_FRAGMENT_HEADER = /^validflag +[^\s,|][^\t,|]*$/i;
+const VALIDFLAG_RECORD = /^[01] +\S/;
+
 const CliTableDataParser = {
     id:'cli-table-data', label:'CLI table-data',
-    tableNameFromLine(line, index, used) {
-        const lower = String(line || '').toLowerCase();
-        const pos = lower.lastIndexOf('table-data');
-        const tail = pos >= 0 ? line.slice(pos + 'table-data'.length).trim() : '';
-        const name = (tail.split(/\s+/)[0] || `T${index + 1}`).replace(/[|,;]+$/g, '');
-        return TableUtils.makeTableName(name, index, used);
+    hasSignature(sample) {
+        if(TABLE_DECLARATION.test(sample)) return true;
+        let foundHeader = false;
+        for(const line of TableUtils.iterLines(sample)) {
+            const trim = line.trim();
+            if(!trim) continue;
+            if(foundHeader) return VALIDFLAG_RECORD.test(trim);
+            if(!FIXED_WIDTH_FRAGMENT_HEADER.test(trim)) return false;
+            foundHeader = true;
+        }
+        return false;
     },
     parse(source, options={}) {
         const lines = TableUtils.iterLines(source.text);
@@ -16,6 +26,11 @@ const CliTableDataParser = {
         let cur = null;
         let inData = false;
         let ranges = [];
+        let firstNonBlank = true;
+        const startTable = (tail='') => {
+            const name = (tail.trim().split(/\s+/, 1)[0] || `T${tables.length + 1}`).replace(/[|,;]+$/g, '');
+            cur = { name:TableUtils.makeTableName(name, tables.length, used), headers:[], rows:[], mode:'WS', diagnostics:[] };
+        };
         const finalize = () => {
             if(!cur) return;
             if(cur.headers.length) {
@@ -70,21 +85,23 @@ const CliTableDataParser = {
         };
         for(const line of lines) {
             const trim = line.trim();
-            if(line.toLowerCase().includes('table-data')) {
+            if(!trim) continue;
+            const declaration = TABLE_DECLARATION.exec(trim);
+            if(firstNonBlank && FIXED_WIDTH_FRAGMENT_HEADER.test(trim)) startTable();
+            firstNonBlank = false;
+            if(declaration) {
                 finalize();
-                cur = { name:this.tableNameFromLine(line, tables.length, used), headers:[], rows:[], mode:'WS', diagnostics:[] };
-                inData = false;
+                startTable(trim.slice(declaration[0].length).replace(/^:/, ''));
                 continue;
             }
             if(!cur) continue;
-            if(trim.toLowerCase().startsWith('validflag')) {
+            if(VALIDFLAG_HEADER.test(trim)) {
                 setValidFlagHeader(line);
                 inData = true;
                 continue;
             }
             if(!inData) continue;
             if(trim.startsWith('<') || trim.startsWith('[')) { finalize(); continue; }
-            if(!trim) continue;
             cur.rows.push(parseByMode(line));
         }
         finalize();

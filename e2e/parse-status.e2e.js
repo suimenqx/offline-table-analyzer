@@ -68,6 +68,27 @@ test('列数不一致时保留溢出内容并提示用户检查', async ({page})
   await expect(page.locator('#rawInput')).toHaveValue(irregularText);
 });
 
+test('从 validflag 开始的 CLI 选段保留多空格字段且不产生额外列', async ({page, context}) => {
+  const text = 'validflag  ID     Name\n1          001    Alice\n1          002    Bob\n'
+    + '1          003    Relay  Controller  Plus';
+  const input = page.locator('#rawInput');
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], {origin:new URL(page.url()).origin});
+  await input.click();
+  await page.evaluate(value => navigator.clipboard.writeText(value), text);
+  await input.press('Control+V');
+  await expect(input).toHaveValue(text);
+  await page.locator('#parseBtn').click();
+  await expect(activeCard(page)).toHaveAttribute('data-parse-state', 'ready');
+  await expect(page.locator('#formatSelect')).toHaveValue('auto');
+  await expect(page.locator('#headerModeSelect')).toBeDisabled();
+  const rows = page.locator('#previewArea tbody tr');
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first().getByRole('cell')).toHaveText(['1','001','Alice']);
+  await expect(rows.last().getByRole('cell')).toHaveText(['1','003','Relay  Controller  Plus']);
+  await expect(page.locator('#previewArea .parse-feedback')).toHaveCount(0);
+  await expect(input).toHaveValue(text);
+});
+
 test('候选详情可选查看，关闭后仍保留预览区的就地选择', async ({page}) => {
   await page.locator('#rawInput').fill(formatTieText);
   await page.locator('#parseBtn').click();

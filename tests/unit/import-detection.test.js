@@ -37,6 +37,41 @@ describe('bounded automatic detection',()=>{
     assert.equal(ImportEngine.detect('id,name;state\n1,Alice;ok',{format:'semicolon-csv'}).format,'semicolon-csv');
   });
 
+  it('uses the CLI layout when a copied table starts at the validflag header',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const body=[
+      'validflag  ID     Name',
+      '1          001    Alice',
+      '0          002    Bob',
+      '1          003    Relay  table-data  Plus'
+    ].join('\r\n');
+    const headers=['validflag','ID','Name'];
+    const rows=[['1','001','Alice'],['0','002','Bob'],['1','003','Relay  table-data  Plus']];
+
+    for(const [input,options] of [
+      ['\uFEFF\r\n'+body,{}],
+      [body,{format:'cli-table-data'}],
+      ['[TEST] table_data Inventory\r\n'+body,{}]
+    ]) {
+      const result=ImportEngine.parse(input,options);
+      assert.equal(result.format,'cli-table-data');
+      assert.equal(result.tables.length,1);
+      assert.deepEqual(result.tables[0].headers,headers);
+      assert.deepEqual(result.tables[0].rows,rows);
+      assert.equal(result.diagnostics.some(item=>item.code==='ROW_WIDTH_MISMATCH'),false);
+    }
+  });
+
+  it('keeps generic formats when validflag appears as an ordinary header or field',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const inputs=[
+      ['validflag,ID,Name\n1,001,Alice\n0,002,Bob','csv'],
+      ['validflag  ID  Name\nenabled    1   Alice\ndisabled   2   Bob','fixed-width'],
+      ['ID     Name\n001    validflag\n002    table-data','fixed-width']
+    ];
+    for(const [input,format] of inputs) assert.equal(ImportEngine.parse(input).format,format);
+  });
+
   it('surfaces unresolved large-input ambiguity instead of exporting a guessed table',()=>{
     const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
     const text='id,name;state\n'+Array(30000).fill('1,Alice;ok').join('\n');

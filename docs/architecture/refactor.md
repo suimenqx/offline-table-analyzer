@@ -44,7 +44,7 @@ Store → dispatch
       ↓
 Exporter / ClipboardFormatter
       ↓
-HeaderResolver / TextLayout → parser adapters → ImportEngine
+HeaderResolver / TextLayout → parser adapters → FormatSniffer → ImportEngine
       ↓
 Joiner → QueryService → WorkerRuntime
               ↓
