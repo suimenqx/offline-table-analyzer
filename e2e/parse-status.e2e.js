@@ -89,6 +89,23 @@ test('从 validflag 开始的 CLI 选段保留多空格字段且不产生额外�
   await expect(input).toHaveValue(text);
 });
 
+test('旧版命名 CLI 选段保留两张原表与完整记录', async ({page}) => {
+  const text = 'table-data\u00a0Inventory\nvalidflag: ID Name\n1 001 Alice\n0 002 Bob\n'
+    + '[CLI] [RUN] table-data Orders\nvalidflag(BOOL) ID Name\n1 021 Tablet';
+  const input = page.locator('#rawInput');
+  await input.fill(text);
+  await page.locator('#parseBtn').click();
+  await expect(activeCard(page)).toHaveAttribute('data-parse-state', 'ready');
+  await expect(page.locator('#headerModeSelect')).toBeDisabled();
+  const tables = page.locator('#previewArea .table-container');
+  await expect(tables).toHaveCount(2);
+  await expect(tables.nth(0)).toContainText('Inventory');
+  await expect(tables.nth(0).locator('tbody tr').nth(1).getByRole('cell')).toHaveText(['0','002','Bob']);
+  await expect(tables.nth(1)).toContainText('Orders');
+  await expect(tables.nth(1).locator('tbody tr').first().getByRole('cell')).toHaveText(['1','021','Tablet']);
+  await expect(input).toHaveValue(text);
+});
+
 test('候选详情可选查看，关闭后仍保留预览区的就地选择', async ({page}) => {
   await page.locator('#rawInput').fill(formatTieText);
   await page.locator('#parseBtn').click();

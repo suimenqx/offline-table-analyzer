@@ -62,10 +62,50 @@ describe('bounded automatic detection',()=>{
     }
   });
 
+  it('preserves legacy named CLI declarations, decorated flag headers and multiple blocks',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const input=[
+      'table-data\u00a0Inventory',
+      'validflag: ID Name',
+      '1 001 Alice',
+      '0 002 Bob',
+      '',
+      '[CLI] [RUN] table-data Orders',
+      'validflag(BOOL) ID Name',
+      '1 021 Tablet',
+      '',
+      'table-data设备',
+      'validflag ID Name',
+      '1 099 Relay'
+    ].join('\r\n');
+    const expected=[
+      {name:'Inventory',headers:['validflag:','ID','Name'],rows:[['1','001','Alice'],['0','002','Bob']]},
+      {name:'Orders',headers:['validflag(BOOL)','ID','Name'],rows:[['1','021','Tablet']]},
+      {name:'设备',headers:['validflag','ID','Name'],rows:[['1','099','Relay']]}
+    ];
+    for(const format of ['auto','cli-table-data']) {
+      const result=ImportEngine.parse(input,{format});
+      assert.equal(result.format,'cli-table-data');
+      assert.deepEqual(result.tables.map(({name,headers,rows})=>({name,headers,rows})),expected);
+      assert.deepEqual(result.diagnostics,[]);
+    }
+  });
+
+  it('uses a legacy command prefix with a following flag header to identify a whole CLI block',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const input='switch# table-data Inventory\nvalidflag ID Name\n1 001 Alice';
+    const result=ImportEngine.parse(input);
+    assert.equal(result.format,'cli-table-data');
+    assert.equal(result.tables[0].name,'Inventory');
+    assert.deepEqual(result.tables[0].headers,['validflag','ID','Name']);
+    assert.deepEqual(result.tables[0].rows,[['1','001','Alice']]);
+  });
+
   it('keeps generic formats when validflag appears as an ordinary header or field',()=>{
     const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
     const inputs=[
       ['validflag,ID,Name\n1,001,Alice\n0,002,Bob','csv'],
+      ['id,note\n1,mentions table-data Inventory\nvalidflag,ordinary text\n2,ok','csv'],
       ['validflag  ID  Name\nenabled    1   Alice\ndisabled   2   Bob','fixed-width'],
       ['ID     Name\n001    validflag\n002    table-data','fixed-width']
     ];

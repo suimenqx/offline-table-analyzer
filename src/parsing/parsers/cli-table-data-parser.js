@@ -1,26 +1,46 @@
 OTA.define('cli-table-data-parser', ["table-utils","delimited","parser-helpers"], ({TableUtils}, {Delimited}, {splitPipeCells}) => {
 /* CLI table-data legacy format parser */
-const TABLE_DECLARATION = /^[ \t\uFEFF]*(?:\[[^\]\r\n]{1,80}\][ \t]*)?(?:[>$#][ \t]*)?table[-_]data(?:[ \t]+table[-_]data)*(?=[ \t:]|$)/im;
-const VALIDFLAG_HEADER = /^validflag(?=$|[\s,|])/i;
+const TABLE_DECLARATION = /^(?:\[[^\]\r\n]{1,80}\]\s*)?(?:[>$#]\s*)?table[-_]data\b(?:\s+table[-_]data\b)*/i;
+const TABLE_MARKER = /table[-_]data(?:\s+table[-_]data\b)*/i;
+const COMMAND_PREFIX = /^(?!\d+(?:\s|$))[^,;|\t]*[\s>$#\]]$/;
+const VALIDFLAG_HEADER = /^validflag/i;
 const FIXED_WIDTH_FRAGMENT_HEADER = /^validflag +[^\s,|][^\t,|]*$/i;
 const VALIDFLAG_RECORD = /^[01] +\S/;
+
+function* scanLines(text) {
+    let pending = null;
+    for(const line of TableUtils.iterLines(text)) {
+        const trim = line.trim();
+        if(!trim) continue;
+        if(pending) {
+            // A prefixed marker inside a table is a declaration when a header follows it.
+            const prefix = pending.trim.slice(0, pending.marker.index);
+            pending.declaration = VALIDFLAG_HEADER.test(trim) && (!prefix || COMMAND_PREFIX.test(prefix));
+            yield pending;
+            pending = null;
+        }
+        const declaration = TABLE_DECLARATION.exec(trim);
+        const marker = declaration || TABLE_MARKER.exec(trim);
+        const entry = {line, trim, marker, declaration:Boolean(declaration)};
+        if(marker && !declaration) pending = entry;
+        else yield entry;
+    }
+    if(pending) yield pending;
+}
 
 const CliTableDataParser = {
     id:'cli-table-data', label:'CLI table-data',
     hasSignature(sample) {
-        if(TABLE_DECLARATION.test(sample)) return true;
-        let foundHeader = false;
-        for(const line of TableUtils.iterLines(sample)) {
-            const trim = line.trim();
-            if(!trim) continue;
-            if(foundHeader) return VALIDFLAG_RECORD.test(trim);
-            if(!FIXED_WIDTH_FRAGMENT_HEADER.test(trim)) return false;
-            foundHeader = true;
+        let firstNonBlank = true;
+        let fragmentHeader = false;
+        for(const {trim, declaration} of scanLines(sample)) {
+            if(declaration || (fragmentHeader && VALIDFLAG_RECORD.test(trim))) return true;
+            fragmentHeader = firstNonBlank && FIXED_WIDTH_FRAGMENT_HEADER.test(trim);
+            firstNonBlank = false;
         }
         return false;
     },
     parse(source, options={}) {
-        const lines = TableUtils.iterLines(source.text);
         const tables = [];
         const used = new Set();
         let cur = null;
@@ -83,15 +103,12 @@ const CliTableDataParser = {
             for(let k=0; k<ranges.length; k++) ranges[k].e = (k === ranges.length - 1) ? 99999 : ranges[k+1].s;
             cur.headers = TableUtils.ensureUniqueHeaders(ranges.map(r => line.substring(r.s, Math.min(r.e, line.length)).trim()));
         };
-        for(const line of lines) {
-            const trim = line.trim();
-            if(!trim) continue;
-            const declaration = TABLE_DECLARATION.exec(trim);
+        for(const {line, trim, marker, declaration} of scanLines(source.text)) {
             if(firstNonBlank && FIXED_WIDTH_FRAGMENT_HEADER.test(trim)) startTable();
             firstNonBlank = false;
-            if(declaration) {
+            if(declaration || (marker && !inData)) {
                 finalize();
-                startTable(trim.slice(declaration[0].length).replace(/^:/, ''));
+                startTable(trim.slice(marker.index + marker[0].length).replace(/^:/, ''));
                 continue;
             }
             if(!cur) continue;
