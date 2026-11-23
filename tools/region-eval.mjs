@@ -8,7 +8,7 @@
  *   - 边界准确率    配对区域的 |Δstart|+|Δend| 平均字符差；另有精确率
  *   - 单元格精确率  配对表格中与期望一致（含表头）的单元格 / 期望单元格
  *   - 静默错拆      未进入确认态却返回多于期望的表（错拆）或少于期望（漏并）
- *   - 确认率        expectAmbiguous 的样例占比
+ *   - 确认率        自动解析实际进入格式确认的样例占比
  *   - 运行预算      每个 case 一次 parse 的耗时（p50/p95/max）
  *
  * 当前样例全部为合成数据：通过只说明既有设计行为未回归，不构成真实
@@ -94,6 +94,9 @@ for (const fixture of FIXTURES) {
   } else if (fixture.expectAmbiguous) {
     notes.push('MISMATCH: expected ambiguity'); mismatchCount++;
   }
+  if (fixture.expectDiagnostic && !result.diagnostics.some(item => item.code === fixture.expectDiagnostic)) {
+    notes.push(`MISMATCH: missing ${fixture.expectDiagnostic}`); mismatchCount++;
+  }
 
   const effective = confirmed || result;
   const effectiveTables = effective.tables || [];
@@ -125,7 +128,7 @@ for (const fixture of FIXTURES) {
   rows.push({
     family: fixture.family,
     id: fixture.id,
-    auto: fixture.expectAmbiguous ? 'ambiguous' : result.format,
+    auto: result.format,
     ms: autoMs.toFixed(1),
     recall: expectedCount ? `${pairs.length}/${expectedCount}` : '-',
     boundary,

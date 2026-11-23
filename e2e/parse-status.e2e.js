@@ -43,6 +43,18 @@ test('格式候选会产生不同结果时保留原文并提供就地预览选�
   await expect(page.locator('#rawInput')).toHaveValue(formatTieText);
 });
 
+test('多行小数保持完整时自动显示分号分列结果', async ({page}) => {
+  const text = 'sku;price (EUR, incl. tax);tax (EUR, incl. fee)\n'
+    + 'S-001;12,50;1,20\nS-002;9,90;0,99\nS-003;10,50;1,05';
+  await page.locator('#rawInput').fill(text);
+  await page.locator('#parseBtn').click();
+  await expect(activeCard(page)).toHaveAttribute('data-parse-state', 'ready');
+  await expect(page.locator('#previewArea .parse-feedback-candidate')).toHaveCount(0);
+  const firstPrice = page.locator('#previewArea tbody tr').filter({hasText:'S-001'});
+  await expect(firstPrice.getByRole('cell')).toHaveText(['S-001','12,50','1,20']);
+  await expect(page.locator('#rawInput')).toHaveValue(text);
+});
+
 test('列数不一致时保留溢出内容并提示用户检查', async ({page}) => {
   await page.locator('#rawInput').fill(irregularText);
   await page.locator('#parseBtn').click();

@@ -5,6 +5,7 @@
  *   - text            原始输入
  *   - options         parse 选项（自动识别时省略）
  *   - expectAmbiguous 预期自动解析停在确认态（确认率统计用）
+ *   - expectDiagnostic 预期正常结果伴随的诊断代码（可省略）
  *   - confirm(text,result) 确认后重解析的选项；有 expect 但自动解析歧义时必须提供
  *   - expect.tables[] 预期表格：headers、rows、range
  *
@@ -99,14 +100,13 @@ export const FIXTURES = [
       }]
     }
   },
-  // ── 确认态：不规则行宽 ────────────────────────────────────────────
+  // ── 保留数据并提示检查 ────────────────────────────────────────────
   {
-    family: 'irregular-confirmation',
+    family: 'irregular-width',
     id: 'csv-irregular-widths',
-    label: '行宽不一致先确认，确认后保留溢出值',
+    label: '行宽不一致时直接保留溢出值并显示诊断',
     text: '报告\nid,name\n1,Alice\nbad,too,many,fields\n2,Bob\n结束',
-    expectAmbiguous: true,
-    confirm: (text, result) => ({ regionSelection: result.candidates.find(c => c.kind === 'region-set')?.regionSelection }),
+    expectDiagnostic: 'ROW_WIDTH_MISMATCH',
     expect: {
       format: 'csv',
       tables: [{
@@ -116,19 +116,17 @@ export const FIXTURES = [
       }]
     }
   },
-  // ── 确认态：表头歧义 ──────────────────────────────────────────────
   {
-    family: 'header-confirmation',
+    family: 'header-review',
     id: 'csv-ambiguous-header',
-    label: '表头证据不足先确认，选首行作为表头',
+    label: '表头证据不足时先显示自动结果',
     text: 'alpha,beta\none,two\nthree,four',
-    expectAmbiguous: true,
-    confirm: () => ({ headerMode: 'first-row' }),
+    expectDiagnostic: 'HEADER_AMBIGUOUS',
     expect: {
       format: 'csv',
       tables: [{
-        headers: ['alpha', 'beta'],
-        rows: [['one', 'two'], ['three', 'four']],
+        headers: ['Column1', 'Column2'],
+        rows: [['alpha', 'beta'], ['one', 'two'], ['three', 'four']],
         range: { start: 0, endAtEnd: true }
       }]
     }
@@ -221,6 +219,86 @@ export const FIXTURES = [
       tables: [{
         headers: ['id', 'name;state'],
         rows: [['1', 'Alice;ok']],
+        range: { start: 0, endAtEnd: true }
+      }]
+    }
+  },
+  {
+    family: 'delimiter-evidence',
+    id: 'decimal-comma-semicolon',
+    label: '两种切法列数相同，分号保留多列小数',
+    text: 'sku;price (EUR, incl. tax);tax (EUR, incl. fee)\n'
+      + 'S-001;12,50;1,20\nS-002;9,90;0,99\nS-003;10,50;1,05',
+    options: { headerMode: 'first-row' },
+    expect: {
+      format: 'semicolon-csv',
+      tables: [{
+        headers: ['sku', 'price (EUR, incl. tax)', 'tax (EUR, incl. fee)'],
+        rows: [['S-001', '12,50', '1,20'], ['S-002', '9,90', '0,99'], ['S-003', '10,50', '1,05']],
+        range: { start: 0, endAtEnd: true }
+      }]
+    }
+  },
+  {
+    family: 'delimiter-evidence',
+    id: 'decimal-comma-tsv-multiline',
+    label: 'Tab 保留多列小数和引号内的换行',
+    text: 'id\tprice (EUR, incl. tax)\ttax (EUR, incl. fee)\tnote\n'
+      + '1\t12,50\t1,20\t"a\nb"\n2\t9,90\t0,99\t"c\nd"\n3\t10,50\t1,05\t"e\nf"',
+    options: { headerMode: 'first-row' },
+    expect: {
+      format: 'excel-paste',
+      tables: [{
+        headers: ['id', 'price (EUR, incl. tax)', 'tax (EUR, incl. fee)', 'note'],
+        rows: [['1', '12,50', '1,20', 'a\nb'], ['2', '9,90', '0,99', 'c\nd'], ['3', '10,50', '1,05', 'e\nf']],
+        range: { start: 0, endAtEnd: true }
+      }]
+    }
+  },
+  {
+    family: 'delimiter-evidence',
+    id: 'fractional-timestamp',
+    label: '分号保留带小数逗号的时间',
+    text: 'device;time (local, ms);status (old, new)\n'
+      + 'A;14:02:30,123;UP,OK\nB;16:45:11,200;UP,OK\nC;09:10:53,011;DOWN,ERR',
+    options: { headerMode: 'first-row' },
+    expect: {
+      format: 'semicolon-csv',
+      tables: [{
+        headers: ['device', 'time (local, ms)', 'status (old, new)'],
+        rows: [['A', '14:02:30,123', 'UP,OK'], ['B', '16:45:11,200', 'UP,OK'], ['C', '09:10:53,011', 'DOWN,ERR']],
+        range: { start: 0, endAtEnd: true }
+      }]
+    }
+  },
+  {
+    family: 'delimiter-control',
+    id: 'comma-separated-integers',
+    label: '整数之间的逗号仍用来分列',
+    text: 'left,right\n12,50\n9,90\n10,50',
+    options: { headerMode: 'first-row' },
+    expect: {
+      format: 'csv',
+      tables: [{
+        headers: ['left', 'right'],
+        rows: [['12', '50'], ['9', '90'], ['10', '50']],
+        range: { start: 0, endAtEnd: true }
+      }]
+    }
+  },
+  {
+    family: 'delimiter-control',
+    id: 'one-decimal-column-tie',
+    label: '单列小数和整数拆分都成立，仍要求确认',
+    text: 'count,rate;note\n12,50;3\n9,90;4\n10,50;5',
+    options: { headerMode: 'first-row' },
+    expectAmbiguous: true,
+    confirm: () => ({ format: 'csv' }),
+    expect: {
+      format: 'csv',
+      tables: [{
+        headers: ['count', 'rate;note'],
+        rows: [['12', '50;3'], ['9', '90;4'], ['10', '50;5']],
         range: { start: 0, endAtEnd: true }
       }]
     }

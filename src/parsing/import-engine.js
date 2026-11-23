@@ -1,4 +1,4 @@
-OTA.define('import-engine', ["table-utils","format-sniffer","html-parser","json-parser","delimited-parsers","pipe-table-parser","ascii-table-parser","fixed-width-parser","cli-multi-block-parser","aligned-table-parser","plain-text-parser","cli-table-data-parser","data-block-parser"], ({TableUtils}, {FormatSniffer}, {HtmlTableParser}, {JsonTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, PipeTableParser, AsciiTableParser, FixedWidthParser, CliMultiBlockParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, {DataBlockParser}) => {
+OTA.define('import-engine', ["table-utils","format-sniffer","delimited","html-parser","json-parser","delimited-parsers","pipe-table-parser","ascii-table-parser","fixed-width-parser","cli-multi-block-parser","aligned-table-parser","plain-text-parser","cli-table-data-parser","data-block-parser"], ({TableUtils}, {FormatSniffer}, {Delimited}, {HtmlTableParser}, {JsonTableParser}, {CsvParser, SemicolonCsvParser, ExcelPasteParser}, PipeTableParser, AsciiTableParser, FixedWidthParser, CliMultiBlockParser, AlignedTableParser, PlainTextTableParser, CliTableDataParser, {DataBlockParser}) => {
 const hasClipboardTable=html=>/<table[\s>]/i.test(html || '') && /<tr[\s>]/i.test(html || '');
 const REGION_DELIMITERS=new Map([['csv',','],['semicolon-csv',';'],['excel-paste','\t'],['pipe-table','|']]);
 const REGION_FORMATS=new Set([...REGION_DELIMITERS.keys(),'fixed-width','aligned-table']);
@@ -94,6 +94,24 @@ function findParserRegions(text,parserId) {
     }
     const delimiter=REGION_DELIMITERS.get(parserId);
     return delimiter?findDelimitedRegions(text,delimiter):{regions:[],overBudget:false};
+}
+
+function resolveDelimitedTie(text, contenders) {
+    if(contenders.length !== 2) return null;
+    const comma = contenders.find(item => item.parser.delimiter === ',');
+    const other = contenders.find(item => [';', '\t'].includes(item.parser.delimiter));
+    if(!comma || !other || !other.regions.length || other.regions.length !== comma.regions.length) return null;
+
+    const sameRecords = other.regions.every((region, index) => {
+        const rival = comma.regions[index];
+        return region.rectangular && rival.rectangular && region.start === rival.start &&
+            region.end === rival.end && region.rowCount === rival.rowCount;
+    });
+    if(!sameRecords) return null;
+
+    // Changes in coverage or competing formats still need the ordinary review.
+    return other.regions.every(({start, end}) =>
+        Delimited.preservesCommaValues(text.slice(start, end), other.parser.delimiter)) ? other : null;
 }
 
 function mapNormalizedOffsetsToSource(originalText,offsets) {
@@ -263,10 +281,10 @@ const ImportEngine = {
         const initial=FormatSniffer.sniff(source.text);
         const hard=initial.candidates[0];
         if(hard?.method==='hard')return {format:hard.id,candidates:[{...hard,manual:false}],diagnostics:initial.diagnostics,sampleLength:0};
-        let evaluations=[],sniff=initial,sampleLength=0,truncated=false;
+        let evaluations=[],sniff=initial,sampleText='',sampleLength=0,truncated=false;
         for(const [limit,records] of [[16384,64],[65536,256],[this.MAX_SAMPLE_CHARS,this.MAX_SAMPLE_RECORDS]]) {
             const sample=this.sample(source.text,limit,records);
-            sampleLength=sample.length;truncated=sample.truncated;
+            sampleText=sample.text;sampleLength=sample.length;truncated=sample.truncated;
             sniff=FormatSniffer.sniff(sample.text,{maxChars:this.MAX_SAMPLE_CHARS,maxLines:this.MAX_SAMPLE_RECORDS});
             if(sniff.candidates[0]?.method==='hard')return {format:sniff.candidates[0].id,candidates:[{...sniff.candidates[0],manual:false}],diagnostics:sniff.diagnostics,sampleLength};
             evaluations=[];
@@ -306,18 +324,22 @@ const ImportEngine = {
         }
         const top=evaluations[0];
         const lowScore=Boolean(top && !top.structural && top.score<0.55);
-        const tieAlternative=top && !top.structural
-            ? evaluations.slice(1).find(item=>item.fingerprint!==top.fingerprint && (lowScore || top.score-item.score<0.12))
-            : null;
-        const ambiguous=Boolean(tieAlternative);
+        const closeAlternatives=top && !top.structural
+            ? evaluations.slice(1).filter(item=>item.fingerprint!==top.fingerprint && (lowScore || top.score-item.score<0.12))
+            : [];
+        const delimiterWinner=closeAlternatives.length ? resolveDelimitedTie(sampleText,[top,...closeAlternatives]) : null;
+        const selected=delimiterWinner || top;
+        const ambiguous=closeAlternatives.length > 0 && !delimiterWinner;
         const unrecognizedProse=Boolean(top && top.parser.id==='plain-text' && top.irregular && lowScore && !ambiguous);
         const diagnostics=(sniff.diagnostics || []).filter(item=>item.code!=='FORMAT_AMBIGUOUS');
         if(ambiguous)diagnostics.push({severity:'warning',code:'FORMAT_AMBIGUOUS',message:'几个格式候选会产生不同的表格内容；请在预览区选一个结果。'});
+        else if(delimiterWinner)diagnostics.push({severity:'info',code:'DELIMITER_VALUE_EVIDENCE',message:`已按“${selected.parser.label}”解析，因为它能在多条记录中保留完整的数值或时间字段。`});
         else if(unrecognizedProse)diagnostics.push({severity:'warning',code:'FORMAT_UNRECOGNIZED',message:'输入没有足够稳定的表格结构；可手动选择格式，原文仍完整保留。'});
         else if(lowScore)diagnostics.push({severity:'warning',code:'FORMAT_REVIEW',message:`已先按“${top.parser.label}”显示结果；识别依据较弱，请检查列结构。`});
         if(truncated && !evaluations.length && source.text.length)diagnostics.push({severity:'warning',code:'DETECTION_BUDGET',message:'识别样本中没有完整可解析记录，请手动选择格式'});
-        const ordered=ambiguous?[top,tieAlternative,...evaluations.filter(item=>item!==top&&item!==tieAlternative)]:evaluations;
-        return {format:ambiguous?'ambiguous':unrecognizedProse?'empty':top?.parser.id || 'empty',candidates:ordered.slice(0,3).map(item=>candidate(item.parser,item.score,{reason:item.reason,ambiguous,preview:item.preview})),diagnostics,sampleLength};
+        const preferred=ambiguous ? [top,closeAlternatives[0]] : delimiterWinner ? [delimiterWinner] : [];
+        const ordered=[...preferred,...evaluations.filter(item=>!preferred.includes(item))];
+        return {format:ambiguous?'ambiguous':unrecognizedProse?'empty':selected?.parser.id || 'empty',candidates:ordered.slice(0,3).map(item=>candidate(item.parser,item.score,{reason:item.reason,ambiguous,preview:item.preview})),diagnostics,sampleLength};
     },
     parse(input, options={}) {
         const source=typeof input==='string'?{text:input,html:options.html || ''}:{text:input.text || '',html:input.html || ''};

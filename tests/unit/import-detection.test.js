@@ -137,6 +137,63 @@ describe('bounded automatic detection',()=>{
     assert.equal(ImportEngine.parse(text,{format:'csv'}).format,'csv');
   });
 
+  it('resolves a comma and semicolon tie using repeated intact decimal fields before header inference',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const header='sku;price (EUR, incl. tax);tax (EUR, incl. fee)';
+    const rows=[['S-001','12,50','1,20'],['S-002','9,90','0,99'],['S-003','10,50','1,05']];
+    const input='\uFEFF'+[header,...rows.map(row=>row.join(';'))].join('\r\n');
+
+    for(const headerMode of ['auto','first-row','none']) {
+      const result=ImportEngine.parse(input,{headerMode});
+      assert.equal(result.format,'semicolon-csv');
+      assert.deepEqual(result.tables[0].rows.slice(-rows.length),rows);
+      assert.deepEqual(result.tables[0].meta.sourceRange,{start:1,end:input.length});
+      assert.equal(result.diagnostics.some(item=>item.code==='FORMAT_AMBIGUOUS'),false);
+      assert.ok(result.diagnostics.some(item=>item.code==='DELIMITER_VALUE_EVIDENCE'));
+    }
+    const manual=ImportEngine.parse(input,{format:'csv',headerMode:'first-row'});
+    assert.deepEqual(manual.tables[0].rows[0],['S-001;12','50;1','20']);
+  });
+
+  it('uses the same delimiter evidence for TSV with quoted multiline records',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const input='id\tprice (EUR, incl. tax)\ttax (EUR, incl. fee)\tnote\n'
+      +'1\t12,50\t1,20\t"a\nb"\n2\t9,90\t0,99\t"c\nd"\n3\t10,50\t1,05\t"e\nf"';
+    const result=ImportEngine.parse(input,{headerMode:'first-row'});
+    assert.equal(result.format,'excel-paste');
+    assert.deepEqual(result.tables[0].rows,[['1','12,50','1,20','a\nb'],['2','9,90','0,99','c\nd'],['3','10,50','1,05','e\nf']]);
+  });
+
+  it('preserves a repeated fractional timestamp as one field',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const input='device;time (local, ms);status (old, new)\n'
+      +'A;14:02:30,123;UP,OK\nB;16:45:11,200;UP,OK\nC;09:10:53,011;DOWN,ERR';
+    const result=ImportEngine.parse(input,{headerMode:'first-row'});
+    assert.equal(result.format,'semicolon-csv');
+    assert.deepEqual(result.tables[0].rows.map(row=>row[1]),['14:02:30,123','16:45:11,200','09:10:53,011']);
+  });
+
+  it('keeps comma-separated integers and abstains when only one column looks like comma decimals',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const integers=ImportEngine.parse('left,right\n12,50\n9,90\n10,50',{headerMode:'first-row'});
+    assert.equal(integers.format,'csv');
+    assert.deepEqual(integers.tables[0].rows,[['12','50'],['9','90'],['10','50']]);
+
+    const uncertain=ImportEngine.parse('count,rate;note\n12,50;3\n9,90;4\n10,50;5');
+    assert.equal(uncertain.format,'ambiguous');
+    assert.deepEqual(uncertain.tables,[]);
+  });
+
+  it('does not use evidence from one table region to guess how a second region should be split',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const first='sku;price (EUR, incl. tax);tax (EUR, incl. fee)\n'
+      +'S-001;12,50;1,20\nS-002;9,90;0,99\nS-003;10,50;1,05';
+    const second='count,rate;note\n12,50;3\n9,90;4\n10,50;5';
+    const result=ImportEngine.parse(first+'\n\n'+second);
+    assert.equal(result.format,'ambiguous');
+    assert.deepEqual(result.tables,[]);
+  });
+
   it('expands past a confident prose sample to find a later table region with full-source offsets',()=>{
     const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
     // The first 64-record sampling round sees only prose and settles on
