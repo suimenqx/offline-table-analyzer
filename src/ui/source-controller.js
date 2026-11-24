@@ -14,6 +14,8 @@ OTA.define('source-controller', ["runtime", "store", "dispatch", "source-snapsho
    - Cell edit invalidation on source change (App)
 */
 
+const fileReads = new WeakMap();
+const editorOwners = new WeakMap();
 const SourceController = {
     AUTO_PARSE_MAX_BYTES: 1024 * 1024,
     AUTO_PARSE_DELAY: 500,
@@ -23,8 +25,9 @@ const SourceController = {
     SOURCE_UNDO_MAX_BYTES: 16 * 1024 * 1024,
 
     readText(editor=$('rawInput')) {
-        const raw = Store.getDocument()?.raw || '';
-        if (!editor || (editor.dataset && editor.dataset.sourcePreview === 'true')) return raw;
+        const doc = Store.getDocument(), raw = doc?.raw || '';
+        if (!editor || editor.dataset?.sourcePreview === 'true' ||
+            (editorOwners.has(editor) && editorOwners.get(editor) !== doc)) return raw;
         const value = editor.value;
         if (value === raw) return raw;
         // HTMLTextAreaElement normalizes CR/CRLF to LF on display. Treat that
@@ -37,6 +40,7 @@ const SourceController = {
         if (!editor) return;
         const large = text.length > this.EDITOR_LIMIT;
         if(!editor.dataset)editor.dataset={};
+        editorOwners.set(editor, Store.getDocument());
         editor.dataset.sourcePreview = String(large);
         editor.readOnly = large;
         editor.value = large ? text.slice(0, 10000).split('\n').slice(0, 100).join('\n') : text;
@@ -52,10 +56,16 @@ const SourceController = {
 
     handlePaste(event) {
         if (!event.clipboardData) return;
+        const doc = Store.getDocument();
+        if(editorOwners.has(event.target) && editorOwners.get(event.target) !== doc) {
+            event.preventDefault();
+            this.displayText(doc?.raw || '');
+            Toast.show('已切换卡片，请在当前原文中重新粘贴', true);
+            return;
+        }
         const snapshot = this.captureClipboard(event.clipboardData);
         if(!snapshot || !snapshot.plain) return;
         const editor = event.target;
-        const doc = Store.getDocument();
         if (!doc) return;
         if (editor.dataset && editor.dataset.sourcePreview === 'true') {
             event.preventDefault();
@@ -1096,6 +1106,14 @@ const SourceController = {
         // Input changes → dispatch source:changed
         rawInput.oninput = () => {
             const text = rawInput.value;
+            const owner = editorOwners.get(rawInput);
+            if(editorOwners.has(rawInput) && owner !== Store.getDocument()) {
+                if(owner && Store.getCard(owner.id) === owner && text.length * 2 <= MAX_IMPORT_BYTES) {
+                    dispatch('source:changed', {docId:owner.id,text});
+                }
+                SourceController.displayText(Store.getDocument()?.raw || '',rawInput);
+                return;
+            }
             if (text.length * 2 > MAX_IMPORT_BYTES) {
                 SourceController.displayText(Store.getDocument()?.raw || '', rawInput);
                 Toast.show('原文超过 128 MiB 安全限制；超出部分未保留', true);
@@ -1172,12 +1190,14 @@ const SourceController = {
      */
     loadFile(file) {
         if (!file) return;
-        const targetDocId = Store.getDocument()?.id;
-        if(!targetDocId) {
+        const target = Store.getDocument();
+        if(!target) {
             Toast.show('请先新增卡片，再导入文件', true);
             return;
         }
         this.clearAutoParse();
+        const request = Symbol();
+        fileReads.set(target, request);
         if (file.size > MAX_IMPORT_BYTES) {
             Toast.show('文件超过 128 MiB 安全限制', true);
             return;
@@ -1185,14 +1205,25 @@ const SourceController = {
 
         // Update lastPaste for HTML files
         const detected = SourceController.detectFormat(file.name);
-
+        const targetDocId = target.id, revision = target.sourceRevision;
         const reader = new FileReader();
-        reader.onerror = () => Toast.show('无法读取该文件', true);
+        reader.onerror = () => {
+            if(fileReads.get(target) === request) Toast.show('无法读取该文件', true);
+        };
         reader.onload = (event) => {
-            const text = String(event.target.result || '');
-            const targetDoc = Store.state.docs.find(doc => doc.id === targetDocId);
-            if (!targetDoc) {
+            if(fileReads.get(target) !== request) return;
+            const targetDoc = Store.getCard(targetDocId);
+            if (targetDoc !== target) {
                 Toast.show('导入目标页签已关闭，已取消导入', true);
+                return;
+            }
+            if(targetDoc.sourceRevision !== revision) {
+                Toast.show('读取文件期间原文已更改，已取消导入', true);
+                return;
+            }
+            const text = String(event.target.result || '');
+            if(text.length * 2 > MAX_IMPORT_BYTES) {
+                Toast.show('文件解码后的原文超过 128 MiB 限制，已取消导入', true);
                 return;
             }
 
@@ -1233,9 +1264,9 @@ const SourceController = {
         if (!resizer || !rawInput) return;
 
         // Restore saved height
-        const savedHeight = typeof localStorage !== 'undefined'
-            ? localStorage.getItem('v16_4_inputHeight')
-            : null;
+        let savedHeight;
+        try { savedHeight = localStorage.getItem('v16_4_inputHeight'); }
+        catch { /* Editor sizing also works for memory-only sessions. */ }
         if (savedHeight) {
             const h = parseInt(savedHeight, 10);
             if (h >= 120 && h <= 600) {
@@ -1272,9 +1303,8 @@ const SourceController = {
             resizer.classList.remove('dragging');
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
-            if (typeof localStorage !== 'undefined') {
-                localStorage.setItem('v16_4_inputHeight', rawInput.style.height);
-            }
+            try { localStorage.setItem('v16_4_inputHeight', rawInput.style.height); }
+            catch { /* The resized editor remains usable for this session. */ }
         };
 
         resizer.addEventListener('mousedown', onMouseDown);

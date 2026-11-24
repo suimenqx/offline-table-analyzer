@@ -49,6 +49,24 @@ const ExportController = {
         if(bytes>BackgroundService.THRESHOLD*2)return this.runExport('正在后台生成工作区备份…',()=>BackgroundService.request('json',payload,{},'export'),prefix,'application/json','json');
         return Exporter.toJson(payload,prefix);
     },
+    backupWorkspace() {
+        if(Store.restoring)return Toast.show('正在恢复原文，请在恢复完成后备份',true);
+        const partial=Store.loadFailed;
+        if(partial && !confirm('本地工作区未能完整读取。仍要导出只包含当前内存内容的部分备份吗？'))return;
+        const state=Store.getState();
+        return this.exportJson({
+            kind:'ota-workspace',
+            schemaVersion:WORKSPACE_SCHEMA_VERSION,
+            appVersion:APP_VERSION,
+            exportedAt:new Date().toISOString(),
+            docs:state.docs, projects:state.projects, activeProjectId:state.activeProjectId,
+            nextAnalysisSeq:state.nextAnalysisSeq, globalViews:Store.getViews(),
+            preferences:{
+                theme:state.theme, copyFormat:state.copyFormat, copyWithHeaders:state.copyWithHeaders!==false,
+                persistRaw:state.persistRaw, spreadsheetSafe:state.spreadsheetSafe,
+            },
+        },this._getPrefix(partial?'partial-workspace':'workspace'));
+    },
     /**
      * Bind export buttons. Called once from App.init().
      */
@@ -127,24 +145,7 @@ const ExportController = {
 
         // Workspace backup
         const exportTabBtn = $('exportTabBtn');
-        if (exportTabBtn) exportTabBtn.onclick = () => ExportController.exportJson({
-            kind: 'ota-workspace',
-            schemaVersion: WORKSPACE_SCHEMA_VERSION,
-            appVersion: APP_VERSION,
-            exportedAt: new Date().toISOString(),
-            docs: Store.getState().docs,
-            projects: Store.getState().projects,
-            activeProjectId: Store.getState().activeProjectId,
-            nextAnalysisSeq: Store.getState().nextAnalysisSeq,
-            globalViews: Store.getViews(),
-            preferences: {
-                theme: Store.state.theme,
-                copyFormat: Store.state.copyFormat,
-                copyWithHeaders: Store.state.copyWithHeaders !== false,
-                persistRaw: Store.state.persistRaw,
-                spreadsheetSafe: Store.state.spreadsheetSafe
-            }
-        }, ExportController._getPrefix('workspace'));
+        if (exportTabBtn) exportTabBtn.onclick = () => this.backupWorkspace();
 
         const importTabBtn = $('importTabBtn');
         const fileInputTab = $('fileInputTab');

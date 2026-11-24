@@ -333,6 +333,25 @@ describe('SourceController — dispatch integration', () => {
     unsub();
   });
 
+  it('protects newer edits and newer file choices from a late file read', t => {
+    const readers=[];
+    const previous=globalThis.FileReader;
+    globalThis.FileReader=class {readAsText() {readers.push(this);}};
+    t.after(()=>{if(previous===undefined)delete globalThis.FileReader;else globalThis.FileReader=previous;});
+    const file={name:'data.csv',size:20};
+    const finish=(i,text)=>readers[i].onload({target:{result:text}});
+    SourceController.loadFile(file);
+    dispatch('source:replace',{text:'typed after opening'});
+    finish(0,'stale file');
+    assert.equal(Store.curr().raw,'typed after opening');
+    SourceController.loadFile(file);
+    SourceController.loadFile(file);
+    finish(1,'older choice');
+    assert.equal(Store.curr().raw,'typed after opening');
+    finish(2,'newer choice');
+    assert.equal(Store.curr().raw,'newer choice');
+  });
+
   it('keeps an async file import attached to its initiating tab', () => {
     Store.state.docs.push({ id: 'b', title: 'Other', raw: 'other', ui: {} });
     let reader;

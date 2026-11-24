@@ -89,6 +89,9 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 
 ### R1 — trustworthy persistence
 
+- A stale window must report a save conflict and retain its in-memory edits for backup. Desktop browsers with Web Locks serialize settings publication, snapshot cleanup and local clearing across windows. Failed saves with raw persistence enabled retain the pending-changes close warning.
+- A damaged workspace record and an unresolved raw snapshot must survive automatic saves and attempted merges. After a failed raw restore, exporting a partial workspace requires explicit selection and a distinct filename.
+
 - Schema version `22`, application version `23.2.0`. Empty `projects`/`docs` and `activeProjectId`/`activeCardId: null` are valid existing schema-22 shapes; no new persisted fields or schema bump are needed. Schema 21 migrates each old document into one project/card; explicit empty legacy backups remain empty.
 - Card labels and export naming are distinct: new default cards use unique `数据段 N` names while projects keep `Analysis N`; historical names are not rewritten. Optional schema-22 `exportTitleFromProject: true` explicitly preserves the new default main card's project-based download prefix. Missing/false keeps the old card-title policy; explicit card renaming and duplication use card names, reordering does not change the policy, and workspace backups preserve it. Old schema 20/21/22 fixtures without the field remain compatible; no result counts are persisted.
 - Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
@@ -114,6 +117,9 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - Diagnostics remain available from "Details"; material format ties and header alternatives are also actionable beside the preview, while non-blocking warnings do not interrupt analysis.
 
 ### R3 — safe imports and rendering
+
+- A file read can replace only its initiating card at the original source revision and only while it remains the latest file selection for that card. Check both file size and decoded source size before replacing the original.
+- Schema 22 backup projects must reference every supplied card exactly once. Schema 21 and earlier assign one project per legacy document and retain the raw for each occurrence of a missing or repeated document ID.
 
 - Source file bytes and `raw.length * 2` UTF-16 estimate: 128 MiB (`MAX_IMPORT_BYTES`). Workspace file and total raw estimate: 256 MiB (`MAX_WORKSPACE_BYTES`), up to 100 documents. Limits apply before replacing the current workspace.
 - Configuration imports: 5 MB limit (hardcoded in the file input handler).

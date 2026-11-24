@@ -474,6 +474,20 @@ describe('Store — workspace import', () => {
     assert.equal(Store.getDocument().id, 'b');
   });
 
+  it('rejects a backup that repeats a card reference instead of restoring another original', () => {
+    const workspace = {kind:'ota-workspace', schemaVersion:22,
+      docs:[{id:'x',raw:'first'},{id:'y',raw:'second'}], projects:[{cardIds:['x','x']}]};
+    assert.throws(()=>Store.transition('workspace:import',{workspace}),/卡片/);
+    assert.equal(Store.getDocument().id,'b');
+  });
+
+  it('keeps every original in legacy backups with missing or repeated card IDs', () => {
+    const docs=[{raw:'one'},{raw:'two'},{id:'x',raw:'three'},{id:'x',raw:'four'}];
+    Store.importWorkspace({kind:'table-tool-tabs',schemaVersion:20,docs});
+    assert.deepEqual(Store.getState().docs.map(doc=>doc.raw),docs.map(doc=>doc.raw));
+    assert.equal(new Set(Store.getState().docs.map(doc=>doc.id)).size,4);
+  });
+
   it('rejects future schema versions', () => {
     assert.throws(() => Store.importWorkspace({
       kind: 'ota-workspace', schemaVersion: 999, docs: [{}],

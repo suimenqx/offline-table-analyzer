@@ -23,6 +23,17 @@ function setup() {
 }
 
 describe('Card parse and preview UI metadata', () => {
+  it('keeps both originals when a second card switch arrives before the first editor repaint', () => {
+    const {Store,SourceController}=setup();
+    const first=Store.curr();
+    Store.transition('source:replace',{text:'first original'});
+    const second=Store.transition('card:create',{raw:'second original'});
+    SourceController.displayText(second.raw);
+    SourceController.activateCard(first.id);
+    SourceController.activateCard(second.id);
+    assert.equal(first.raw,'first original');
+    assert.equal(second.raw,'second original');
+  });
   it('searches card names without changing source order, visibility, preview scope or saved state', () => {
     const {Store,SourceController,dom}=setup();
     for(let i=0;i<7;i++) Store.transition('card:create',{title:i===3?'Orders October':`Other ${i}`});

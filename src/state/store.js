@@ -41,7 +41,18 @@ const MIGRATIONS = Object.freeze({
         // 每个旧文档成为一个工程（同 id、同标题），其中一张同名卡片；
         // 每卡 enabledViews 合并上移为工程的启用列表；globalViews 复制为每工程的 views。
         const next = Object.assign({}, payload);
-        const docs = Array.isArray(next.docs) ? next.docs.filter(d => d && typeof d === 'object') : [];
+        const original = Array.isArray(next.docs) ? next.docs.filter(doc=>doc && typeof doc==='object') : [];
+        const used = new Set(), reserved = new Set(original.map(doc=>doc.id));
+        let sequence = 0;
+        const docs = original.map(doc=>{
+            if(doc.id && !used.has(doc.id)) {
+                used.add(doc.id);
+                return doc;
+            }
+            let id;
+            do { id='legacy_card_'+(++sequence); } while(reserved.has(id));
+            return {...doc,id};
+        });
         next.projects = docs.map(doc => ({
             id: doc.id,
             title: typeof doc.title === 'string' ? doc.title : 'Analysis',
@@ -80,6 +91,22 @@ function migrateWorkspacePayload(payload) {
     return next;
 }
 
+function readStoredWorkspace(json) {
+    const data = JSON.parse(json);
+    if(!Array.isArray(data?.docs) || data.docs.some(doc => !doc || typeof doc !== 'object' ||
+        Array.isArray(doc) || (doc.raw != null && typeof doc.raw !== 'string'))) {
+        throw new Error('工作区卡片数据损坏');
+    }
+    if(data.projects != null && (!Array.isArray(data.projects) ||
+        data.projects.some(project => !project || typeof project !== 'object' || Array.isArray(project)))) {
+        throw new Error('工作区工程数据损坏');
+    }
+    if('rawExternal' in data && (typeof data.rawExternal!=='string' || !data.rawExternal)) {
+        throw new Error('工作区原文快照引用损坏');
+    }
+    return migrateWorkspacePayload(data);
+}
+
 const Store = {
     state: { schemaVersion:WORKSPACE_SCHEMA_VERSION, projects:[], docs:[], activeProjectId:null, theme:'light', nextAnalysisSeq:1, copyFormat:'default', copyWithHeaders:true, spreadsheetSafe:true, persistRaw:true, lastSavedAt:null },
     revision: 0,
@@ -95,6 +122,7 @@ const Store = {
     _notifyTimer: null, // single batched async timer
     _saveGeneration:0,
     saving:false,
+    unsavedChanges:false,
     restoring:false,
     cleaning:false,
     _storageTouched:false,
@@ -171,15 +199,22 @@ const Store = {
     init() {
         this.clearCardRemoval();
         this._rawSnapshot=null;
+        this._rawRecovery=null;
+        this.restoring=false;
+        this.loadFailed=false;
+        this.lastSaveError=null;
+        this.migratedFrom=null;
         let loaded = null;
         try {
             const current = localStorage.getItem(STORE_KEY);
-            if(current) loaded = migrateWorkspacePayload(JSON.parse(current));
+            this._settingsStorage=localStorage;
+            this._settingsJSON=current;
+            if(current!==null) loaded = readStoredWorkspace(current);
             if(!loaded) {
                 for(const key of LEGACY_STORE_KEYS) {
                     const legacy = localStorage.getItem(key);
                     if(!legacy) continue;
-                    const parsed = migrateWorkspacePayload(JSON.parse(legacy));
+                    const parsed = readStoredWorkspace(legacy);
                     if(parsed && Array.isArray(parsed.docs)) {
                         loaded = parsed;
                         this.migratedFrom = key;
@@ -221,7 +256,7 @@ const Store = {
             seenProjectIds.add(project.id);
             if(!Array.isArray(project.cardIds)) project.cardIds = [];
             project.cardIds = project.cardIds.filter(id => this.state.docs.some(d => d.id === id));
-            const orphans = this.state.docs.filter(d => !this.state.projects.some(p => p.cardIds.includes(d.id)));
+            const orphans = this.state.docs.filter(d => !this.state.projects.some(p => Array.isArray(p.cardIds) && p.cardIds.includes(d.id)));
             if(project === this.state.projects[0]) {
                 orphans.forEach(orphan => { if(!project.cardIds.includes(orphan.id)) project.cardIds.push(orphan.id); });
             }
@@ -237,10 +272,12 @@ const Store = {
         else if(loaded && loaded.rawExternal) {
             this._storageTouched=true;
             const revision=this.revision;
+            const recovery=this._rawRecovery=Symbol();
             this.restoring=true;this.loadFailed=true;
             delete this.state.rawExternal;
             this.notifyStorage(false,'正在恢复完整原文…');
             this.restorePromise=BackgroundService.storage('loadWorkspace',{key:loaded.rawExternal}).then(payload=>{
+                if(this._rawRecovery!==recovery)return false;
                 if(this.revision!==revision)throw new Error('恢复期间已有新输入；当前输入已保留，请备份后重新打开恢复旧工作区');
                 // Only source identity and raw text belong to this snapshot.
                 // Released snapshots also held obsolete UI; its correction
@@ -261,10 +298,11 @@ const Store = {
                 this.state=restored;
                 this._rawSnapshot={key:loaded.rawExternal,needsCleanup:true,docs:restored.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw}))};
                 this.state.docs.forEach((doc,index)=>this.normalizeDoc(doc,index));
-                this.restoring=false;this.loadFailed=false;this.lastSaveError=null;
+                this._rawRecovery=null;this.restoring=false;this.loadFailed=false;this.lastSaveError=null;
                 this._notify('workspace:restored',{});this._notify('state:changed',{changed:['workspace']});
                 this.notifyStorage(true,'完整原文已恢复');return true;
             }).catch(error=>{
+                if(this._rawRecovery!==recovery)return false;
                 this.restoring=false;this.lastSaveError=`原文恢复失败：${error.message}`;
                 this.notifyStorage(false,this.lastSaveError);return false;
             });
@@ -272,7 +310,13 @@ const Store = {
             // A page closed during cleanup can leave an unreferenced raw
             // snapshot. Retry cleanup when reloading the committed small stub.
             if(loaded && !loaded.rawExternal && BackgroundService.canUse())this._storageTouched=true;
-            this.save();
+            if(loaded && !this.migratedFrom && JSON.stringify(this.serializeState())===this._settingsJSON) {
+                this.storageBytes=this._settingsJSON.length*2;
+                if(this._storageTouched) {
+                    const generation=++this._saveGeneration;
+                    this._withStorageWrite(generation,()=>this._pruneRawSnapshots(null,generation));
+                }
+            } else this.save();
         }
     },
     serializeState({omitRaw=false}={}) {
@@ -288,6 +332,46 @@ const Store = {
     notifyStorage(ok, message='') {
         if(typeof document === 'undefined' || typeof document.dispatchEvent !== 'function' || typeof CustomEvent !== 'function') return;
         document.dispatchEvent(new CustomEvent('ota:storage', { detail:{ ok, message, bytes:this.storageBytes, savedAt:this.state.lastSavedAt } }));
+    },
+    _checkSettings() {
+        if(this._settingsStorage===localStorage && localStorage.getItem(STORE_KEY)!==this._settingsJSON) {
+            throw new Error('其他窗口已更改本地工作区。请先备份本页修改，再重新打开工作区');
+        }
+    },
+    _publishSettings(json) {
+        this._checkSettings();
+        localStorage.setItem(STORE_KEY,json);
+        this._settingsJSON=json;
+        this.unsavedChanges=false;
+    },
+    _withStorageWrite(generation, operation, clear=false) {
+        const execute=()=>{
+            if(!clear && generation!==this._saveGeneration)return false;
+            if(generation===this._saveGeneration)this.saving=false;
+            if(!clear)this._checkSettings();
+            return operation();
+        };
+        const failed=error=>{
+            if(generation===this._saveGeneration) {
+                this.saving=false;
+                this.lastSaveError=error.message || String(error);
+                this.notifyStorage(false,this.lastSaveError);
+            }
+            return false;
+        };
+        try {
+            const locks=typeof window!=='undefined' && window.navigator?.locks;
+            if(!locks)return execute();
+            this.saving=true;
+            return locks.request(STORE_KEY,async()=>{
+                try {
+                    const result=await execute();
+                    // A second window may publish a snapshot as soon as the lock is released.
+                    await this.cleanupPromise;
+                    return result;
+                } finally { if(generation===this._saveGeneration)this.saving=false; }
+            }).catch(failed);
+        } catch(error) {return failed(error);}
     },
     _pruneRawSnapshots(keep,generation) {
         this.cleaning=true;
@@ -309,6 +393,8 @@ const Store = {
         return this.cleanupPromise;
     },
     save() {
+        clearTimeout(this.saveTimer);this.saveTimer=null;
+        this.unsavedChanges=true;
         const generation=++this._saveGeneration;
         // This attempt supersedes earlier completion handlers, including when
         // it fails before starting I/O. No older job can own the status now.
@@ -317,6 +403,11 @@ const Store = {
             this.notifyStorage(false, this.lastSaveError || '本地工作区读取失败；请先备份或清除损坏的数据');
             return false;
         }
+        const result=this._withStorageWrite(generation,()=>this._saveWorkspace(generation));
+        if(result && typeof result.then==='function')this.savePromise=result;
+        return result;
+    },
+    _saveWorkspace(generation) {
         const rawBytes=this.state.docs.reduce((sum,doc)=>sum+(doc.raw || '').length*2,0);
         if(this.state.persistRaw!==false && rawBytes>BackgroundService.THRESHOLD*2) {
             if(rawBytes>MAX_WORKSPACE_BYTES) {this.lastSaveError='工作区原文超过 256 MiB 保存预算；请导出备份或拆分页签';this.notifyStorage(false,this.lastSaveError);return false;}
@@ -325,7 +416,7 @@ const Store = {
             if(previous && previous.docs.length===this.state.docs.length && previous.docs.every(saved=>this.state.docs.some(doc=>doc.id===saved.id && doc.sourceRevision===saved.sourceRevision && doc.raw===saved.raw))) {
                 try {
                     const stub={...metadata,lastSavedAt:new Date().toISOString(),rawExternal:previous.key};
-                    const json=JSON.stringify(stub);localStorage.setItem(STORE_KEY,json);
+                    const json=JSON.stringify(stub);this._publishSettings(json);
                     this.state.lastSavedAt=stub.lastSavedAt;this.storageBytes=json.length*2+rawBytes;this.lastSaveError=null;
                     if(previous.needsCleanup)this._pruneRawSnapshots(previous.key,generation);
                     else this.notifyStorage(true,'工作区已保存，完整原文快照已复用');
@@ -344,7 +435,7 @@ const Store = {
                 if(generation!==this._saveGeneration)return false;
                 const stub={...metadata,lastSavedAt:snapshot.lastSavedAt,rawExternal:key};
                 const json=JSON.stringify(stub);
-                localStorage.setItem(STORE_KEY,json);
+                this._publishSettings(json);
                 this._rawSnapshot={key,needsCleanup:true,docs:snapshot.docs.map(doc=>({id:doc.id,sourceRevision:doc.sourceRevision,raw:doc.raw}))};
                 this.state.lastSavedAt=snapshot.lastSavedAt;
                 this.storageBytes=json.length*2+rawBytes;this.lastSaveError=null;this.saving=false;
@@ -359,14 +450,15 @@ const Store = {
                 this.saving=false;this.lastSaveError=`大原文保存失败：${error.message || error}；当前数据仍保留，请导出备份`;
                 this.notifyStorage(false,this.lastSaveError);this._notify('workspace:saveFailed',{error:this.lastSaveError});return false;
             });
-            this.savePromise=pending;return pending;
+            return pending;
         }
         try {
             this.saving=false;this._rawSnapshot=null;
             this.state.schemaVersion = WORKSPACE_SCHEMA_VERSION;
-            this.state.lastSavedAt = new Date().toISOString();
-            const json = JSON.stringify(this.serializeState());
-            localStorage.setItem(STORE_KEY, json);
+            const savedAt = new Date().toISOString();
+            const json = JSON.stringify({...this.serializeState(),lastSavedAt:savedAt});
+            this._publishSettings(json);
+            this.state.lastSavedAt = savedAt;
             this.storageBytes = json.length * 2;
             this.lastSaveError = null;
             if(this.migratedFrom && typeof localStorage.removeItem === 'function') {
@@ -396,22 +488,23 @@ const Store = {
         this.clearCardRemoval();
         clearTimeout(this.saveTimer);this.saveTimer=null;
         const generation=++this._saveGeneration;this.saving=false;this.cleaning=false;this._rawSnapshot=null;
-        try {
+        return this._withStorageWrite(generation,()=>{
             if(typeof localStorage.removeItem === 'function') {
                 localStorage.removeItem(STORE_KEY);
+                this._settingsJSON=null;
                 LEGACY_STORE_KEYS.forEach(key => localStorage.removeItem(key));
                 localStorage.removeItem('v16_4_inputHeight');
             }
+            this._rawRecovery=null;
+            this.restoring=false;
             this.loadFailed = false;
+            this.unsavedChanges=false;
             this.lastSaveError = null;
             if(BackgroundService.canUse() || this._storageTouched) {
                 return this._pruneRawSnapshots(null,generation);
             }
             return true;
-        } catch(e) {
-            this.lastSaveError = `清除本地数据失败：${e.message || e}`;
-            return false;
-        }
+        },true);
     },
     isSafePayload(value, depth=0) {
         if(depth > 12) return false;
@@ -423,9 +516,11 @@ const Store = {
         return keys.length <= 2000 && keys.every(key => this.isSafePayload(value[key], depth + 1));
     },
     importWorkspace(payload, merge=false) {
+        if(this.restoring || (merge && this.loadFailed))throw new Error('当前工作区尚未完整恢复，请重新打开恢复原文，或使用完整备份替换');
         if(!payload || typeof payload !== 'object' || !this.isSafePayload(payload)) throw new Error('工作区文件包含不安全或过深的数据结构');
         if(!['ota-workspace','table-tool-tabs'].includes(payload.kind)) throw new Error('不是受支持的工作区文件');
-        if(!Array.isArray(payload.docs)) throw new Error('工作区卡片数量无效');
+        if(!Array.isArray(payload.docs) || payload.docs.some(doc=>!doc || typeof doc!=='object' || Array.isArray(doc))) throw new Error('工作区卡片数量无效');
+        if(payload.rawExternal)throw new Error('工作区只含本地快照引用，请选择包含完整原文的备份');
         payload = migrateWorkspacePayload(payload);
         if(!Array.isArray(payload.docs) || payload.docs.length > 100) throw new Error('工作区卡片数量无效');
         const projects = Array.isArray(payload.projects) ? payload.projects
@@ -433,17 +528,21 @@ const Store = {
         if(projects.length > 100) throw new Error('工作区超过 100 个工程或卡片预算');
         const newCards = [];
         const newProjects = [];
+        const remaining = new Map(payload.docs.map(doc => [doc?.id,doc]));
+        if(remaining.size!==payload.docs.length)throw new Error('工作区包含重复的卡片标识');
         for(const project of projects) {
             if(!project || !Array.isArray(project.cardIds)) throw new Error('工作区工程结构无效');
-            const cards = project.cardIds.map(cid => payload.docs.find(d => d && d.id === cid)).filter(Boolean);
-            if(cards.length !== project.cardIds.length) throw new Error('工作区工程引用了缺失的卡片');
             const importedProject = { id:this.generateProjectId(),
                 title: this.makeUniqueTitle(typeof project.title === 'string' && project.title ? project.title : 'Analysis', null,
                     (merge ? this.state.projects : []).concat(newProjects)),
                 cardIds:[], activeCardId:null,
                 enabledViews:Array.isArray(project.enabledViews) ? project.enabledViews.slice() : [],
                 views:Array.isArray(project.views) ? project.views.slice() : [] };
-            for(const doc of cards) {
+            for(const id of project.cardIds) {
+                const doc=remaining.get(id);
+                if(!doc)throw new Error('工作区工程引用了缺失或重复的卡片');
+                remaining.delete(id);
+                if(doc.raw != null && typeof doc.raw!=='string')throw new Error('工作区卡片原文无效');
                 const raw = typeof doc.raw === 'string' ? doc.raw : '';
                 if(raw.length * 2 > MAX_IMPORT_BYTES) throw new Error(`卡片“${doc.title || ''}”的数据超过 128 MiB 限制`);
                 const card = { id:this.generateDocId(),
@@ -458,7 +557,7 @@ const Store = {
             importedProject.activeCardId = importedProject.cardIds[0] || null;
             newProjects.push(importedProject);
         }
-        if(newCards.length < payload.docs.length) throw new Error('工作区包含未归属工程的卡片');
+        if(remaining.size) throw new Error('工作区包含未归属工程的卡片');
         const baseProjects = merge ? this.state.projects.slice() : [];
         const baseCards = merge ? this.state.docs.slice() : [];
         const nextProjects = baseProjects.concat(newProjects);
@@ -472,6 +571,7 @@ const Store = {
         this.state.activeProjectId = newProjects[0]?.id || (merge ? this.state.activeProjectId : null);
         this.state.nextAnalysisSeq = nextProjects.length ? Math.max(this.state.nextAnalysisSeq || 1, this.getMaxAnalysisNumber() + 1) : 1;
         this.loadFailed = false;
+        this._rawRecovery=null;
         this.save();
         return newCards.length;
     },

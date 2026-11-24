@@ -1022,7 +1022,7 @@ validflag Time      Level   Message                 Code
         // Keyboard shortcuts — delegated to KeyboardController
         KeyboardController.init(this);
         window.addEventListener('beforeunload',event=>{
-            if(Store.cleaning || (Store.getState().persistRaw!==false && (Store.saveTimer || Store.saving))) {
+            if(Store.cleaning || (Store.getState().persistRaw!==false && (Store.saveTimer || Store.saving || Store.unsavedChanges))) {
                 event.preventDefault();event.returnValue='';
             }
         });

@@ -276,6 +276,10 @@ The manifest places ExtractionSession after TableRegistry and before UI; it is e
 
 ## 5. Persistence and migration
 
+Store remembers the exact settings record it opened or last committed. Each settings publication checks that record, including after an asynchronous raw snapshot write. A conflicting window keeps its local edits available for backup and reports the conflict. On hosts providing Web Locks, Store holds a same-origin lock through the settings write and the completion of IndexedDB cleanup. This prevents cleanup in one window from deleting a snapshot another window is about to publish. Other hosts compare the settings before publication but lack cross-window serialization. Opening already normalized small settings can retry cleanup without changing the committed settings record.
+
+Failed raw recovery retains the saved snapshot reference on disk. Appending a backup requires a readable base workspace. A user can replace a failed workspace with a complete backup or explicitly export a partial copy of recoverable in-memory edits.
+
 `ota_v21_workspace` is the authoritative small workspace key; startup falls back to `ota_v20_workspace` and `v16_4_store`, migrating to schema 21. Large original text uses immutable IndexedDB snapshots through WorkspaceStorage on an independent Worker queue. A reference is published only after the transaction commits. Unchanged raw text reuses the same snapshot while the local settings remain authoritative; recovery combines matching document IDs/revisions with the latest settings. Missing snapshots block automatic overwrite. A legacy key is removed only after the new storage succeeds. `clearLocalData()` removes current/legacy keys, `v16_4_inputHeight`, and background raw snapshots.
 
 Writes are guarded. Quota or security failures update visible status and do not discard the in-memory workspace. If a saved JSON payload cannot be read, automatic writes are blocked so the unreadable value is not silently replaced; users may restore a backup or explicitly clear local data.

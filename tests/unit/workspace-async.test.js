@@ -20,6 +20,63 @@ function fixture() {
 }
 
 describe('Store asynchronous snapshot lifecycle',()=>{
+  it('keeps the newer window’s commit when a stale window saves or republishes a pending snapshot',async()=>{
+    const {Store,STORE_KEY,storage,calls}=fixture();
+    const pending=Store.save();
+    const other=loadModules(['store'],{localStorage:storage}).OTA.require('store').Store;
+    stores.push(other);other.init();
+    other.transition('source:replace',{text:'newer window original'});await other.save();
+    const committed=storage.getItem(STORE_KEY);
+    calls[0].resolve();
+    assert.equal(await pending,false);
+    Store.transition('source:replace',{text:'local edit'});assert.equal(await Store.save(),false);
+    assert.equal(storage.getItem(STORE_KEY),committed);
+    assert.equal(Store.curr().raw,'local edit');
+    assert.match(Store.lastSaveError,/其他窗口/);
+  });
+
+  it('refuses to merge into unresolved raw placeholders, including after a failed restore',async()=>{
+    const {Store,STORE_KEY,storage,calls}=fixture();
+    const first=Store.save();calls[0].resolve();await first;
+    const committed=storage.getItem(STORE_KEY);
+    Store.init();
+    const merge=()=>Store.transition('workspace:import',{workspace:{kind:'ota-workspace',docs:[]},merge:true});
+    assert.throws(merge,/恢复/);
+    calls[1].reject(new Error('temporarily unavailable'));await Store.restorePromise;
+    assert.throws(merge,/恢复/);
+    assert.equal(storage.getItem(STORE_KEY),committed);
+  });
+
+  it('does not offer placeholder rows as a complete backup after recovery fails',async t=>{
+    const {Store,calls,OTA,dom}=fixture();
+    const first=Store.save();calls[0].resolve();await first;
+    Store.init();calls[1].reject(new Error('missing'));await Store.restorePromise;
+    const controller=OTA.require('export-controller').ExportController;
+    const exported=t.mock.method(controller,'exportJson',()=>{});
+    const previous=globalThis.confirm;
+    t.after(()=>{ if(previous===undefined)delete globalThis.confirm;else globalThis.confirm=previous; });
+    globalThis.confirm=()=>false;
+    controller.init();
+    dom.getElementById('exportTabBtn').onclick();
+    assert.equal(exported.mock.callCount(),0);
+    globalThis.confirm=()=>true;
+    dom.getElementById('exportTabBtn').onclick();
+    assert.equal(exported.mock.callCount(),1);
+    assert.match(exported.mock.calls[0].arguments[1],/partial/);
+  });
+
+  it('does not turn damaged but readable settings into an empty saved workspace',()=>{
+    const {Store,STORE_KEY,storage}=fixture();
+    for(const json of ['{"schemaVersion":22,"docs":{}}','{"docs":[null]}','{"schemaVersion":22,"docs":[],"rawExternal":""}']) {
+      storage.setItem(STORE_KEY,json);
+      const other=loadModules(['store'],{localStorage:storage}).OTA.require('store').Store;
+      stores.push(other);
+      assert.doesNotThrow(()=>other.init());
+      assert.equal(other.loadFailed,true);
+      assert.equal(other.save(),false);
+      assert.equal(storage.getItem(STORE_KEY),json);
+    }
+  });
   it('publishes a raw reference only after durable commit and retains exact source',async()=>{
     const {Store,STORE_KEY,storage,raw,calls}=fixture();
     const old=storage.getItem(STORE_KEY);const pending=Store.save();
