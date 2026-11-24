@@ -117,28 +117,35 @@ const Joiner = {
         const pairs = this.parsePairs(cfg, L, R);
         const cols = this.buildSelectTokens(cfg.select);
         if(!pairs.length || !cols.length) return null;
-        
+
+        const existenceOnly = cfg.type === 'semi' || cfg.type === 'anti';
         const rIdx = new Map();
         const rMap = new Map(R.headers.map((h,i)=>[h,i]));
+        const rightKeys = pairs.map(pair => pair[1]);
         R.rows.forEach(r => {
-            const k = this.compositeKey(r, rMap, pairs.map(p => p[1]));
-            if(!rIdx.has(k)) rIdx.set(k,[]); rIdx.get(k).push(r);
+            const key = this.compositeKey(r, rMap, rightKeys);
+            const bucket = rIdx.get(key);
+            if(!bucket) rIdx.set(key, [r]);
+            else if(!existenceOnly) bucket.push(r);
         });
 
         const rows = [];
         const append=value=>{if(rows.length>=this.MAX_ROWS || (rows.length+1)*cols.length>Math.min(this.MAX_CELLS,limits.maxCells ?? this.MAX_CELLS))throw new Error('JOIN 结果超过行数或单元格预算，请减少显示表或收紧关联条件');rows.push(value);};
-        const matchedRight = new Set();
+        const matchedRight = ['right','full'].includes(cfg.type) ? new Set() : null;
         const lMap = new Map(L.headers.map((h,i)=>[h,i]));
+        const leftKeys = pairs.map(pair => pair[0]);
         L.rows.forEach(lr => {
-            const k = this.compositeKey(lr, lMap, pairs.map(p => p[0]));
+            const k = this.compositeKey(lr, lMap, leftKeys);
             const matches = rIdx.get(k);
-            if(matches && matches.length) {
-                matches.forEach(rr => matchedRight.add(rr));
+            if(matches) {
                 if(cfg.type === 'semi') append({l:lr, r:matches[0]});
-                else if(cfg.type !== 'anti') matches.forEach(rr => append({l:lr, r:rr}));
+                else if(cfg.type !== 'anti') matches.forEach(rr => {
+                    matchedRight?.add(rr);
+                    append({l:lr, r:rr});
+                });
             } else if(['left','full','anti'].includes(cfg.type)) append({l:lr, r:null});
         });
-        if(['right','full'].includes(cfg.type)) R.rows.forEach(rr => { if(!matchedRight.has(rr)) append({l:null, r:rr}); });
+        if(matchedRight) R.rows.forEach(rr => { if(!matchedRight.has(rr)) append({l:null, r:rr}); });
 
         const headers = TableUtils.ensureUniqueHeaders(cols.map(t => t.alias || t.col || t.raw));
         const resRows = rows.map(({l, r}) => cols.map(t => {

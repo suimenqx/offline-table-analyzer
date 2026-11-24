@@ -3,6 +3,7 @@
  */
 import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert/strict';
+import { runInNewContext } from 'node:vm';
 import { loadModules } from '../helpers/load-modules.mjs';
 
 const { OTA } = loadModules(['joiner']);
@@ -51,6 +52,42 @@ describe('JOIN types', () => {
     const r = Joiner.run(basic, cfg('anti'));
     assert.equal(r.rows.length, 1);
     assert.equal(r.rows[0][0], '3');
+  });
+});
+
+describe('Duplicate JOIN keys', () => {
+  const tables = [
+    { name: 'L', headers: ['id', 'value'], rows: [['x', 'a'], ['y', 'b'], ['x', 'c']] },
+    { name: 'R', headers: ['id', 'name'], rows: [['z', 'u'], ['x', 'first'], ['z', 'v'], ['x', 'second']] },
+  ];
+  const run = (type, limits) => Joiner.run(tables, cfg(type), [], [], limits).rows;
+
+  it('keeps left order and projects the first right match for semi joins', () => {
+    assert.deepEqual(run('semi', { maxCells: 6 }), [['x', 'a', 'first'], ['x', 'c', 'first']]);
+    assert.throws(() => run('semi', { maxCells: 5 }), /预算/);
+    assert.deepEqual(run('anti', { maxCells: 3 }), [['y', 'b', '']]);
+  });
+
+  it('preserves all matching pairs and unmatched right rows in source order', () => {
+    assert.deepEqual(run('full'), [
+      ['x', 'a', 'first'], ['x', 'a', 'second'], ['y', 'b', ''],
+      ['x', 'c', 'first'], ['x', 'c', 'second'], ['', '', 'u'], ['', '', 'v'],
+    ]);
+  });
+
+  it('handles billions of potential matches in existence joins', () => {
+    const count = 80000;
+    const repeated = tables.map(table => ({
+      ...table, rows: Array.from({ length: count }, (_, i) => ['x', String(i)]),
+    }));
+    for (const type of ['semi', 'anti']) {
+      // Bound a synchronous regression that would otherwise visit 6.4 billion pairs.
+      const result = runInNewContext('Joiner.run(tables, config)', {
+        Joiner, tables: repeated, config: cfg(type),
+      }, { timeout: 10000 });
+      assert.equal(result.rows.length, type === 'semi' ? count : 0);
+      if (type === 'semi') assert.deepEqual(result.rows.at(-1), ['x', String(count - 1), '0']);
+    }
   });
 });
 
