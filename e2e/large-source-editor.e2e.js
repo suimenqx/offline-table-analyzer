@@ -8,6 +8,42 @@ test.beforeEach(async ({page}) => {
   await page.locator('#autoParseToggle').uncheck();
 });
 
+test('原文输入框聚焦时边框保持原色，标题提示键盘焦点', async ({page}) => {
+  const inline = page.locator('#rawInput');
+  const draft = page.locator('#fullSourceInput');
+  const frame = page.locator('.source-editor-body');
+  const label = page.locator('#sourceEditorLabel');
+  const title = page.locator('#sourceEditorTitle');
+  const borderColor = node => getComputedStyle(node).borderTopColor;
+  await page.emulateMedia({reducedMotion:'reduce'});
+  for (const theme of ['light', 'dark']) {
+    if (await page.locator('html').getAttribute('data-theme') !== theme) await page.locator('#themeBtn').click();
+    const inlineBorder = await inline.evaluate(borderColor);
+    await inline.click();
+    await expect(inline).toBeFocused();
+    await expect(inline).toHaveCSS('border-top-color', inlineBorder);
+    await expect(inline).toHaveCSS('outline-style', 'none');
+    await expect(inline).toHaveCSS('box-shadow', 'none');
+    await inline.fill('one\ntwo');
+    await inline.press('Shift+Tab');
+    await expect(label).toHaveCSS('text-decoration-line', 'none');
+    await page.keyboard.press('Tab');
+    await expect(inline).toBeFocused();
+    await expect(label).toHaveCSS('text-decoration-line', 'underline');
+    await page.getByRole('button', {name:'编辑完整原文', exact:true}).click();
+    await draft.press('Shift+Tab');
+    await expect(title).toHaveCSS('text-decoration-line', 'none');
+    const frameBorder = await frame.evaluate(borderColor);
+    await page.keyboard.press('Tab');
+    await expect(draft).toBeFocused();
+    await expect(frame).toHaveCSS('border-top-color', frameBorder);
+    await expect(draft).toHaveCSS('outline-style', 'none');
+    await expect(draft).toHaveCSS('box-shadow', 'none');
+    await expect(title).toHaveCSS('text-decoration-line', 'underline');
+    await draft.press('Escape');
+  }
+});
+
 test('完整原文的行号随草稿、滚动和自动换行对齐', async ({page}) => {
   const editor = page.locator('#rawInput');
   const draft = page.locator('#fullSourceInput');

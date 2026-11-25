@@ -205,7 +205,6 @@
         .source-editor-tools-panel:not([open]) + .source-editor-feedback:empty { min-height:0; padding:0; }
         .copy-format-select { height: 28px; min-width: 112px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 12px; padding: 0 8px; }
         .source-editor-body { position:relative; display:flex; flex:1; min-height:0; margin:10px 12px; overflow:hidden; border:1px solid var(--border); border-radius:8px; }
-        .source-editor-body:focus-within { border-color:var(--primary); }
         .source-line-gutter { flex:none; overflow:hidden; border-right:1px solid var(--border); background:var(--bg-elevated); color:var(--text-mid); user-select:none; }
         #sourceLineNumbers, #fullSourceInput, #sourceWrapMeasure { margin:0; font:13px/20px var(--font-mono); letter-spacing:normal; tab-size:4; }
         #sourceLineNumbers { padding:0 9px; min-width:calc(var(--source-line-digits, 2) * 1ch + 18px); text-align:right; }
@@ -469,7 +468,12 @@
         .source-drop-zone { border: 1px dashed transparent; border-radius: 10px; transition: border-color .15s, background .15s; }
         .source-drop-zone.drag-over { border-color: var(--primary); background: var(--primary-soft); }
         #rawInput { min-height: 120px; height: clamp(120px, 20vh, 190px); max-height: 520px; padding: 11px; background: var(--bg-elevated); border: 1px solid transparent !important; border-radius: 9px !important; }
-        #rawInput:focus { border-color: var(--primary) !important; background: var(--bg-card); }
+        #rawInput:focus, #fullSourceInput:focus { outline:none; box-shadow:none; }
+        .source-panel:has(#rawInput:focus-visible) .source-editor-label,
+        .source-editor-shell:has(#fullSourceInput:focus-visible) #sourceEditorTitle {
+            text-decoration:underline 1px var(--text-mid);
+            text-underline-offset:2px;
+        }
         .source-actions { display: grid; grid-template-columns: 1fr auto auto; gap: 7px; align-items: center; }
         .source-options { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, .78fr); gap: 7px; margin-top: 8px; }
         .source-options .format-select { width: 100%; }
