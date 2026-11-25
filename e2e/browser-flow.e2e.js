@@ -81,6 +81,39 @@ test('paste, parse, filter, join, copy, and export the offline release', async (
   expect(unexpectedRequests).toEqual([]);
 });
 
+test('toggle clipboard headers directly from the toolbar for the current selection', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.goto('/index.html');
+  const headers = page.getByRole('switch', { name: '包含表头' });
+  await expect(headers).toBeVisible();
+  await expect(headers).toBeChecked();
+  await page.locator('#autoParseToggle').uncheck();
+  await page.locator('#rawInput').fill('id,name\n001,Alice');
+  await page.locator('#parseBtn').click();
+  await page.locator('#previewArea tbody td').first().click();
+  await page.keyboard.press('Control+A');
+
+  await headers.click();
+  await expect(headers).not.toBeChecked();
+  await page.keyboard.press('Control+C');
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('001\tAlice');
+
+  await page.reload();
+  await expect(headers).not.toBeChecked();
+  await page.locator('#copySettingsBtn').click();
+  for (const format of ['json-expanded', 'lua-inline']) {
+    await page.locator('#copyFormatSelect').selectOption(format);
+    await expect(headers).toBeChecked();
+    await expect(headers).toBeDisabled();
+  }
+  await page.locator('#copyFormatSelect').selectOption('csv');
+  await page.locator('#copySettingsCloseBtn').click();
+  await expect(headers).toBeEnabled();
+  await expect(headers).not.toBeChecked();
+  await headers.press('Space');
+  await expect(headers).toBeChecked();
+});
+
 test('parse JSON records and copy both JSON layouts', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin:'http://127.0.0.1:4173' });
   await page.goto('/index.html');

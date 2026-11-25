@@ -74,7 +74,6 @@ const ExportController = {
         // App supplies source preparation; export never reaches into App state.
         this._prepareSource=prepareSource;
         // Copy settings popover
-        const copyPreferences = $('copyPreferences');
         const copySettingsBtn = $('copySettingsBtn');
         const copySettingsPopover = $('copySettingsPopover');
         const copySettingsCloseBtn = $('copySettingsCloseBtn');
@@ -95,9 +94,7 @@ const ExportController = {
             if(copySettingsCloseBtn) copySettingsCloseBtn.onclick = () => setCopySettingsOpen(false);
             if(typeof document !== 'undefined' && document.addEventListener) {
                 document.addEventListener('click', (e) => {
-                    const inside = copyPreferences && typeof copyPreferences.contains === 'function'
-                        ? copyPreferences.contains(e.target) : false;
-                    if(!copySettingsPopover.classList.contains('hidden') && !inside) {
+                    if(!copySettingsPopover.classList.contains('hidden') && !copySettingsPopover.contains(e.target)) {
                         setCopySettingsOpen(false);
                     }
                 });
@@ -121,9 +118,8 @@ const ExportController = {
 
         const copyHeadersToggle = $('copyHeadersToggle');
         if (copyHeadersToggle) {
-            copyHeadersToggle.checked = Store.state.copyWithHeaders !== false;
-            copyHeadersToggle.onchange = (e) => {
-                dispatch('ui:copyHeaders', { enabled: e.target.checked });
+            copyHeadersToggle.onclick = () => {
+                dispatch('ui:copyHeaders', { enabled: Store.getState().copyWithHeaders === false });
             };
         }
 

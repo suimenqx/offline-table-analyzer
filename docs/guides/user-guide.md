@@ -389,7 +389,9 @@ The undo/redo history is cleared when you switch tabs or re-parse.
 
 ### 12.2 Copy format
 
-Choose the clipboard text format from the dropdown in the top toolbar:
+Use **包含表头** beside the copy format button in the top toolbar to include or omit column names when copying a selection. JSON and Lua use the column names as field names and keep this switch on. Switching back to a tabular format restores your preference.
+
+The copy format menu offers the following clipboard text formats.
 
 | Format | Clipboard text |
 | --- | --- |

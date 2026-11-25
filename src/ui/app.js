@@ -608,29 +608,13 @@ const App = {
     syncCopyHeaderControl() {
         const el = $('copyHeadersToggle');
         if(!el) return;
-        const format = Store.state.copyFormat || 'default';
-        const needsHeaders = ClipboardFormatter.isRecordFormat(format);
-        const includeHeaders = needsHeaders || Store.state.copyWithHeaders !== false;
-        el.checked = includeHeaders;
+        const { copyFormat, copyWithHeaders } = Store.getState();
+        const needsHeaders = ClipboardFormatter.isRecordFormat(copyFormat);
+        el.setAttribute('aria-checked', String(needsHeaders || copyWithHeaders !== false));
         el.disabled = needsHeaders;
-        const row = el.closest ? el.closest('.copy-settings-row') : null;
-        const hint = $('copyHeaderHint');
-        if(row) {
-            row.classList.toggle('is-disabled', needsHeaders);
-            row.title = needsHeaders
-                ? 'JSON 和 Lua 格式使用表头作为字段名，因此始终包含表头'
-                : '复制选中区域时是否包含列名';
-        }
-        if(hint) hint.textContent = needsHeaders ? '字段名依赖表头' : '复制选中区域时包含列名';
-
-        const trigger = $('copySettingsBtn');
-        const dot = $('copyHeaderStateDot');
-        const customized = !needsHeaders && !includeHeaders;
-        if(trigger) {
-            trigger.classList.toggle('is-customized', customized);
-            trigger.title = customized ? '复制设置：不含表头' : '复制设置';
-        }
-        if(dot) dot.classList.toggle('hidden', !customized);
+        el.title = needsHeaders
+            ? 'JSON 和 Lua 格式使用表头作为字段名，因此始终包含表头'
+            : '复制选中区域时是否包含列名';
     },
 
     getParseOptions() {

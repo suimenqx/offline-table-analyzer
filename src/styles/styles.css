@@ -472,19 +472,18 @@
         .parse-status.error .parse-status-dot { background: var(--danger); }
         .parse-status-text { flex: 1; min-width: 0; }
         .main-content { background: var(--bg-app); }
-        .top-nav { min-height: 58px; height: auto; padding: 9px 14px; box-shadow: none; gap: 14px; }
-        .doc-tabs { max-width: none; flex: 1; min-width: 0; }
+        .top-nav { min-height: 58px; height: auto; padding: 9px 14px; box-shadow: none; flex-wrap: wrap; gap: 4px 14px; }
+        .doc-tabs { max-width: none; flex: 1 1 80px; min-width: 0; }
         .doc-tab { height: 34px; border-radius: 8px; flex: 0 0 auto; }
         .doc-tab.active { color: var(--text-strong); background: var(--bg-elevated); border-color: var(--border); }
-        .workspace-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+        .workspace-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; max-width: 100%; flex-wrap: wrap; }
         .workspace-actions .action-divider { height: 22px; width: 1px; background: var(--border); margin: 0 2px; }
         .copy-preferences { position: relative; display: inline-flex; align-items: center; gap: 6px; }
         .copy-settings-trigger { display: inline-flex; align-items: center; gap: 6px; height: 28px; min-width: 112px; padding: 0 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 12px; font-weight: 650; white-space: nowrap; }
         .copy-settings-trigger:hover { background: var(--bg-hover); border-color: var(--border-strong); color: var(--text-strong); }
-        .copy-settings-trigger.is-customized { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 35%, var(--border)); background: var(--primary-soft); }
+        .copy-headers-toggle { gap: 6px; }
         .copy-settings-icon { width: 14px; height: 14px; flex: 0 0 auto; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
         .copy-settings-chevron { margin-left: auto; color: var(--text-weak); font-size: 14px; line-height: 1; transform: translateY(-1px); }
-        .copy-settings-dot { width: 5px; height: 5px; margin-left: -2px; border-radius: 50%; background: var(--primary); }
         .copy-settings-popover { position: absolute; top: calc(100% + 8px); right: 0; z-index: var(--z-float); display: flex; flex-direction: column; gap: 10px; width: 240px; padding: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-md); }
         .copy-settings-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-strong); font-size: 12px; }
         .copy-settings-head .icon-btn { width: 24px; height: 24px; border-radius: 6px; font-size: 16px; }
@@ -498,11 +497,10 @@
         .copy-settings-row input:focus-visible + .copy-header-switch { outline: 2px solid var(--primary); outline-offset: 2px; }
         .copy-header-switch { position: relative; width: 24px; height: 14px; border-radius: 999px; background: var(--border-strong); transition: background .12s ease; }
         .copy-header-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .18); transition: transform .12s ease; }
-        .copy-settings-row input:checked + .copy-header-switch { background: var(--primary); }
-        .copy-settings-row input:checked + .copy-header-switch::after { transform: translateX(10px); }
-        .copy-settings-row input:disabled + .copy-header-switch { background: var(--text-weak); opacity: .55; }
-        .copy-settings-row.is-disabled { cursor: default; }
-        .copy-settings-row.is-disabled .copy-settings-row-label, .copy-settings-row.is-disabled .copy-settings-row-hint { color: var(--text-weak); }
+        .copy-settings-row input:checked + .copy-header-switch,
+        .copy-headers-toggle[aria-checked="true"] .copy-header-switch { background: var(--primary); }
+        .copy-settings-row input:checked + .copy-header-switch::after,
+        .copy-headers-toggle[aria-checked="true"] .copy-header-switch::after { transform: translateX(10px); }
         .workspace-subbar { min-height: 44px; padding: 7px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg-card) 72%, var(--bg-app)); }
         .workspace-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .workspace-summary strong { font-size: 12px; }
@@ -575,10 +573,10 @@
             .sidebar.collapsed .version-pill { display: inline-flex; }
             .main-content { width: 100%; }
             .top-nav { padding: 7px 9px; }
-            .workspace-actions { gap: 3px; }
-            .copy-preferences { gap: 3px; }
+            .workspace-actions { position: relative; gap: 3px; }
+            .copy-preferences { position: static; display: inline-grid; gap: 3px; }
             .copy-settings-trigger { min-width: 0; padding: 0 7px; }
-            .copy-settings-popover { position: fixed; top: 58px; right: 9px; width: min(240px, calc(100vw - 18px)); }
+            .copy-settings-popover { width: min(240px, calc(100vw - 18px)); }
             .workspace-actions .export-secondary { display: none; }
             .workspace-subbar { padding: 7px 10px; }
             .workspace-state { display: none; }
@@ -636,7 +634,6 @@
 .menu-setting input { margin:0; width:16px; height:16px; accent-color:var(--primary); }
 .acc-head { width:100%; height:auto; border:0; border-radius:0; text-align:left; }
 .rule-help-row { display:flex; justify-content:flex-end; margin-bottom:6px; }
-.copy-settings-row + .copy-settings-row { margin-top:6px; }
 .data-card-list { position:relative; display:flex; flex-direction:column; gap:8px; max-height:min(220px, 28vh); overflow-y:auto; overscroll-behavior:contain; padding:3px; scrollbar-gutter:stable; }
 .data-card-list.is-expanded { max-height:min(480px, 55vh); }
 .card-search-row { display:flex; gap:6px; margin-bottom:6px; }
