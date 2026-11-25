@@ -1427,7 +1427,14 @@ validflag Time      Level   Message                 Code
         }
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         if(CellEditController.activeEditor) CellEditController.finish(true);
-        const div = $('previewArea'); div.innerHTML = '';
+        const div = $('previewArea');
+        const focusedHeader = document.activeElement?.closest?.('[data-filter-column]');
+        this.renderPreviewContent(div, processedOverride);
+        FilterController.syncPreview(div, focusedHeader);
+    },
+
+    renderPreviewContent(div, processedOverride) {
+        div.innerHTML = '';
         this.rendered = []; Select.clear();
         TableRegistry.setPreview([]);this.updateWorkspaceSummary();
         this.syncPreviewTablePicker([], false);
@@ -1504,13 +1511,15 @@ validflag Time      Level   Message                 Code
                 modeTag.textContent = `单表查看 · 共 ${combined.length} 表`;
                 meta.appendChild(modeTag);
             }
-            if(filterCount>0) { 
-                const fTag = createEl('span','meta-tag'); 
-                fTag.textContent = `列过滤: ${filterCount}`; 
-                fTag.style.cursor = 'pointer';
-                fTag.title = '清除本表全部列过滤';
-                fTag.onclick = () => FilterController.clearTableFilters(t.name);
-                meta.appendChild(fTag); 
+            if(filterCount > 0) {
+                const clear = createEl('button', 'sm meta-tag');
+                clear.type = 'button';
+                clear.textContent = `清除本表列筛选（${filterCount}）`;
+                clear.onclick = () => {
+                    card.querySelector('[data-filter-column]')?.focus({ preventScroll:true });
+                    FilterController.clearTableFilters(t.name);
+                };
+                meta.appendChild(clear);
             }
             const tableActions = createEl('span', 'table-meta-actions');
             const collapseBtn = createEl('button', 'icon-btn sm table-collapse-toggle');
@@ -1545,6 +1554,11 @@ validflag Time      Level   Message                 Code
             const tableScroll = createEl('div', 'table-scroll');
             tableScroll.appendChild(tbl);
             card.appendChild(tableScroll);
+            if(totalRows === 0) {
+                const empty = createEl('p', 'table-empty-rows');
+                empty.textContent = TableUtils.rowCount(t) > 0 ? '没有符合筛选条件的行' : '此表没有数据行';
+                card.appendChild(empty);
+            }
             if(totalPages > 1) {
                 const pager = createEl('div', 'table-pagination');
                 const info = createEl('span');

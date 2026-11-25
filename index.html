@@ -265,6 +265,8 @@
         .filter-popover { position: fixed; z-index: var(--z-modal); background: var(--bg-card); border: 1px solid var(--border); box-shadow: var(--shadow-md); border-radius: 7px; width: 240px; padding: 6px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
         .filter-popover .fp-header { display: flex; align-items: center; justify-content: space-between; font-weight: 800; color: var(--text-strong); font-size: 12px; line-height: 1.1; }
         .filter-popover .fp-header button { border: none; background: transparent; cursor: pointer; font-size: 14px; color: var(--text-tertiary); line-height: 1; }
+        .filter-popover { max-width: calc(100vw - 20px); max-height: calc(100vh - 20px); overflow: auto; }
+        #fpTitle { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         .filter-popover input { width: 100%; height: 28px; border: 1px solid var(--border); border-radius: 5px; padding: 4px 6px; font-size: 12px; background: var(--bg-input); color: var(--text-main); }
         .filter-popover .fp-actions { display: flex; justify-content: flex-end; gap: 4px; }
         .filter-popover .fp-actions .sm, .filter-popover .fp-actions .primary.sm { padding: 2px 8px; font-size: 11px; height: 26px; }
@@ -531,6 +533,7 @@
         th { background: var(--bg-elevated); }
         .table-pagination { min-height: 40px; padding: 6px 10px; display: flex; align-items: center; justify-content: flex-end; gap: 7px; border-top: 1px solid var(--border); background: var(--bg-card); color: var(--text-weak); font-size: 11px; }
         .table-pagination button { height: 26px; min-width: 28px; padding: 0 7px; }
+        .table-empty-rows { margin: 0; padding: 16px; color: var(--text-secondary); font-size: 12px; text-align: center; }
         .statusbar { min-height: 30px; padding: 4px 14px; border-top: 1px solid var(--border); background: var(--bg-card); display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-weak); font-size: 10px; }
         .statusbar-group { display: flex; align-items: center; gap: 12px; min-width: 0; }
         .status-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
@@ -1081,12 +1084,12 @@
 <div id="modalOverlay" class="modal-bg hidden" role="presentation">
     <div id="modalContent" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
 </div>
-<div id="filterPopover" class="filter-popover hidden">
+<div id="filterPopover" class="filter-popover hidden" role="dialog" aria-labelledby="fpTitle">
     <div class="fp-header">
         <span id="fpTitle"></span>
         <button id="fpClose" aria-label="关闭">×</button>
     </div>
-    <input id="fpInput" placeholder="子串匹配 或 /正则/，忽略大小写">
+    <input id="fpInput" aria-label="列筛选条件" placeholder="包含文本或 /正则/，忽略大小写" autocomplete="off">
     <div class="fp-actions">
         <button class="sm" id="fpClear">清除</button>
         <button class="primary sm" id="fpApply">应用</button>
@@ -7759,6 +7762,8 @@ const TableBuilder = {
         res.headers.forEach((h, hIdx) => {
             const th = createEl('th');
             th.classList.add('filterable-th');
+            th.dataset.filterColumn = h;
+            th.setAttribute('aria-haspopup', 'dialog');
             th.tabIndex = 0;
             th.setAttribute('role', 'button');
             const hasFilter = colFilters[h] && colFilters[h].toString().trim();
@@ -7864,6 +7869,8 @@ const TableBuilder = {
         res.headers.forEach((h, cIdx) => {
             const tr = createEl('tr');
             const hCell = createEl('td', 'row-header-cell filterable-th');
+            hCell.dataset.filterColumn = h;
+            hCell.setAttribute('aria-haspopup', 'dialog');
             hCell.tabIndex = 0;
             hCell.setAttribute('role', 'button');
             const hasFilter = colFilters[h] && colFilters[h].toString().trim();
@@ -8057,7 +8064,7 @@ const Select = {
     },
     getColumnHeaderText(tbl, c) {
         const ths = tbl.querySelectorAll('thead th');
-        return ths[c] ? ths[c].textContent : '';
+        return ths[c]?.dataset?.filterColumn ?? ths[c]?.textContent ?? '';
     },
     getRowHeaderColumnText(tbl, c) {
         const ths = tbl.querySelectorAll('thead th');
@@ -11370,6 +11377,8 @@ const FilterController = {
     open: false,
     table: null,
     column: null,
+    anchor: null,
+    docId: null,
     pop: null,
     input: null,
     title: null,
@@ -11390,22 +11399,22 @@ const FilterController = {
         const btnClear = $('fpClear');
         const btnClose = $('fpClose');
 
-        const hide = () => FilterController._hide();
+        const commit = value => {
+            if (this.open && this.docId === Store.getDocument()?.id && this.anchor?.isConnected) {
+                dispatch('filter:column', { table:this.table, column:this.column, value });
+            }
+            this._hide(true);
+        };
+        if (btnClose) btnClose.onclick = () => this._hide(true);
+        if (btnClear) btnClear.onclick = () => commit('');
+        if (btnApply) btnApply.onclick = () => commit(this.input.value.trim());
 
-        if (btnClose) btnClose.onclick = hide;
-        if (btnClear) btnClear.onclick = () => {
-            if (!FilterController.table || !FilterController.column) { hide(); return; }
-            dispatch('filter:column', { table: FilterController.table, column: FilterController.column, value: '' });
-            hide();
-            dispatch('preview:renderRequested', {});
-        };
-        if (btnApply) btnApply.onclick = () => {
-            if (!FilterController.table || !FilterController.column) { hide(); return; }
-            const val = (FilterController.input.value || '').trim();
-            dispatch('filter:column', { table: FilterController.table, column: FilterController.column, value: val });
-            hide();
-            dispatch('preview:renderRequested', {});
-        };
+        this.input.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229 ||
+                event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+            event.preventDefault();
+            commit(this.input.value.trim());
+        });
 
         // Global listeners for dismiss
         document.addEventListener('click', (e) => {
@@ -11413,17 +11422,24 @@ const FilterController = {
             if (pop.contains(e.target)) return;
             const th = e.target.closest && e.target.closest('.filterable-th');
             if (th) return;
-            hide();
+            this._hide();
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && FilterController.open) hide();
+            if (e.key === 'Escape' && this.open && !e.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                this._hide(pop.contains(document.activeElement));
+            }
+        });
+        document.addEventListener('focusin', event => {
+            if (this.open && !pop.contains(event.target)) this._hide();
         });
 
         const preview = $('previewArea');
         if (preview) preview.addEventListener('scroll', () => {
-            if (FilterController.open) hide();
-        });
+            if (this.open) this._hide(pop.contains(document.activeElement));
+        }, true);
+        window.addEventListener('resize', () => { if (this.open) this._position(); });
     },
 
     /**
@@ -11447,22 +11463,39 @@ const FilterController = {
         FilterController.open = true;
         FilterController.table = tableName;
         FilterController.column = colName;
+        this.anchor = anchorEl;
+        this.docId = doc.id;
 
         pop.classList.remove('hidden');
-
-        // Position near the header
-        const rect = anchorEl.getBoundingClientRect();
-        const popRect = pop.getBoundingClientRect();
-        const top = Math.max(10, rect.bottom + 6);
-        let left = rect.left;
-        const maxLeft = window.innerWidth - popRect.width - 10;
-        if (left > maxLeft) left = maxLeft;
-        if (left < 10) left = 10;
-        pop.style.top = `${top}px`;
-        pop.style.left = `${left}px`;
-
-        input.focus();
+        this._position();
+        input.focus({ preventScroll:true });
         input.select();
+    },
+
+    _position() {
+        const rect = this.anchor.getBoundingClientRect();
+        const box = this.pop.getBoundingClientRect();
+        const bottomLimit = window.innerHeight - box.height - 10;
+        const top = rect.bottom + 6 <= bottomLimit ? rect.bottom + 6 : rect.top - box.height - 6;
+        this.pop.style.top = Math.max(10, Math.min(top, bottomLimit)) + 'px';
+        this.pop.style.left = Math.max(10, Math.min(rect.left, window.innerWidth - box.width - 10)) + 'px';
+    },
+
+    // A preview refresh replaces the header nodes, including after a Worker query.
+    syncPreview(preview, focusedHeader) {
+        const oldHeader = this.open ? this.anchor : focusedHeader;
+        if (!oldHeader) return;
+        const tableName = oldHeader.closest('table')?.dataset.tableName;
+        const table = Array.from(preview.querySelectorAll('table')).find(el => el.dataset.tableName === tableName);
+        const header = table && Array.from(table.querySelectorAll('[data-filter-column]'))
+            .find(el => el.dataset.filterColumn === oldHeader.dataset.filterColumn);
+        if (this.open) {
+            if (!header || this.docId !== Store.getDocument()?.id) { this._hide(); return; }
+            this.anchor = header;
+            this._position();
+        } else {
+            header?.focus({ preventScroll:true });
+        }
     },
 
     /**
@@ -11483,11 +11516,15 @@ const FilterController = {
         dispatch('preview:renderRequested', {});
     },
 
-    _hide() {
+    _hide(restoreFocus = false) {
+        const anchor = this.anchor;
         if (FilterController.pop) FilterController.pop.classList.add('hidden');
         FilterController.open = false;
         FilterController.table = null;
         FilterController.column = null;
+        this.anchor = null;
+        this.docId = null;
+        if (restoreFocus && anchor?.isConnected) anchor.focus({ preventScroll:true });
     }
 };
 
@@ -13527,7 +13564,14 @@ validflag Time      Level   Message                 Code
         }
         if($('previewArea'))$('previewArea').setAttribute('aria-busy','false');
         if(CellEditController.activeEditor) CellEditController.finish(true);
-        const div = $('previewArea'); div.innerHTML = '';
+        const div = $('previewArea');
+        const focusedHeader = document.activeElement?.closest?.('[data-filter-column]');
+        this.renderPreviewContent(div, processedOverride);
+        FilterController.syncPreview(div, focusedHeader);
+    },
+
+    renderPreviewContent(div, processedOverride) {
+        div.innerHTML = '';
         this.rendered = []; Select.clear();
         TableRegistry.setPreview([]);this.updateWorkspaceSummary();
         this.syncPreviewTablePicker([], false);
@@ -13604,13 +13648,15 @@ validflag Time      Level   Message                 Code
                 modeTag.textContent = `单表查看 · 共 ${combined.length} 表`;
                 meta.appendChild(modeTag);
             }
-            if(filterCount>0) { 
-                const fTag = createEl('span','meta-tag'); 
-                fTag.textContent = `列过滤: ${filterCount}`; 
-                fTag.style.cursor = 'pointer';
-                fTag.title = '清除本表全部列过滤';
-                fTag.onclick = () => FilterController.clearTableFilters(t.name);
-                meta.appendChild(fTag); 
+            if(filterCount > 0) {
+                const clear = createEl('button', 'sm meta-tag');
+                clear.type = 'button';
+                clear.textContent = `清除本表列筛选（${filterCount}）`;
+                clear.onclick = () => {
+                    card.querySelector('[data-filter-column]')?.focus({ preventScroll:true });
+                    FilterController.clearTableFilters(t.name);
+                };
+                meta.appendChild(clear);
             }
             const tableActions = createEl('span', 'table-meta-actions');
             const collapseBtn = createEl('button', 'icon-btn sm table-collapse-toggle');
@@ -13645,6 +13691,11 @@ validflag Time      Level   Message                 Code
             const tableScroll = createEl('div', 'table-scroll');
             tableScroll.appendChild(tbl);
             card.appendChild(tableScroll);
+            if(totalRows === 0) {
+                const empty = createEl('p', 'table-empty-rows');
+                empty.textContent = TableUtils.rowCount(t) > 0 ? '没有符合筛选条件的行' : '此表没有数据行';
+                card.appendChild(empty);
+            }
             if(totalPages > 1) {
                 const pager = createEl('div', 'table-pagination');
                 const info = createEl('span');

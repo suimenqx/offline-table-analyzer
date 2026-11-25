@@ -15,6 +15,8 @@ const FilterController = {
     open: false,
     table: null,
     column: null,
+    anchor: null,
+    docId: null,
     pop: null,
     input: null,
     title: null,
@@ -35,22 +37,22 @@ const FilterController = {
         const btnClear = $('fpClear');
         const btnClose = $('fpClose');
 
-        const hide = () => FilterController._hide();
+        const commit = value => {
+            if (this.open && this.docId === Store.getDocument()?.id && this.anchor?.isConnected) {
+                dispatch('filter:column', { table:this.table, column:this.column, value });
+            }
+            this._hide(true);
+        };
+        if (btnClose) btnClose.onclick = () => this._hide(true);
+        if (btnClear) btnClear.onclick = () => commit('');
+        if (btnApply) btnApply.onclick = () => commit(this.input.value.trim());
 
-        if (btnClose) btnClose.onclick = hide;
-        if (btnClear) btnClear.onclick = () => {
-            if (!FilterController.table || !FilterController.column) { hide(); return; }
-            dispatch('filter:column', { table: FilterController.table, column: FilterController.column, value: '' });
-            hide();
-            dispatch('preview:renderRequested', {});
-        };
-        if (btnApply) btnApply.onclick = () => {
-            if (!FilterController.table || !FilterController.column) { hide(); return; }
-            const val = (FilterController.input.value || '').trim();
-            dispatch('filter:column', { table: FilterController.table, column: FilterController.column, value: val });
-            hide();
-            dispatch('preview:renderRequested', {});
-        };
+        this.input.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229 ||
+                event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) return;
+            event.preventDefault();
+            commit(this.input.value.trim());
+        });
 
         // Global listeners for dismiss
         document.addEventListener('click', (e) => {
@@ -58,17 +60,24 @@ const FilterController = {
             if (pop.contains(e.target)) return;
             const th = e.target.closest && e.target.closest('.filterable-th');
             if (th) return;
-            hide();
+            this._hide();
         });
 
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && FilterController.open) hide();
+            if (e.key === 'Escape' && this.open && !e.isComposing && e.keyCode !== 229) {
+                e.preventDefault();
+                this._hide(pop.contains(document.activeElement));
+            }
+        });
+        document.addEventListener('focusin', event => {
+            if (this.open && !pop.contains(event.target)) this._hide();
         });
 
         const preview = $('previewArea');
         if (preview) preview.addEventListener('scroll', () => {
-            if (FilterController.open) hide();
-        });
+            if (this.open) this._hide(pop.contains(document.activeElement));
+        }, true);
+        window.addEventListener('resize', () => { if (this.open) this._position(); });
     },
 
     /**
@@ -92,22 +101,39 @@ const FilterController = {
         FilterController.open = true;
         FilterController.table = tableName;
         FilterController.column = colName;
+        this.anchor = anchorEl;
+        this.docId = doc.id;
 
         pop.classList.remove('hidden');
-
-        // Position near the header
-        const rect = anchorEl.getBoundingClientRect();
-        const popRect = pop.getBoundingClientRect();
-        const top = Math.max(10, rect.bottom + 6);
-        let left = rect.left;
-        const maxLeft = window.innerWidth - popRect.width - 10;
-        if (left > maxLeft) left = maxLeft;
-        if (left < 10) left = 10;
-        pop.style.top = `${top}px`;
-        pop.style.left = `${left}px`;
-
-        input.focus();
+        this._position();
+        input.focus({ preventScroll:true });
         input.select();
+    },
+
+    _position() {
+        const rect = this.anchor.getBoundingClientRect();
+        const box = this.pop.getBoundingClientRect();
+        const bottomLimit = window.innerHeight - box.height - 10;
+        const top = rect.bottom + 6 <= bottomLimit ? rect.bottom + 6 : rect.top - box.height - 6;
+        this.pop.style.top = Math.max(10, Math.min(top, bottomLimit)) + 'px';
+        this.pop.style.left = Math.max(10, Math.min(rect.left, window.innerWidth - box.width - 10)) + 'px';
+    },
+
+    // A preview refresh replaces the header nodes, including after a Worker query.
+    syncPreview(preview, focusedHeader) {
+        const oldHeader = this.open ? this.anchor : focusedHeader;
+        if (!oldHeader) return;
+        const tableName = oldHeader.closest('table')?.dataset.tableName;
+        const table = Array.from(preview.querySelectorAll('table')).find(el => el.dataset.tableName === tableName);
+        const header = table && Array.from(table.querySelectorAll('[data-filter-column]'))
+            .find(el => el.dataset.filterColumn === oldHeader.dataset.filterColumn);
+        if (this.open) {
+            if (!header || this.docId !== Store.getDocument()?.id) { this._hide(); return; }
+            this.anchor = header;
+            this._position();
+        } else {
+            header?.focus({ preventScroll:true });
+        }
     },
 
     /**
@@ -128,11 +154,15 @@ const FilterController = {
         dispatch('preview:renderRequested', {});
     },
 
-    _hide() {
+    _hide(restoreFocus = false) {
+        const anchor = this.anchor;
         if (FilterController.pop) FilterController.pop.classList.add('hidden');
         FilterController.open = false;
         FilterController.table = null;
         FilterController.column = null;
+        this.anchor = null;
+        this.docId = null;
+        if (restoreFocus && anchor?.isConnected) anchor.focus({ preventScroll:true });
     }
 };
 

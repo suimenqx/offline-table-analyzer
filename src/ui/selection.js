@@ -134,7 +134,7 @@ const Select = {
     },
     getColumnHeaderText(tbl, c) {
         const ths = tbl.querySelectorAll('thead th');
-        return ths[c] ? ths[c].textContent : '';
+        return ths[c]?.dataset?.filterColumn ?? ths[c]?.textContent ?? '';
     },
     getRowHeaderColumnText(tbl, c) {
         const ths = tbl.querySelectorAll('thead th');

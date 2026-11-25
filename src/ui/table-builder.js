@@ -31,6 +31,8 @@ const TableBuilder = {
         res.headers.forEach((h, hIdx) => {
             const th = createEl('th');
             th.classList.add('filterable-th');
+            th.dataset.filterColumn = h;
+            th.setAttribute('aria-haspopup', 'dialog');
             th.tabIndex = 0;
             th.setAttribute('role', 'button');
             const hasFilter = colFilters[h] && colFilters[h].toString().trim();
@@ -136,6 +138,8 @@ const TableBuilder = {
         res.headers.forEach((h, cIdx) => {
             const tr = createEl('tr');
             const hCell = createEl('td', 'row-header-cell filterable-th');
+            hCell.dataset.filterColumn = h;
+            hCell.setAttribute('aria-haspopup', 'dialog');
             hCell.tabIndex = 0;
             hCell.setAttribute('role', 'button');
             const hasFilter = colFilters[h] && colFilters[h].toString().trim();

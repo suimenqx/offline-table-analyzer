@@ -368,12 +368,12 @@
 <div id="modalOverlay" class="modal-bg hidden" role="presentation">
     <div id="modalContent" class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle"></div>
 </div>
-<div id="filterPopover" class="filter-popover hidden">
+<div id="filterPopover" class="filter-popover hidden" role="dialog" aria-labelledby="fpTitle">
     <div class="fp-header">
         <span id="fpTitle"></span>
         <button id="fpClose" aria-label="关闭">×</button>
     </div>
-    <input id="fpInput" placeholder="子串匹配 或 /正则/，忽略大小写">
+    <input id="fpInput" aria-label="列筛选条件" placeholder="包含文本或 /正则/，忽略大小写" autocomplete="off">
     <div class="fp-actions">
         <button class="sm" id="fpClear">清除</button>
         <button class="primary sm" id="fpApply">应用</button>
