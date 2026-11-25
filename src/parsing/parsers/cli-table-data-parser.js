@@ -1,6 +1,7 @@
 OTA.define('cli-table-data-parser', ["table-utils","delimited","parser-helpers"], ({TableUtils}, {Delimited}, {splitPipeCells}) => {
 /* CLI table-data legacy format parser */
 const TABLE_DECLARATION = /^(?:\[[^\]\r\n]{1,80}\]\s*)?(?:[>$#]\s*)?table[-_]data\b(?:\s+table[-_]data\b)*/i;
+const COMMAND_KEYWORD = /\btable[-_]data\b/i;
 const TABLE_MARKER = /table[-_]data(?:\s+table[-_]data\b)*/i;
 const COMMAND_PREFIX = /^(?!\d+(?:\s|$))[^,;|\t]*[\s>$#\]]$/;
 const VALIDFLAG_HEADER = /^validflag/i;
@@ -33,8 +34,15 @@ const CliTableDataParser = {
     hasSignature(sample) {
         let firstNonBlank = true;
         let fragmentHeader = false;
+        let openingKeyword = false;
         for(const {trim, declaration} of scanLines(sample)) {
             if(declaration || (fragmentHeader && VALIDFLAG_RECORD.test(trim))) return true;
+            if(firstNonBlank) {
+                openingKeyword = COMMAND_KEYWORD.test(trim);
+                // A command may print status lines before its header. When it also
+                // looks like a delimited record, wait for a CLI header to confirm it.
+                if(openingKeyword && !/[,;|\t"'{}]/.test(trim)) return true;
+            } else if(openingKeyword && FIXED_WIDTH_FRAGMENT_HEADER.test(trim)) return true;
             fragmentHeader = firstNonBlank && FIXED_WIDTH_FRAGMENT_HEADER.test(trim);
             firstNonBlank = false;
         }

@@ -101,6 +101,33 @@ describe('bounded automatic detection',()=>{
     assert.deepEqual(result.tables[0].rows,[['1','001','Alice']]);
   });
 
+  it('prefers a first-line table-data command over fixed-width rows after CLI output',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    const body=[
+      '-------- results --------',
+      'validflag  ID   Name',
+      '1          001  Alice',
+      '0          002  Bob'
+    ].join('\r\n');
+    for(const command of ['switch# show TABLE-DATA Inventory','[node,1] show table-data Inventory --fields "ID,Name"']) {
+      const input='\uFEFF  '+command+'\r\n'+body;
+      const parsed=ImportEngine.parse(input,{lastSuccessfulFormat:'fixed-width'});
+      assert.equal(parsed.format,'cli-table-data');
+      assert.equal(parsed.tables[0].name,'Inventory');
+      assert.deepEqual(parsed.tables[0].headers,['validflag','ID','Name']);
+      assert.deepEqual(parsed.tables[0].rows,[['1','001','Alice'],['0','002','Bob']]);
+      assert.equal(ImportEngine.parse(input,{format:'fixed-width'}).format,'fixed-width');
+    }
+  });
+
+  it('keeps similar words and delimited first-line fields in their original formats',()=>{
+    const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
+    for(const header of ['switch# show table-database Inventory','switch# show timetable-data Inventory']) {
+      assert.equal(ImportEngine.parse(header+'\nID   Name\n001  Alice\n002  Bob').format,'fixed-width');
+    }
+    assert.equal(ImportEngine.parse('id,notes about table-data\n1,ok\n2,ok').format,'csv');
+  });
+
   it('keeps generic formats when validflag appears as an ordinary header or field',()=>{
     const {OTA}=loadModules(['import-engine']);const {ImportEngine}=OTA.require('import-engine');
     const inputs=[
