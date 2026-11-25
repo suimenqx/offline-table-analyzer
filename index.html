@@ -193,14 +193,14 @@
         #sourceEditorDialog { position:fixed; inset:0; width:100vw; max-width:none; height:100vh; max-height:none; margin:0; padding:0; border:0; color:var(--text-main); background:var(--bg-app); }
         #sourceEditorDialog::backdrop { background:rgba(15,23,42,.72); }
         .source-editor-shell { width:100%; height:100%; background:var(--bg-card); display:flex; flex-direction:column; overflow:hidden; }
-        .source-editor-head { min-height:64px; padding:10px 16px; border-bottom:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
-        .source-editor-title { flex:1; display:flex; flex-direction:column; gap:2px; min-width:0; }
-        .source-editor-title h2 { margin:0; font-size:16px; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-        .source-wrap-control { display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap; }
-        .source-editor-title .muted { margin:0; font-size:12px; }
-        .source-editor-tools-panel { padding:10px 16px; max-height:42vh; overflow:auto; border-bottom:1px solid var(--border); background:var(--bg-card); }
-        .source-editor-tools-panel > summary { width:max-content; cursor:pointer; color:var(--text-mid); font-size:12px; font-weight:650; }
-        .source-editor-tool-fields { display:grid; gap:8px; max-width:640px; padding:12px 0 2px; }
+        .source-editor-head { padding:10px 16px; border-bottom:1px solid var(--border); display:grid; gap:2px; }
+        .source-editor-head h2 { margin:0; min-width:0; font-size:16px; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .source-editor-head .muted { margin:0; font-size:12px; }
+        .source-editor-toolbar { padding:6px 16px; max-height:42vh; overflow:auto; border-bottom:1px solid var(--border); }
+        .source-wrap-control { position:relative; float:inline-start; display:inline-flex; align-items:center; gap:7px; height:28px; margin:0 14px 0 0; cursor:pointer; font-size:12px; font-weight:600; }
+        .source-wrap-control input { position:absolute; inset:0; z-index:1; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
+        .source-editor-tools-panel > summary { display:flow-root list-item; width:fit-content; list-style-position:inside; line-height:28px; cursor:pointer; color:var(--text-mid); font-size:12px; font-weight:650; }
+        .source-editor-tool-fields { clear:both; display:grid; gap:8px; max-width:640px; padding:8px 0 4px; }
         .source-tool-row { display:grid; grid-template-columns:5em minmax(0, 1fr) 166px; gap:8px; align-items:center; }
         .source-tool-row label { margin:0; font-size:12px; }
         .source-tool-row input { min-width:0; width:100%; height:32px; padding:0 9px; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-strong); background:var(--bg-input); font:inherit; }
@@ -211,7 +211,7 @@
             .source-tool-row label { grid-column:1 / -1; }
         }
         .source-editor-feedback { min-height:22px; margin:0; padding:2px 14px; color:var(--text-mid); font-size:12px; }
-        .source-editor-tools-panel:not([open]) + .source-editor-feedback:empty { min-height:0; padding:0; }
+        .source-editor-toolbar:has(details:not([open])) + .source-editor-feedback:empty { min-height:0; padding:0; }
         .copy-format-select { height: 28px; min-width: 112px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 12px; padding: 0 8px; }
         .source-editor-body { position:relative; display:flex; flex:1; min-height:0; margin:10px 12px; overflow:hidden; border:1px solid var(--border); border-radius:8px; }
         .source-line-gutter { flex:none; overflow:hidden; border-right:1px solid var(--border); background:var(--bg-elevated); color:var(--text-mid); user-select:none; }
@@ -520,13 +520,13 @@
         .copy-settings-row-label { color: var(--text-strong); font-size: 12px; font-weight: 700; }
         .copy-settings-row-hint { min-width: 0; overflow: hidden; color: var(--text-weak); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
         .copy-settings-row input { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
-        .copy-settings-row input:focus-visible + .copy-header-switch { outline: 2px solid var(--primary); outline-offset: 2px; }
-        .copy-header-switch { position: relative; width: 24px; height: 14px; border-radius: 999px; background: var(--border-strong); transition: background .12s ease; }
-        .copy-header-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .18); transition: transform .12s ease; }
-        .copy-settings-row input:checked + .copy-header-switch,
-        .copy-headers-toggle[aria-checked="true"] .copy-header-switch { background: var(--primary); }
-        .copy-settings-row input:checked + .copy-header-switch::after,
-        .copy-headers-toggle[aria-checked="true"] .copy-header-switch::after { transform: translateX(10px); }
+        input:focus-visible + .switch-track { outline: 2px solid var(--primary); outline-offset: 2px; }
+        .switch-track { position: relative; width: 24px; height: 14px; border-radius: 999px; background: var(--border-strong); transition: background .12s ease; }
+        .switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 10px; height: 10px; border-radius: 50%; background: var(--bg-card); box-shadow: 0 1px 2px rgba(15, 23, 42, .18); transition: transform .12s ease; }
+        input:checked + .switch-track,
+        [aria-checked="true"] > .switch-track { background: var(--primary); }
+        input:checked + .switch-track::after,
+        [aria-checked="true"] > .switch-track::after { transform: translateX(10px); }
         .workspace-subbar { min-height: 44px; padding: 7px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg-card) 72%, var(--bg-app)); }
         .workspace-summary { display: flex; align-items: center; gap: 8px; min-width: 0; }
         .workspace-summary strong { font-size: 12px; }
@@ -615,14 +615,14 @@
             .table-meta { top: auto; }
             .statusbar { padding: 4px 9px; }
             .statusbar .status-secondary { display: none; }
-            .source-editor-head { flex-wrap:wrap; }
-            .source-editor-title { flex-basis:100%; }
             .join-meta { grid-template-columns: 1fr; overflow-y: auto; }
         }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
         }
         @media (forced-colors: active) {
+            .source-wrap-control input { position:static; opacity:1; width:16px; height:16px; }
+            .source-wrap-control .switch-track { display:none; }
             button, input, select, textarea, .card, .table-container { border: 1px solid CanvasText; }
             .selected-cell { outline: 2px solid Highlight !important; }
         }
@@ -993,11 +993,11 @@
                             <span class="copy-settings-row-label">公式防护</span>
                             <span class="copy-settings-row-hint">TSV / CSV</span>
                             <input id="checkFormulaSafe" type="checkbox" checked aria-label="复制时防止公式执行">
-                            <span class="copy-header-switch" aria-hidden="true"></span>
+                            <span class="switch-track" aria-hidden="true"></span>
                         </label>
                     </div>
                     <button class="sm copy-headers-toggle" id="copyHeadersToggle" type="button" role="switch" aria-checked="true" title="复制选中区域时是否包含列名">
-                        包含表头<span class="copy-header-switch" aria-hidden="true"></span>
+                        包含表头<span class="switch-track" aria-hidden="true"></span>
                     </button>
                 </div>
                 <button class="sm export-secondary" id="exportFullBtn" type="button" title="自动解析当前原文并导出全量数据（遵循格式与导出设置）">全量 Excel</button>
@@ -1064,36 +1064,38 @@
 <dialog id="sourceEditorDialog" aria-labelledby="sourceEditorTitle" aria-describedby="sourceEditorMeta sourceEditorFeedback">
     <div class="source-editor-shell">
         <header class="source-editor-head">
-            <div class="source-editor-title">
-                <h2 id="sourceEditorTitle">编辑完整原文</h2>
-                <p id="sourceEditorMeta" class="muted"></p>
-            </div>
-            <label class="source-wrap-control"><input id="sourceWrapToggle" type="checkbox">自动换行</label>
-            <button class="sm text-button" id="sourceEditorCancelBtn" type="button">取消</button>
+            <h2 id="sourceEditorTitle">编辑完整原文</h2>
+            <p id="sourceEditorMeta" class="muted"></p>
         </header>
-        <details id="sourceEditorTools" class="source-editor-tools-panel">
-            <summary>查找、替换与跳转</summary>
-            <div class="source-editor-tool-fields">
-                <div class="source-tool-row">
-                    <label for="sourceFindInput">查找</label>
-                    <input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文">
-                    <div class="source-tool-actions"><button id="sourceFindNextBtn" type="button">查找下一个</button></div>
-                </div>
-                <div class="source-tool-row">
-                    <label for="sourceReplaceInput">替换为</label>
-                    <input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本">
-                    <div class="source-tool-actions">
-                        <button id="sourceReplaceCurrentBtn" type="button">替换当前</button>
-                        <button id="sourceReplaceAllBtn" type="button">全部替换</button>
+        <div class="source-editor-toolbar" role="group" aria-label="原文编辑工具">
+            <label class="source-wrap-control">
+                自动换行<input id="sourceWrapToggle" type="checkbox" role="switch" aria-controls="fullSourceInput">
+                <span class="switch-track" aria-hidden="true"></span>
+            </label>
+            <details id="sourceEditorTools" class="source-editor-tools-panel">
+                <summary>查找、替换与跳转</summary>
+                <div class="source-editor-tool-fields">
+                    <div class="source-tool-row">
+                        <label for="sourceFindInput">查找</label>
+                        <input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文">
+                        <div class="source-tool-actions"><button id="sourceFindNextBtn" type="button">查找下一个</button></div>
+                    </div>
+                    <div class="source-tool-row">
+                        <label for="sourceReplaceInput">替换为</label>
+                        <input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本">
+                        <div class="source-tool-actions">
+                            <button id="sourceReplaceCurrentBtn" type="button">替换当前</button>
+                            <button id="sourceReplaceAllBtn" type="button">全部替换</button>
+                        </div>
+                    </div>
+                    <div class="source-tool-row">
+                        <label for="sourceJumpLineInput">跳转到行</label>
+                        <input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric">
+                        <div class="source-tool-actions"><button id="sourceJumpBtn" type="button">跳转</button></div>
                     </div>
                 </div>
-                <div class="source-tool-row">
-                    <label for="sourceJumpLineInput">跳转到行</label>
-                    <input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric">
-                    <div class="source-tool-actions"><button id="sourceJumpBtn" type="button">跳转</button></div>
-                </div>
-            </div>
-        </details>
+            </details>
+        </div>
         <p id="sourceEditorFeedback" class="source-editor-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
         <div class="source-editor-body">
             <div class="source-line-gutter" aria-hidden="true"><pre id="sourceLineNumbers"></pre></div>
@@ -1103,7 +1105,7 @@
         <footer class="source-editor-foot">
             <span class="muted">编辑内容只在保存后替换当前原文；取消或按 Esc 放弃草稿。</span>
             <div class="source-editor-footer-actions">
-                <button class="sm" id="sourceEditorCancelFooterBtn" type="button">取消</button>
+                <button class="sm" id="sourceEditorCancelBtn" type="button">取消</button>
                 <button class="primary sm" id="sourceEditorSaveBtn" type="button">保存原文</button>
             </div>
         </footer>
@@ -10145,7 +10147,6 @@ const SourceController = {
         });
         $('undoSourceEditBtn')?.addEventListener('click', () => this.undoSourceEdit());
         $('sourceEditorCancelBtn')?.addEventListener('click', () => dialog.close('cancel'));
-        $('sourceEditorCancelFooterBtn')?.addEventListener('click', () => dialog.close('cancel'));
         $('sourceEditorSaveBtn')?.addEventListener('click', () => this.saveSourceEditor());
         $('sourceFindNextBtn')?.addEventListener('click', () => this.findSourceText());
         $('sourceReplaceCurrentBtn')?.addEventListener('click', () => this.replaceCurrentSourceText());

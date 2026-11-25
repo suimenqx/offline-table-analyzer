@@ -261,11 +261,11 @@
                             <span class="copy-settings-row-label">公式防护</span>
                             <span class="copy-settings-row-hint">TSV / CSV</span>
                             <input id="checkFormulaSafe" type="checkbox" checked aria-label="复制时防止公式执行">
-                            <span class="copy-header-switch" aria-hidden="true"></span>
+                            <span class="switch-track" aria-hidden="true"></span>
                         </label>
                     </div>
                     <button class="sm copy-headers-toggle" id="copyHeadersToggle" type="button" role="switch" aria-checked="true" title="复制选中区域时是否包含列名">
-                        包含表头<span class="copy-header-switch" aria-hidden="true"></span>
+                        包含表头<span class="switch-track" aria-hidden="true"></span>
                     </button>
                 </div>
                 <button class="sm export-secondary" id="exportFullBtn" type="button" title="自动解析当前原文并导出全量数据（遵循格式与导出设置）">全量 Excel</button>
@@ -332,36 +332,38 @@
 <dialog id="sourceEditorDialog" aria-labelledby="sourceEditorTitle" aria-describedby="sourceEditorMeta sourceEditorFeedback">
     <div class="source-editor-shell">
         <header class="source-editor-head">
-            <div class="source-editor-title">
-                <h2 id="sourceEditorTitle">编辑完整原文</h2>
-                <p id="sourceEditorMeta" class="muted"></p>
-            </div>
-            <label class="source-wrap-control"><input id="sourceWrapToggle" type="checkbox">自动换行</label>
-            <button class="sm text-button" id="sourceEditorCancelBtn" type="button">取消</button>
+            <h2 id="sourceEditorTitle">编辑完整原文</h2>
+            <p id="sourceEditorMeta" class="muted"></p>
         </header>
-        <details id="sourceEditorTools" class="source-editor-tools-panel">
-            <summary>查找、替换与跳转</summary>
-            <div class="source-editor-tool-fields">
-                <div class="source-tool-row">
-                    <label for="sourceFindInput">查找</label>
-                    <input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文">
-                    <div class="source-tool-actions"><button id="sourceFindNextBtn" type="button">查找下一个</button></div>
-                </div>
-                <div class="source-tool-row">
-                    <label for="sourceReplaceInput">替换为</label>
-                    <input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本">
-                    <div class="source-tool-actions">
-                        <button id="sourceReplaceCurrentBtn" type="button">替换当前</button>
-                        <button id="sourceReplaceAllBtn" type="button">全部替换</button>
+        <div class="source-editor-toolbar" role="group" aria-label="原文编辑工具">
+            <label class="source-wrap-control">
+                自动换行<input id="sourceWrapToggle" type="checkbox" role="switch" aria-controls="fullSourceInput">
+                <span class="switch-track" aria-hidden="true"></span>
+            </label>
+            <details id="sourceEditorTools" class="source-editor-tools-panel">
+                <summary>查找、替换与跳转</summary>
+                <div class="source-editor-tool-fields">
+                    <div class="source-tool-row">
+                        <label for="sourceFindInput">查找</label>
+                        <input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文">
+                        <div class="source-tool-actions"><button id="sourceFindNextBtn" type="button">查找下一个</button></div>
+                    </div>
+                    <div class="source-tool-row">
+                        <label for="sourceReplaceInput">替换为</label>
+                        <input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本">
+                        <div class="source-tool-actions">
+                            <button id="sourceReplaceCurrentBtn" type="button">替换当前</button>
+                            <button id="sourceReplaceAllBtn" type="button">全部替换</button>
+                        </div>
+                    </div>
+                    <div class="source-tool-row">
+                        <label for="sourceJumpLineInput">跳转到行</label>
+                        <input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric">
+                        <div class="source-tool-actions"><button id="sourceJumpBtn" type="button">跳转</button></div>
                     </div>
                 </div>
-                <div class="source-tool-row">
-                    <label for="sourceJumpLineInput">跳转到行</label>
-                    <input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric">
-                    <div class="source-tool-actions"><button id="sourceJumpBtn" type="button">跳转</button></div>
-                </div>
-            </div>
-        </details>
+            </details>
+        </div>
         <p id="sourceEditorFeedback" class="source-editor-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
         <div class="source-editor-body">
             <div class="source-line-gutter" aria-hidden="true"><pre id="sourceLineNumbers"></pre></div>
@@ -371,7 +373,7 @@
         <footer class="source-editor-foot">
             <span class="muted">编辑内容只在保存后替换当前原文；取消或按 Esc 放弃草稿。</span>
             <div class="source-editor-footer-actions">
-                <button class="sm" id="sourceEditorCancelFooterBtn" type="button">取消</button>
+                <button class="sm" id="sourceEditorCancelBtn" type="button">取消</button>
                 <button class="primary sm" id="sourceEditorSaveBtn" type="button">保存原文</button>
             </div>
         </footer>

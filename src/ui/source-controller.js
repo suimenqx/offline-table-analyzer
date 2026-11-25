@@ -287,7 +287,6 @@ const SourceController = {
         });
         $('undoSourceEditBtn')?.addEventListener('click', () => this.undoSourceEdit());
         $('sourceEditorCancelBtn')?.addEventListener('click', () => dialog.close('cancel'));
-        $('sourceEditorCancelFooterBtn')?.addEventListener('click', () => dialog.close('cancel'));
         $('sourceEditorSaveBtn')?.addEventListener('click', () => this.saveSourceEditor());
         $('sourceFindNextBtn')?.addEventListener('click', () => this.findSourceText());
         $('sourceReplaceCurrentBtn')?.addEventListener('click', () => this.replaceCurrentSourceText());

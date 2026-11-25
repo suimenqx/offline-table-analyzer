@@ -71,6 +71,41 @@ test('完整原文的行号随草稿、滚动和自动换行对齐', async ({pag
   await expect.poll(rows).toMatch(/^1\n2\n3\n/);
 });
 
+test('换行开关与查找并排，页脚统一取消或保存草稿', async ({page}) => {
+  await page.locator('#rawInput').fill('one\ntwo');
+  const opener = page.getByRole('button', {name:'编辑完整原文', exact:true});
+  await opener.click();
+  const dialog = page.getByRole('dialog', {name:/编辑完整原文/});
+  const cancel = dialog.getByRole('button', {name:'取消', exact:true});
+  await expect(cancel).toHaveCount(1);
+  const footer = dialog.locator('footer');
+  await expect(footer.getByRole('button', {name:'取消'})).toBeVisible();
+  await expect(footer.getByRole('button', {name:'保存原文'})).toBeVisible();
+  const tools = dialog.getByRole('group', {name:'原文编辑工具'});
+  const wrap = tools.getByRole('switch', {name:'自动换行'});
+  const summary = tools.locator('summary');
+  const draft = dialog.getByRole('textbox', {name:'完整原文', exact:true});
+  for (const width of [1280, 360]) {
+    await page.setViewportSize({width, height:720});
+    for (const expanded of [false, true]) {
+      await expect(tools.locator('details')).toHaveJSProperty('open', expanded);
+      const toggleBox = await wrap.boundingBox(), searchBox = await summary.boundingBox();
+      expect(toggleBox.x + toggleBox.width).toBeLessThanOrEqual(searchBox.x);
+      expect(Math.abs((toggleBox.y + toggleBox.height / 2) - (searchBox.y + searchBox.height / 2))).toBeLessThan(2);
+      await wrap.focus();
+      await page.keyboard.press('Space');
+      await expect(wrap).toBeChecked({checked:!expanded});
+      await expect(draft).toHaveJSProperty('wrap', expanded ? 'off' : 'soft');
+      await expect(tools.locator('details')).toHaveJSProperty('open', expanded);
+      await summary.click();
+    }
+  }
+  await draft.fill('draft');
+  await cancel.click();
+  await expect(opener).toBeFocused();
+  expect(await rawText(page)).toBe('one\ntwo');
+});
+
 test('查找、替换和跳转在桌面与窄屏上保持对齐', async ({page}) => {
   const editor = page.locator('#rawInput');
   await editor.fill('one\ntwo');
