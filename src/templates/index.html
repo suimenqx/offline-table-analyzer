@@ -60,7 +60,11 @@
                         <span id="cardFeedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
                         <div class="source-section-heading source-editor-heading">
                             <label class="source-editor-label" id="sourceEditorLabel" for="rawInput">原文</label>
-                            <button class="sm text-button" id="editFullSourceBtn" type="button" aria-haspopup="dialog" aria-controls="sourceEditorDialog" title="全屏编辑当前卡片的原文" hidden>编辑完整原文</button>
+                            <button class="icon-btn" id="editFullSourceBtn" type="button" aria-label="编辑完整原文" aria-haspopup="dialog" aria-controls="sourceEditorDialog" title="编辑完整原文" hidden>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m14 5 5 5M4 20l5-1L20 8a2.1 2.1 0 0 0 0-3l-2-2a2.1 2.1 0 0 0-3 0L4 14z"/>
+                                </svg>
+                            </button>
                             <details class="tools-menu" data-menu id="sourceTools">
                                 <summary aria-label="当前卡片工具">更多 <span class="menu-chevron" aria-hidden="true"></span></summary>
                                 <div class="tools-popover" role="group" aria-label="当前卡片工具">
@@ -338,18 +342,31 @@
         <details id="sourceEditorTools" class="source-editor-tools-panel">
             <summary>查找、替换与跳转</summary>
             <div class="source-editor-tool-fields">
-                <label>查找<input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文"></label>
-                <button class="sm" id="sourceFindNextBtn" type="button">查找下一个</button>
-                <label>替换为<input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本"></label>
-                <button class="sm" id="sourceReplaceCurrentBtn" type="button">替换当前</button>
-                <button class="sm" id="sourceReplaceAllBtn" type="button">全部替换</button>
-                <label>跳转到行<input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
-                <button class="sm" id="sourceJumpBtn" type="button">跳转</button>
+                <div class="source-tool-row">
+                    <label for="sourceFindInput">查找</label>
+                    <input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文">
+                    <div class="source-tool-actions"><button id="sourceFindNextBtn" type="button">查找下一个</button></div>
+                </div>
+                <div class="source-tool-row">
+                    <label for="sourceReplaceInput">替换为</label>
+                    <input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本">
+                    <div class="source-tool-actions">
+                        <button id="sourceReplaceCurrentBtn" type="button">替换当前</button>
+                        <button id="sourceReplaceAllBtn" type="button">全部替换</button>
+                    </div>
+                </div>
+                <div class="source-tool-row">
+                    <label for="sourceJumpLineInput">跳转到行</label>
+                    <input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric">
+                    <div class="source-tool-actions"><button id="sourceJumpBtn" type="button">跳转</button></div>
+                </div>
             </div>
         </details>
         <p id="sourceEditorFeedback" class="source-editor-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
         <div class="source-editor-body">
+            <div class="source-line-gutter" aria-hidden="true"><pre id="sourceLineNumbers"></pre></div>
             <textarea id="fullSourceInput" wrap="off" spellcheck="false" aria-label="完整原文" placeholder="完整原文" autocomplete="off"></textarea>
+            <div id="sourceWrapMeasure" aria-hidden="true"></div>
         </div>
         <footer class="source-editor-foot">
             <span class="muted">编辑内容只在保存后替换当前原文；取消或按 Esc 放弃草稿。</span>

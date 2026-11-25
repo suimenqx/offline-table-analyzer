@@ -8,6 +8,56 @@ test.beforeEach(async ({page}) => {
   await page.locator('#autoParseToggle').uncheck();
 });
 
+test('完整原文的行号随草稿、滚动和自动换行对齐', async ({page}) => {
+  const editor = page.locator('#rawInput');
+  const draft = page.locator('#fullSourceInput');
+  const numbers = page.locator('#sourceLineNumbers');
+  await editor.fill('one\n\nthree\n');
+  const edit = page.getByRole('button', {name:'编辑完整原文', exact:true});
+  await expect(edit.locator('svg')).toBeVisible();
+  await edit.click();
+  await expect(numbers).toHaveText('1\n2\n3\n4');
+  const longLine = '长文本'.repeat(100);
+  await draft.fill(longLine + '\nnext\n');
+  await expect(numbers).toHaveText('1\n2\n3');
+  await page.getByLabel('自动换行').check();
+  const rows = () => numbers.textContent();
+  await expect.poll(rows).toMatch(/^1\n\n+2\n3$/);
+  const wideRows = (await rows()).split('\n').length;
+  await page.setViewportSize({width:600, height:800});
+  await expect.poll(async () => (await rows()).split('\n').length).toBeGreaterThan(wideRows);
+  await draft.fill(longLine + '\n' + 'a data row with several ordinary text fields\n'.repeat(400));
+  await draft.press('Control+End');
+  await expect.poll(rows).toMatch(/\n402$/);
+  expect((await rows()).split('\n').length).toBeLessThan(100);
+  await page.getByLabel('自动换行').uncheck();
+  await draft.press('Control+Home');
+  await expect.poll(rows).toMatch(/^1\n2\n3\n/);
+});
+
+test('查找、替换和跳转在桌面与窄屏上保持对齐', async ({page}) => {
+  const editor = page.locator('#rawInput');
+  await editor.fill('one\ntwo');
+  await editor.press('Control+f');
+  const panel = page.locator('#sourceEditorTools');
+  for (const width of [1280, 360]) {
+    await page.setViewportSize({width, height:800});
+    const boxes = await panel.locator('input,button').evaluateAll(nodes => nodes.map(node => {
+      const {x,y,height,width,right} = node.getBoundingClientRect();
+      return {x,y,height,width,right};
+    }));
+    const [find,next,replace,current,all,line,jump] = boxes;
+    expect(new Set(boxes.map(box => box.height)).size).toBe(1);
+    expect(new Set([find,replace,line].map(box => box.x)).size).toBe(1);
+    expect(new Set([find,replace,line].map(box => box.width)).size).toBe(1);
+    expect(new Set([next,current,all,jump].map(box => box.width)).size).toBe(1);
+    expect([next.y,current.y,all.y,jump.y]).toEqual([find.y,replace.y,replace.y,line.y]);
+    expect(replace.y).toBeGreaterThan(find.y);
+    expect(line.y).toBeGreaterThan(replace.y);
+    expect(boxes.every(box => box.x >= 0 && box.right <= width)).toBe(true);
+  }
+});
+
 test('普通粘贴可带着选区展开编辑、折行查看并保存，一次撤销恢复原文', async ({page, context}) => {
   await context.grantPermissions(['clipboard-read','clipboard-write'], {origin:'http://127.0.0.1:4173'});
   const editor = page.locator('#rawInput');

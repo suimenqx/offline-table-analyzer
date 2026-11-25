@@ -198,17 +198,30 @@
         .source-editor-title h2 { margin:0; font-size:16px; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .source-wrap-control { display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap; }
         .source-editor-title .muted { margin:0; font-size:12px; }
-        .source-editor-tools-panel { padding:8px 14px; border-bottom:1px solid var(--border); background:var(--bg-card); }
+        .source-editor-tools-panel { padding:10px 16px; max-height:42vh; overflow:auto; border-bottom:1px solid var(--border); background:var(--bg-card); }
         .source-editor-tools-panel > summary { width:max-content; cursor:pointer; color:var(--text-mid); font-size:12px; font-weight:650; }
-        .source-editor-tool-fields { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; padding-top:10px; }
-        .source-editor-tool-fields label { display:flex; flex-direction:column; gap:4px; color:var(--text-mid); font-size:11px; }
-        .source-editor-tool-fields input { min-width:150px; height:30px; padding:0 8px; }
-        #sourceJumpLineInput { min-width:84px; width:84px; }
-        .source-editor-feedback { min-height:18px; margin:0; padding:2px 14px; color:var(--text-mid); font-size:12px; }
+        .source-editor-tool-fields { display:grid; gap:8px; max-width:640px; padding:12px 0 2px; }
+        .source-tool-row { display:grid; grid-template-columns:5em minmax(0, 1fr) 166px; gap:8px; align-items:center; }
+        .source-tool-row label { margin:0; font-size:12px; }
+        .source-tool-row input { min-width:0; width:100%; height:32px; padding:0 9px; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-strong); background:var(--bg-input); font:inherit; }
+        .source-tool-actions { display:flex; gap:6px; }
+        .source-tool-actions button { width:80px; height:32px; padding:0 4px; font-size:12px; }
+        @media (max-width:520px) {
+            .source-tool-row { grid-template-columns:minmax(0, 1fr) 166px; row-gap:3px; }
+            .source-tool-row label { grid-column:1 / -1; }
+        }
+        .source-editor-feedback { min-height:22px; margin:0; padding:2px 14px; color:var(--text-mid); font-size:12px; }
+        .source-editor-tools-panel:not([open]) + .source-editor-feedback:empty { min-height:0; padding:0; }
         .copy-format-select { height: 28px; min-width: 112px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 12px; padding: 0 8px; }
-        .source-editor-body { flex:1; min-height:0; padding:10px 12px; background:var(--bg-app); }
-        #fullSourceInput { width:100%; height:100%; min-height:0; resize:none; border-radius:8px; padding:14px; line-height:1.5; white-space:pre; overflow:auto; tab-size:4; font-family:var(--font-mono); background:var(--bg-card); border:1px solid var(--border); }
-        #fullSourceInput[wrap="soft"] { white-space:pre-wrap; overflow-wrap:anywhere; }
+        .source-editor-body { position:relative; display:flex; flex:1; min-height:0; margin:10px 12px; overflow:hidden; border:1px solid var(--border); border-radius:8px; }
+        .source-editor-body:focus-within { border-color:var(--primary); }
+        .source-line-gutter { flex:none; overflow:hidden; border-right:1px solid var(--border); background:var(--bg-elevated); color:var(--text-mid); user-select:none; }
+        #sourceLineNumbers, #fullSourceInput, #sourceWrapMeasure { margin:0; font:13px/20px var(--font-mono); letter-spacing:normal; tab-size:4; }
+        #sourceLineNumbers { padding:0 9px; min-width:calc(var(--source-line-digits, 2) * 1ch + 18px); text-align:right; }
+        #fullSourceInput, #sourceWrapMeasure { padding:12px; border:0; }
+        #fullSourceInput { flex:1; min-width:0; height:100%; min-height:0; resize:none; border-radius:0; white-space:pre; overflow:auto; background:var(--bg-card); }
+        #fullSourceInput[wrap="soft"], #sourceWrapMeasure { white-space:pre-wrap; overflow-wrap:anywhere; word-break:normal; }
+        #sourceWrapMeasure { position:absolute; inset:0 auto auto 0; height:100%; padding-block:0; overflow:hidden; visibility:hidden; pointer-events:none; contain:strict; }
         .source-editor-foot { min-height:54px; padding:8px 14px; border-top:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
         .source-editor-foot .muted { font-size: 12px; }
         .source-editor-footer-actions { display:flex; align-items:center; gap:8px; }
@@ -598,7 +611,6 @@
             .table-meta { top: auto; }
             .statusbar { padding: 4px 9px; }
             .statusbar .status-secondary { display: none; }
-            .source-editor-tools { width: 100%; justify-content: flex-start; }
             .source-editor-head { flex-wrap:wrap; }
             .source-editor-title { flex-basis:100%; }
             .join-meta { grid-template-columns: 1fr; overflow-y: auto; }
@@ -776,7 +788,11 @@
                         <span id="cardFeedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
                         <div class="source-section-heading source-editor-heading">
                             <label class="source-editor-label" id="sourceEditorLabel" for="rawInput">原文</label>
-                            <button class="sm text-button" id="editFullSourceBtn" type="button" aria-haspopup="dialog" aria-controls="sourceEditorDialog" title="全屏编辑当前卡片的原文" hidden>编辑完整原文</button>
+                            <button class="icon-btn" id="editFullSourceBtn" type="button" aria-label="编辑完整原文" aria-haspopup="dialog" aria-controls="sourceEditorDialog" title="编辑完整原文" hidden>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m14 5 5 5M4 20l5-1L20 8a2.1 2.1 0 0 0 0-3l-2-2a2.1 2.1 0 0 0-3 0L4 14z"/>
+                                </svg>
+                            </button>
                             <details class="tools-menu" data-menu id="sourceTools">
                                 <summary aria-label="当前卡片工具">更多 <span class="menu-chevron" aria-hidden="true"></span></summary>
                                 <div class="tools-popover" role="group" aria-label="当前卡片工具">
@@ -1054,18 +1070,31 @@
         <details id="sourceEditorTools" class="source-editor-tools-panel">
             <summary>查找、替换与跳转</summary>
             <div class="source-editor-tool-fields">
-                <label>查找<input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文"></label>
-                <button class="sm" id="sourceFindNextBtn" type="button">查找下一个</button>
-                <label>替换为<input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本"></label>
-                <button class="sm" id="sourceReplaceCurrentBtn" type="button">替换当前</button>
-                <button class="sm" id="sourceReplaceAllBtn" type="button">全部替换</button>
-                <label>跳转到行<input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
-                <button class="sm" id="sourceJumpBtn" type="button">跳转</button>
+                <div class="source-tool-row">
+                    <label for="sourceFindInput">查找</label>
+                    <input id="sourceFindInput" type="search" autocomplete="off" placeholder="查找原文">
+                    <div class="source-tool-actions"><button id="sourceFindNextBtn" type="button">查找下一个</button></div>
+                </div>
+                <div class="source-tool-row">
+                    <label for="sourceReplaceInput">替换为</label>
+                    <input id="sourceReplaceInput" type="text" autocomplete="off" placeholder="替换文本">
+                    <div class="source-tool-actions">
+                        <button id="sourceReplaceCurrentBtn" type="button">替换当前</button>
+                        <button id="sourceReplaceAllBtn" type="button">全部替换</button>
+                    </div>
+                </div>
+                <div class="source-tool-row">
+                    <label for="sourceJumpLineInput">跳转到行</label>
+                    <input id="sourceJumpLineInput" type="number" min="1" step="1" value="1" inputmode="numeric">
+                    <div class="source-tool-actions"><button id="sourceJumpBtn" type="button">跳转</button></div>
+                </div>
             </div>
         </details>
         <p id="sourceEditorFeedback" class="source-editor-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
         <div class="source-editor-body">
+            <div class="source-line-gutter" aria-hidden="true"><pre id="sourceLineNumbers"></pre></div>
             <textarea id="fullSourceInput" wrap="off" spellcheck="false" aria-label="完整原文" placeholder="完整原文" autocomplete="off"></textarea>
+            <div id="sourceWrapMeasure" aria-hidden="true"></div>
         </div>
         <footer class="source-editor-foot">
             <span class="muted">编辑内容只在保存后替换当前原文；取消或按 Esc 放弃草稿。</span>
@@ -9850,6 +9879,88 @@ function rawOffset(text, editorOffset) {
     return offset;
 }
 
+// Let the browser measure soft wraps with the same font and content width as
+// the textarea. Chunk at real newlines so range measurements stay local even
+// when a user jumps to the end of a large draft.
+function buildWrapMeasure(measure, text) {
+    const fragment = document.createDocumentFragment();
+    let firstLine = 1;
+    for (let start = 0; start <= text.length;) {
+        const newline = text.indexOf('\n', start + 16384);
+        const end = newline < 0 ? text.length : newline;
+        const block = document.createElement('div');
+        const content = text.slice(start, end);
+        block.dataset.firstLine = firstLine;
+        block.textContent = content + '\n'; // Give the final empty line a line box too.
+        fragment.appendChild(block);
+        for (let i = content.indexOf('\n'); i >= 0; i = content.indexOf('\n', i + 1)) firstLine++;
+        firstLine++;
+        start = end + 1;
+    }
+    measure.replaceChildren(fragment);
+}
+
+function wrappedLineNumbers(measure, firstRow, lastRow, lineHeight) {
+    const blocks = measure.children;
+    let low = 0, high = blocks.length - 1;
+    while (low < high) {
+        const mid = Math.ceil((low + high) / 2);
+        if (blocks[mid].offsetTop <= firstRow * lineHeight) low = mid;
+        else high = mid - 1;
+    }
+    const rows = [];
+    const range = document.createRange();
+    const top = measure.getBoundingClientRect().top;
+    for (let i = low; i < blocks.length && blocks[i].offsetTop <= lastRow * lineHeight; i++) {
+        const block = blocks[i], node = block.firstChild;
+        const firstLine = Number(block.dataset.firstLine);
+        const content = node.data;
+        const starts = [0];
+        for (let n = content.indexOf('\n'); n >= 0 && n + 1 < content.length; n = content.indexOf('\n', n + 1)) {
+            starts.push(n + 1);
+        }
+        function visualRow(index) {
+            const offset = starts[index];
+            range.setStart(node, offset);
+            range.setEnd(node, offset + 1);
+            return Math.round((range.getBoundingClientRect().top - top) / lineHeight);
+        }
+        let start = 0, end = starts.length;
+        while (start < end) {
+            const mid = Math.floor((start + end) / 2);
+            if (visualRow(mid) < firstRow) start = mid + 1;
+            else end = mid;
+        }
+        for (let index = start; index < starts.length; index++) {
+            const row = visualRow(index);
+            if (row > lastRow) break;
+            rows[row - firstRow] = firstLine + index;
+        }
+    }
+    return rows.join('\n');
+}
+
+function renderSourceLineNumbers(session) {
+    if (!session || !$('sourceEditorDialog').open) return;
+    const input = $('fullSourceInput'), numbers = $('sourceLineNumbers'), measure = $('sourceWrapMeasure');
+    const style = getComputedStyle(input);
+    const lineHeight = parseFloat(style.lineHeight), padding = parseFloat(style.paddingTop);
+    const firstRow = Math.max(0, Math.floor((input.scrollTop - padding) / lineHeight));
+    const lastRow = Math.floor((input.scrollTop + input.clientHeight - padding) / lineHeight);
+    const unwrappedHeight = session.lines * lineHeight + 2 * padding;
+    // Short documents can wrap without overflowing the viewport.
+    if (input.wrap === 'soft' && (input.scrollHeight === input.clientHeight || input.scrollHeight > unwrappedHeight + 1)) {
+        measure.style.width = input.clientWidth + 'px';
+        if (!measure.firstChild) buildWrapMeasure(measure, input.value);
+        numbers.textContent = wrappedLineNumbers(measure, firstRow, lastRow, lineHeight);
+    } else {
+        const labels = [];
+        for (let row = firstRow; row <= lastRow && row < session.lines; row++) labels.push(row + 1);
+        numbers.textContent = labels.join('\n');
+    }
+    numbers.style.transform = 'translateY(' + (padding + firstRow * lineHeight - input.scrollTop) + 'px)';
+}
+
 const SourceController = {
     AUTO_PARSE_MAX_BYTES: 1024 * 1024,
     AUTO_PARSE_DELAY: 500,
@@ -10025,6 +10136,8 @@ const SourceController = {
         });
         $('sourceWrapToggle')?.addEventListener('change', event => {
             $('fullSourceInput').wrap = event.target.checked ? 'soft' : 'off';
+            if (!event.target.checked) $('sourceWrapMeasure').replaceChildren();
+            renderSourceLineNumbers(this._sourceEditorSession);
         });
         $('undoSourceEditBtn')?.addEventListener('click', () => this.undoSourceEdit());
         $('sourceEditorCancelBtn')?.addEventListener('click', () => dialog.close('cancel'));
@@ -10066,7 +10179,12 @@ const SourceController = {
                 event.stopPropagation();
             }
         });
-        $('fullSourceInput')?.addEventListener('input', () => {
+        const draft = $('fullSourceInput');
+        draft?.addEventListener('scroll', () => renderSourceLineNumbers(this._sourceEditorSession));
+        if (draft && typeof ResizeObserver !== 'undefined') {
+            new ResizeObserver(() => renderSourceLineNumbers(this._sourceEditorSession)).observe(draft);
+        }
+        draft?.addEventListener('input', () => {
             clearTimeout(this._sourceEditorStatsTimer);
             this._sourceEditorStatsTimer = setTimeout(() => this.updateSourceEditorMeta(), 120);
         });
@@ -10076,6 +10194,8 @@ const SourceController = {
             this._sourceEditorStatsTimer = null;
             this._sourceEditorSession = null;
             $('fullSourceInput').value = '';
+            $('sourceWrapMeasure').replaceChildren();
+            $('sourceLineNumbers').textContent = '';
             const opener = this._sourceEditorOpener;
             this._sourceEditorOpener = null;
             if (opener?.isConnected && !opener.hidden) opener.focus();
@@ -10142,8 +10262,8 @@ const SourceController = {
         $('sourceReplaceInput').value = '';
         $('sourceJumpLineInput').value = '1';
         this.setSourceEditorFeedback('');
-        this.updateSourceEditorMeta();
         dialog.showModal();
+        this.updateSourceEditorMeta();
         if (inline && (!inline.readOnly || inline.selectionStart !== inline.selectionEnd)) {
             input.setSelectionRange(inline.selectionStart, inline.selectionEnd, inline.selectionDirection);
         } else {
@@ -10170,10 +10290,14 @@ const SourceController = {
     updateSourceEditorMeta() {
         const input = $('fullSourceInput');
         const meta = $('sourceEditorMeta');
-        if(!input || !meta) return;
+        if(!input || !meta || !this._sourceEditorSession) return;
         const text = input.value;
         let lines = 1;
         for(let i=0;i<text.length;i++) if(text[i] === '\n') lines++;
+        this._sourceEditorSession.lines = lines;
+        $('sourceLineNumbers').style.setProperty('--source-line-digits', Math.max(2, String(lines).length));
+        $('sourceWrapMeasure').replaceChildren();
+        renderSourceLineNumbers(this._sourceEditorSession);
         const bytes = text.length * 2;
         const largeNotice = bytes >= 16 * 1024 * 1024
             ? '超大文本在浏览器中编辑可能变慢。' : '';
@@ -13330,7 +13454,7 @@ validflag Time      Level   Message                 Code
             <span>调整卡片拼接顺序</span><kbd>Alt ↑ / ↓</kbd>
         </div><p>卡片可双击改名，拖动手柄调整拼接顺序。眼睛按钮决定数据是否进入分析结果；隐藏的卡片仍可选中编辑。删除后 15 秒内可撤销最近一张卡片。</p>
         <p>卡片较多时可展开列表，选中卡片后自动收起；八张起可搜索卡片名称。搜索只影响左侧列表，清除后可调整拼接顺序。点击卡片的待确认或失败状态可直接打开解析详情。</p>
-        <p>在原文框粘贴会插入到光标处或替换选区。点击“编辑完整原文”可带着当前选区全屏编辑，长行可开启“自动换行”。在原文框或完整编辑器中，Ctrl/⌘+F 查找，Ctrl/⌘+H 替换，Ctrl/⌘+G 跳到指定行。完整编辑器中按 Ctrl/⌘+S 保存，按 Esc 放弃草稿。超过 512 Ki 字符时，原文框显示只读预览，在预览中粘贴会替换整份原文。</p>
+        <p>在原文框粘贴会插入到光标处或替换选区。点击原文标题旁的铅笔图标可带着当前选区全屏编辑。左侧显示原文行号，长行可开启“自动换行”。在原文框或完整编辑器中，Ctrl/⌘+F 查找，Ctrl/⌘+H 替换，Ctrl/⌘+G 跳到指定行。完整编辑器中按 Ctrl/⌘+S 保存，按 Esc 放弃草稿。超过 512 Ki 字符时，原文框显示只读预览，在预览中粘贴会替换整份原文。</p>
         <p>“工作区”菜单提供备份、恢复和本地保存设置。关闭“本地保存原文”后，原文只保留在当前页面，刷新后不会恢复；规则和界面偏好仍会保存。</p>
         <p class="muted">支持 JSON、CSV、TSV、HTML、Markdown、ASCII、固定宽度文本、CLI table-data 与 Data-Block。数据不会发送到网络。</p>`);
     },

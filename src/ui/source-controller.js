@@ -25,6 +25,88 @@ function rawOffset(text, editorOffset) {
     return offset;
 }
 
+// Let the browser measure soft wraps with the same font and content width as
+// the textarea. Chunk at real newlines so range measurements stay local even
+// when a user jumps to the end of a large draft.
+function buildWrapMeasure(measure, text) {
+    const fragment = document.createDocumentFragment();
+    let firstLine = 1;
+    for (let start = 0; start <= text.length;) {
+        const newline = text.indexOf('\n', start + 16384);
+        const end = newline < 0 ? text.length : newline;
+        const block = document.createElement('div');
+        const content = text.slice(start, end);
+        block.dataset.firstLine = firstLine;
+        block.textContent = content + '\n'; // Give the final empty line a line box too.
+        fragment.appendChild(block);
+        for (let i = content.indexOf('\n'); i >= 0; i = content.indexOf('\n', i + 1)) firstLine++;
+        firstLine++;
+        start = end + 1;
+    }
+    measure.replaceChildren(fragment);
+}
+
+function wrappedLineNumbers(measure, firstRow, lastRow, lineHeight) {
+    const blocks = measure.children;
+    let low = 0, high = blocks.length - 1;
+    while (low < high) {
+        const mid = Math.ceil((low + high) / 2);
+        if (blocks[mid].offsetTop <= firstRow * lineHeight) low = mid;
+        else high = mid - 1;
+    }
+    const rows = [];
+    const range = document.createRange();
+    const top = measure.getBoundingClientRect().top;
+    for (let i = low; i < blocks.length && blocks[i].offsetTop <= lastRow * lineHeight; i++) {
+        const block = blocks[i], node = block.firstChild;
+        const firstLine = Number(block.dataset.firstLine);
+        const content = node.data;
+        const starts = [0];
+        for (let n = content.indexOf('\n'); n >= 0 && n + 1 < content.length; n = content.indexOf('\n', n + 1)) {
+            starts.push(n + 1);
+        }
+        function visualRow(index) {
+            const offset = starts[index];
+            range.setStart(node, offset);
+            range.setEnd(node, offset + 1);
+            return Math.round((range.getBoundingClientRect().top - top) / lineHeight);
+        }
+        let start = 0, end = starts.length;
+        while (start < end) {
+            const mid = Math.floor((start + end) / 2);
+            if (visualRow(mid) < firstRow) start = mid + 1;
+            else end = mid;
+        }
+        for (let index = start; index < starts.length; index++) {
+            const row = visualRow(index);
+            if (row > lastRow) break;
+            rows[row - firstRow] = firstLine + index;
+        }
+    }
+    return rows.join('\n');
+}
+
+function renderSourceLineNumbers(session) {
+    if (!session || !$('sourceEditorDialog').open) return;
+    const input = $('fullSourceInput'), numbers = $('sourceLineNumbers'), measure = $('sourceWrapMeasure');
+    const style = getComputedStyle(input);
+    const lineHeight = parseFloat(style.lineHeight), padding = parseFloat(style.paddingTop);
+    const firstRow = Math.max(0, Math.floor((input.scrollTop - padding) / lineHeight));
+    const lastRow = Math.floor((input.scrollTop + input.clientHeight - padding) / lineHeight);
+    const unwrappedHeight = session.lines * lineHeight + 2 * padding;
+    // Short documents can wrap without overflowing the viewport.
+    if (input.wrap === 'soft' && (input.scrollHeight === input.clientHeight || input.scrollHeight > unwrappedHeight + 1)) {
+        measure.style.width = input.clientWidth + 'px';
+        if (!measure.firstChild) buildWrapMeasure(measure, input.value);
+        numbers.textContent = wrappedLineNumbers(measure, firstRow, lastRow, lineHeight);
+    } else {
+        const labels = [];
+        for (let row = firstRow; row <= lastRow && row < session.lines; row++) labels.push(row + 1);
+        numbers.textContent = labels.join('\n');
+    }
+    numbers.style.transform = 'translateY(' + (padding + firstRow * lineHeight - input.scrollTop) + 'px)';
+}
+
 const SourceController = {
     AUTO_PARSE_MAX_BYTES: 1024 * 1024,
     AUTO_PARSE_DELAY: 500,
@@ -200,6 +282,8 @@ const SourceController = {
         });
         $('sourceWrapToggle')?.addEventListener('change', event => {
             $('fullSourceInput').wrap = event.target.checked ? 'soft' : 'off';
+            if (!event.target.checked) $('sourceWrapMeasure').replaceChildren();
+            renderSourceLineNumbers(this._sourceEditorSession);
         });
         $('undoSourceEditBtn')?.addEventListener('click', () => this.undoSourceEdit());
         $('sourceEditorCancelBtn')?.addEventListener('click', () => dialog.close('cancel'));
@@ -241,7 +325,12 @@ const SourceController = {
                 event.stopPropagation();
             }
         });
-        $('fullSourceInput')?.addEventListener('input', () => {
+        const draft = $('fullSourceInput');
+        draft?.addEventListener('scroll', () => renderSourceLineNumbers(this._sourceEditorSession));
+        if (draft && typeof ResizeObserver !== 'undefined') {
+            new ResizeObserver(() => renderSourceLineNumbers(this._sourceEditorSession)).observe(draft);
+        }
+        draft?.addEventListener('input', () => {
             clearTimeout(this._sourceEditorStatsTimer);
             this._sourceEditorStatsTimer = setTimeout(() => this.updateSourceEditorMeta(), 120);
         });
@@ -251,6 +340,8 @@ const SourceController = {
             this._sourceEditorStatsTimer = null;
             this._sourceEditorSession = null;
             $('fullSourceInput').value = '';
+            $('sourceWrapMeasure').replaceChildren();
+            $('sourceLineNumbers').textContent = '';
             const opener = this._sourceEditorOpener;
             this._sourceEditorOpener = null;
             if (opener?.isConnected && !opener.hidden) opener.focus();
@@ -317,8 +408,8 @@ const SourceController = {
         $('sourceReplaceInput').value = '';
         $('sourceJumpLineInput').value = '1';
         this.setSourceEditorFeedback('');
-        this.updateSourceEditorMeta();
         dialog.showModal();
+        this.updateSourceEditorMeta();
         if (inline && (!inline.readOnly || inline.selectionStart !== inline.selectionEnd)) {
             input.setSelectionRange(inline.selectionStart, inline.selectionEnd, inline.selectionDirection);
         } else {
@@ -345,10 +436,14 @@ const SourceController = {
     updateSourceEditorMeta() {
         const input = $('fullSourceInput');
         const meta = $('sourceEditorMeta');
-        if(!input || !meta) return;
+        if(!input || !meta || !this._sourceEditorSession) return;
         const text = input.value;
         let lines = 1;
         for(let i=0;i<text.length;i++) if(text[i] === '\n') lines++;
+        this._sourceEditorSession.lines = lines;
+        $('sourceLineNumbers').style.setProperty('--source-line-digits', Math.max(2, String(lines).length));
+        $('sourceWrapMeasure').replaceChildren();
+        renderSourceLineNumbers(this._sourceEditorSession);
         const bytes = text.length * 2;
         const largeNotice = bytes >= 16 * 1024 * 1024
             ? '超大文本在浏览器中编辑可能变慢。' : '';

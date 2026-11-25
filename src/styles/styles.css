@@ -189,17 +189,30 @@
         .source-editor-title h2 { margin:0; font-size:16px; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .source-wrap-control { display:flex; align-items:center; gap:5px; cursor:pointer; white-space:nowrap; }
         .source-editor-title .muted { margin:0; font-size:12px; }
-        .source-editor-tools-panel { padding:8px 14px; border-bottom:1px solid var(--border); background:var(--bg-card); }
+        .source-editor-tools-panel { padding:10px 16px; max-height:42vh; overflow:auto; border-bottom:1px solid var(--border); background:var(--bg-card); }
         .source-editor-tools-panel > summary { width:max-content; cursor:pointer; color:var(--text-mid); font-size:12px; font-weight:650; }
-        .source-editor-tool-fields { display:flex; align-items:flex-end; gap:8px; flex-wrap:wrap; padding-top:10px; }
-        .source-editor-tool-fields label { display:flex; flex-direction:column; gap:4px; color:var(--text-mid); font-size:11px; }
-        .source-editor-tool-fields input { min-width:150px; height:30px; padding:0 8px; }
-        #sourceJumpLineInput { min-width:84px; width:84px; }
-        .source-editor-feedback { min-height:18px; margin:0; padding:2px 14px; color:var(--text-mid); font-size:12px; }
+        .source-editor-tool-fields { display:grid; gap:8px; max-width:640px; padding:12px 0 2px; }
+        .source-tool-row { display:grid; grid-template-columns:5em minmax(0, 1fr) 166px; gap:8px; align-items:center; }
+        .source-tool-row label { margin:0; font-size:12px; }
+        .source-tool-row input { min-width:0; width:100%; height:32px; padding:0 9px; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-strong); background:var(--bg-input); font:inherit; }
+        .source-tool-actions { display:flex; gap:6px; }
+        .source-tool-actions button { width:80px; height:32px; padding:0 4px; font-size:12px; }
+        @media (max-width:520px) {
+            .source-tool-row { grid-template-columns:minmax(0, 1fr) 166px; row-gap:3px; }
+            .source-tool-row label { grid-column:1 / -1; }
+        }
+        .source-editor-feedback { min-height:22px; margin:0; padding:2px 14px; color:var(--text-mid); font-size:12px; }
+        .source-editor-tools-panel:not([open]) + .source-editor-feedback:empty { min-height:0; padding:0; }
         .copy-format-select { height: 28px; min-width: 112px; border: 1px solid var(--border); border-radius: 7px; background: var(--bg-input); color: var(--text-main); font-size: 12px; padding: 0 8px; }
-        .source-editor-body { flex:1; min-height:0; padding:10px 12px; background:var(--bg-app); }
-        #fullSourceInput { width:100%; height:100%; min-height:0; resize:none; border-radius:8px; padding:14px; line-height:1.5; white-space:pre; overflow:auto; tab-size:4; font-family:var(--font-mono); background:var(--bg-card); border:1px solid var(--border); }
-        #fullSourceInput[wrap="soft"] { white-space:pre-wrap; overflow-wrap:anywhere; }
+        .source-editor-body { position:relative; display:flex; flex:1; min-height:0; margin:10px 12px; overflow:hidden; border:1px solid var(--border); border-radius:8px; }
+        .source-editor-body:focus-within { border-color:var(--primary); }
+        .source-line-gutter { flex:none; overflow:hidden; border-right:1px solid var(--border); background:var(--bg-elevated); color:var(--text-mid); user-select:none; }
+        #sourceLineNumbers, #fullSourceInput, #sourceWrapMeasure { margin:0; font:13px/20px var(--font-mono); letter-spacing:normal; tab-size:4; }
+        #sourceLineNumbers { padding:0 9px; min-width:calc(var(--source-line-digits, 2) * 1ch + 18px); text-align:right; }
+        #fullSourceInput, #sourceWrapMeasure { padding:12px; border:0; }
+        #fullSourceInput { flex:1; min-width:0; height:100%; min-height:0; resize:none; border-radius:0; white-space:pre; overflow:auto; background:var(--bg-card); }
+        #fullSourceInput[wrap="soft"], #sourceWrapMeasure { white-space:pre-wrap; overflow-wrap:anywhere; word-break:normal; }
+        #sourceWrapMeasure { position:absolute; inset:0 auto auto 0; height:100%; padding-block:0; overflow:hidden; visibility:hidden; pointer-events:none; contain:strict; }
         .source-editor-foot { min-height:54px; padding:8px 14px; border-top:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
         .source-editor-foot .muted { font-size: 12px; }
         .source-editor-footer-actions { display:flex; align-items:center; gap:8px; }
@@ -589,7 +602,6 @@
             .table-meta { top: auto; }
             .statusbar { padding: 4px 9px; }
             .statusbar .status-secondary { display: none; }
-            .source-editor-tools { width: 100%; justify-content: flex-start; }
             .source-editor-head { flex-wrap:wrap; }
             .source-editor-title { flex-basis:100%; }
             .join-meta { grid-template-columns: 1fr; overflow-y: auto; }
