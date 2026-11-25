@@ -60,6 +60,7 @@
                         <span id="cardFeedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
                         <div class="source-section-heading source-editor-heading">
                             <label class="source-editor-label" id="sourceEditorLabel" for="rawInput">原文</label>
+                            <button class="sm text-button" id="editFullSourceBtn" type="button" aria-haspopup="dialog" aria-controls="sourceEditorDialog" title="全屏编辑当前卡片的原文" hidden>编辑完整原文</button>
                             <details class="tools-menu" data-menu id="sourceTools">
                                 <summary aria-label="当前卡片工具">更多 <span class="menu-chevron" aria-hidden="true"></span></summary>
                                 <div class="tools-popover" role="group" aria-label="当前卡片工具">
@@ -77,13 +78,12 @@
                             <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.json,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,application/json,text/html">
                         </div>
                         <div class="textarea-shell">
-                            <textarea id="rawInput" wrap="off" aria-label="原始表格数据" aria-describedby="sourcePreviewNotice" placeholder="粘贴数据，或拖入文件" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
+                            <textarea id="rawInput" wrap="off" spellcheck="false" aria-label="原始表格数据" aria-describedby="sourcePreviewNotice" aria-keyshortcuts="Control+f Meta+f Control+h Meta+h Control+g Meta+g" placeholder="粘贴数据，或拖入文件" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
                             <button class="sm text-button source-sample" id="sampleBtn" type="button">加载示例</button>
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
                         <p id="sourcePreviewNotice" class="source-help" role="status" aria-live="polite" hidden></p>
                         <div id="sourcePreviewActions" class="source-preview-actions" hidden>
-                            <button class="sm" id="editFullSourceBtn" type="button" aria-haspopup="dialog" aria-controls="sourceEditorDialog">编辑完整原文</button>
                             <button class="sm text-button" id="undoSourceEditBtn" type="button" hidden>撤销上次修改</button>
                         </div>
                         <span id="sourceEditFeedback" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></span>
@@ -336,6 +336,7 @@
                 <h2 id="sourceEditorTitle">编辑完整原文</h2>
                 <p id="sourceEditorMeta" class="muted"></p>
             </div>
+            <label class="source-wrap-control"><input id="sourceWrapToggle" type="checkbox">自动换行</label>
             <button class="sm text-button" id="sourceEditorCancelBtn" type="button">取消</button>
         </header>
         <details id="sourceEditorTools" class="source-editor-tools-panel">

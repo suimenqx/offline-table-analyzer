@@ -165,6 +165,22 @@ describe('SourceController auto-parse policy', () => {
 // getLastPaste / clearLastPaste
 // ---------------------------------------------------------------------------
 describe('SourceController paste metadata', () => {
+  it('replaces the selected text after CRLF lines when the paste crosses the preview threshold', () => {
+    const original = 'one\r\ntwo\rthree\r\nfour';
+    dispatch('source:replace', {text:original});
+    const inserted = 'x'.repeat(SourceController.EDITOR_LIMIT);
+    const target = {value:'one\ntwo\nthree\nfour', selectionStart:8, selectionEnd:13, dataset:{}};
+    let prevented = false;
+    SourceController.handlePaste({
+      target, preventDefault() { prevented = true; },
+      clipboardData:{getData(type) { return type === 'text/plain' ? inserted : ''; }},
+    });
+    assert.equal(prevented, true);
+    assert.ok(Store.curr().raw === original.replace('three', inserted));
+    assert.equal(SourceController.undoSourceEdit(), true);
+    assert.equal(Store.curr().raw, original);
+  });
+
   it('starts with null lastPaste', () => {
     assert.equal(SourceSnapshot.getLastPaste(), null);
   });

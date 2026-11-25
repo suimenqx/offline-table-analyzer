@@ -16,6 +16,15 @@ OTA.define('source-controller', ["runtime", "store", "dispatch", "source-snapsho
 
 const fileReads = new WeakMap();
 const editorOwners = new WeakMap();
+const sourceToolFields = {f:'sourceFindInput', h:'sourceReplaceInput', g:'sourceJumpLineInput'};
+
+// The textarea counts CRLF as one character in its selection offsets.
+function rawOffset(text, editorOffset) {
+    let offset = editorOffset;
+    for (let i = text.indexOf('\r\n'); i >= 0 && i < offset; i = text.indexOf('\r\n', i + 2)) offset++;
+    return offset;
+}
+
 const SourceController = {
     AUTO_PARSE_MAX_BYTES: 1024 * 1024,
     AUTO_PARSE_DELAY: 500,
@@ -78,8 +87,9 @@ const SourceController = {
             return;
         }
         const current = doc.raw || '';
-        const start = Number.isInteger(editor.selectionStart) ? editor.selectionStart : current.length;
-        const end = Number.isInteger(editor.selectionEnd) ? editor.selectionEnd : start;
+        if (current.length + snapshot.plain.length <= this.EDITOR_LIMIT) return;
+        const start = Number.isInteger(editor.selectionStart) ? rawOffset(current, editor.selectionStart) : current.length;
+        const end = Number.isInteger(editor.selectionEnd) ? rawOffset(current, editor.selectionEnd) : start;
         const next = current.slice(0, start) + snapshot.plain + current.slice(end);
         if (next.length <= this.EDITOR_LIMIT) return;
         event.preventDefault();
@@ -151,16 +161,14 @@ const SourceController = {
         const button = $('undoSourceEditBtn');
         const actions = $('sourcePreviewActions');
         const edit = $('editFullSourceBtn');
-        const editor = $('rawInput');
-        const large = Boolean(editor?.dataset?.sourcePreview === 'true');
         const undo = this.getCurrentSourceUndo();
         if (button) {
             button.hidden = !undo;
             button.disabled = !undo;
             button.title = undo ? `撤销${undo.label || '原文修改'}` : '没有可撤销的原文修改';
         }
-        if (edit) edit.hidden = !large;
-        if (actions) actions.hidden = !large && !undo;
+        if (edit) edit.hidden = !Store.getDocument()?.raw;
+        if (actions) actions.hidden = !undo;
     },
 
     undoSourceEdit() {
@@ -182,6 +190,17 @@ const SourceController = {
         const dialog = $('sourceEditorDialog');
         if (!dialog) return;
         $('editFullSourceBtn')?.addEventListener('click', () => this.openSourceEditor());
+        $('rawInput')?.addEventListener('keydown', event => {
+            if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || event.isComposing) return;
+            const field = sourceToolFields[event.key.toLowerCase()];
+            if (field && this.openSourceEditor(field, event.currentTarget)) {
+                event.preventDefault();
+                event.stopPropagation();
+            }
+        });
+        $('sourceWrapToggle')?.addEventListener('change', event => {
+            $('fullSourceInput').wrap = event.target.checked ? 'soft' : 'off';
+        });
         $('undoSourceEditBtn')?.addEventListener('click', () => this.undoSourceEdit());
         $('sourceEditorCancelBtn')?.addEventListener('click', () => dialog.close('cancel'));
         $('sourceEditorCancelFooterBtn')?.addEventListener('click', () => dialog.close('cancel'));
@@ -209,12 +228,11 @@ const SourceController = {
                 this.saveSourceEditor();
                 return;
             }
-            const targetId = key === 'f' ? 'sourceFindInput' : key === 'h' ? 'sourceReplaceInput' : key === 'g' ? 'sourceJumpLineInput' : null;
+            const targetId = !event.altKey && !event.shiftKey && sourceToolFields[key];
             if (targetId) {
                 event.preventDefault();
                 event.stopPropagation();
-                $('sourceEditorTools').open = true;
-                $(targetId)?.focus();
+                this.focusSourceTool(targetId);
                 return;
             }
             const editingText = /^(INPUT|TEXTAREA)$/.test(event.target?.tagName || '');
@@ -228,12 +246,15 @@ const SourceController = {
             this._sourceEditorStatsTimer = setTimeout(() => this.updateSourceEditorMeta(), 120);
         });
         dialog.addEventListener('close', () => {
+            if (dialog.open) return;
             clearTimeout(this._sourceEditorStatsTimer);
             this._sourceEditorStatsTimer = null;
             this._sourceEditorSession = null;
+            $('fullSourceInput').value = '';
             const opener = this._sourceEditorOpener;
             this._sourceEditorOpener = null;
-            if (opener?.isConnected) opener.focus();
+            if (opener?.isConnected && !opener.hidden) opener.focus();
+            else $('rawInput')?.focus();
         });
         Store.onChange((event, payload) => {
             if (event === 'source:textChanged') {
@@ -263,20 +284,34 @@ const SourceController = {
         this.refreshSourceUndoButton();
     },
 
-    openSourceEditor() {
+    focusSourceTool(field) {
+        const input = $('fullSourceInput');
+        const length = input.selectionEnd - input.selectionStart;
+        if (field !== 'sourceJumpLineInput' && length > 0 && length <= 256) {
+            const word = input.value.slice(input.selectionStart, input.selectionEnd);
+            if (!word.includes('\n')) $('sourceFindInput').value = word;
+        }
+        $('sourceEditorTools').open = true;
+        const target = $(field);
+        target.focus();
+        target.select();
+    },
+
+    openSourceEditor(field=null, opener=$('editFullSourceBtn')) {
         const dialog = $('sourceEditorDialog');
         const input = $('fullSourceInput');
+        const inline = $('rawInput');
         const doc = Store.getDocument();
-        if (!dialog || !input || !doc || dialog.open) return false;
+        if (!dialog || !input || !doc?.raw || dialog.open) return false;
         this._sourceEditorSession = {
             docId:doc.id,
             sourceRevision:doc.sourceRevision,
             raw:doc.raw || '',
             lineEnding:this.dominantLineEnding(doc.raw || ''),
         };
-        this._sourceEditorOpener = $('editFullSourceBtn');
-        input.value = doc.raw || '';
-        input.setSelectionRange(0, 0);
+        this._sourceEditorOpener = opener;
+        $('sourceEditorTitle').textContent = `编辑完整原文 · ${doc.title}`;
+        input.value = doc.raw;
         $('sourceEditorTools').open = false;
         $('sourceFindInput').value = '';
         $('sourceReplaceInput').value = '';
@@ -284,7 +319,13 @@ const SourceController = {
         this.setSourceEditorFeedback('');
         this.updateSourceEditorMeta();
         dialog.showModal();
-        requestAnimationFrame(() => input.focus({preventScroll:true}));
+        if (inline && (!inline.readOnly || inline.selectionStart !== inline.selectionEnd)) {
+            input.setSelectionRange(inline.selectionStart, inline.selectionEnd, inline.selectionDirection);
+        } else {
+            input.setSelectionRange(0, 0);
+        }
+        input.focus();
+        if (field) this.focusSourceTool(field);
         return true;
     },
 
@@ -334,27 +375,20 @@ const SourceController = {
             this.setSourceEditorFeedback('当前卡片或原文已变化；此草稿没有保存。请取消并重新打开编辑器。');
             return false;
         }
-        const canonical = value => String(value).replace(/\r\n?/g, '\n');
         const draft = input.value;
-        if (canonical(draft) === canonical(session.raw)) {
-            dialog.close('saved');
-            this.setSourceEditorFeedback('');
-            return true;
-        }
-        const text = session.lineEnding === '\n' ? draft : draft.replace(/\n/g, session.lineEnding);
-        if (text.length * 2 > MAX_IMPORT_BYTES) {
-            this.setSourceEditorFeedback('原文超过 128 MiB 安全限制，修改未保存。');
-            return false;
+        if (draft !== session.raw.replace(/\r\n?/g, '\n')) {
+            const text = session.lineEnding === '\n' ? draft : draft.replace(/\n/g, session.lineEnding);
+            this._savingSourceEditor = true;
+            try {
+                if (!this.commitSourceEdit(text, {label:'完整原文编辑'})) return false;
+            } finally {
+                this._savingSourceEditor = false;
+            }
         }
         this._sourceEditorSession = null;
-        this._savingSourceEditor = true;
-        let committed = false;
-        try { committed = this.commitSourceEdit(text, {preservePaste:false, label:'完整原文编辑'}); }
-        finally { this._savingSourceEditor = false; }
-        if (!committed) {
-            this.setSourceEditorFeedback('原文没有变化，未产生新的修订。');
-            dialog.close('saved');
-            return true;
+        const inline = $('rawInput');
+        if (inline && !inline.readOnly) {
+            inline.setSelectionRange(input.selectionStart, input.selectionEnd, input.selectionDirection);
         }
         this.setSourceEditorFeedback('');
         dialog.close('saved');
@@ -372,8 +406,8 @@ const SourceController = {
         let match = expression.exec(source);
         if (!match && start > 0) { expression.lastIndex = 0; match = expression.exec(source); }
         if (!match) { this.setSourceEditorFeedback('没有找到匹配文本。'); return false; }
-        input.focus();
         input.setSelectionRange(match.index, match.index + match[0].length);
+        input.focus();
         let line = 1;
         for(let i=0;i<match.index;i++) if(source[i] === '\n') line++;
         this.setSourceEditorFeedback(`已定位到第 ${line} 行。`);
@@ -431,8 +465,8 @@ const SourceController = {
             position = next + 1;
             line++;
         }
-        input.focus();
         input.setSelectionRange(position, position);
+        input.focus();
         this.setSourceEditorFeedback(`已跳转到第 ${line} 行。`);
         return true;
     },
