@@ -64,6 +64,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
 | `JoinEditor` | View design UI: column picker with search & "only selected" filter, select all/filtered, alias support (inline or `AS`), drag-reorder output columns, show/hide left/right, help panel |
 | `SourceController` | Source input, keyed compact card DOM, independent editing/participation state, keyboard/focus/rename/reorder, clipboard/FileReader adaptation, full-source modal editing and source undo, file drag-and-drop, input resizer and extension-based format detection |
+| `source-column-editor` | Transient rectangular selections in both source textareas, browser text measurement shared with the line gutter, and native textarea edits. |
 | `CellEditController` | Inline cell editing with Enter/Tab/Escape/blur, non-destructive overlay persistence, 100-step undo/redo stacks |
 | `FilterController` | Per-column "contains" filter popover positioned near column headers, apply/clear/close actions |
 | `ModalController` | Generic modal dialog lifecycle, focus trapping/restoration, table/view/column selection modals, diagnostics and help display |
@@ -230,6 +231,8 @@ paste / drop / file / full-source modal
 ```
 
 Drag-and-drop of local files onto the source area is supported. Large inputs use a bounded preview with an explicit full-source editor; the modal commits once on Save and leaves Store untouched on Cancel/Escape. Config import/export (`table-tool-config` kind, 5 MB limit) transfers rules, filters, views, and UI settings across documents.
+
+Both source editors bind the same column-editing module so that pointer coordinates, soft wraps and input-method commits follow the same rules. The module measures inert text with the browser’s layout engine and publishes each block edit through the textarea’s input event. SourceController retains ownership of draft saves, card revisions and preview limits.
 
 The full processed result remains in memory for export, while only the selected page is materialized as table DOM.
 

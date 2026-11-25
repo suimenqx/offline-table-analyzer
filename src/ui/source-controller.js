@@ -1,4 +1,4 @@
-OTA.define('source-controller', ["runtime", "store", "dispatch", "source-snapshot", "exporter", "table-registry"], ({$, createEl, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {SourceSnapshot}, {Exporter}, {TableRegistry}) => {
+OTA.define('source-controller', ["runtime", "store", "dispatch", "source-snapshot", "exporter", "table-registry", "source-column-editor"], ({$, createEl, formatBytes, Toast}, {Store, MAX_IMPORT_BYTES}, {dispatch}, {SourceSnapshot}, {Exporter}, {TableRegistry}, {bindColumnEditor, buildLineBlocks}) => {
 /* SourceController — source input, card interaction, file import and input
    resizer. Delegates all persisted state changes to dispatch().
 
@@ -23,27 +23,6 @@ function rawOffset(text, editorOffset) {
     let offset = editorOffset;
     for (let i = text.indexOf('\r\n'); i >= 0 && i < offset; i = text.indexOf('\r\n', i + 2)) offset++;
     return offset;
-}
-
-// Let the browser measure soft wraps with the same font and content width as
-// the textarea. Chunk at real newlines so range measurements stay local even
-// when a user jumps to the end of a large draft.
-function buildWrapMeasure(measure, text) {
-    const fragment = document.createDocumentFragment();
-    let firstLine = 1;
-    for (let start = 0; start <= text.length;) {
-        const newline = text.indexOf('\n', start + 16384);
-        const end = newline < 0 ? text.length : newline;
-        const block = document.createElement('div');
-        const content = text.slice(start, end);
-        block.dataset.firstLine = firstLine;
-        block.textContent = content + '\n'; // Give the final empty line a line box too.
-        fragment.appendChild(block);
-        for (let i = content.indexOf('\n'); i >= 0; i = content.indexOf('\n', i + 1)) firstLine++;
-        firstLine++;
-        start = end + 1;
-    }
-    measure.replaceChildren(fragment);
 }
 
 function wrappedLineNumbers(measure, firstRow, lastRow, lineHeight) {
@@ -97,7 +76,7 @@ function renderSourceLineNumbers(session) {
     // Short documents can wrap without overflowing the viewport.
     if (input.wrap === 'soft' && (input.scrollHeight === input.clientHeight || input.scrollHeight > unwrappedHeight + 1)) {
         measure.style.width = input.clientWidth + 'px';
-        if (!measure.firstChild) buildWrapMeasure(measure, input.value);
+        if (!measure.firstChild) buildLineBlocks(measure, input.value);
         numbers.textContent = wrappedLineNumbers(measure, firstRow, lastRow, lineHeight);
     } else {
         const labels = [];
@@ -129,6 +108,7 @@ const SourceController = {
 
     displayText(text='', editor=$('rawInput')) {
         if (!editor) return;
+        this._clearInlineColumns?.();
         const large = text.length > this.EDITOR_LIMIT;
         if(!editor.dataset)editor.dataset={};
         editorOwners.set(editor, Store.getDocument());
@@ -271,6 +251,7 @@ const SourceController = {
     _bindSourceEditor() {
         const dialog = $('sourceEditorDialog');
         if (!dialog) return;
+        const clearDraftColumns = bindColumnEditor($('fullSourceInput'), MAX_IMPORT_BYTES);
         $('editFullSourceBtn')?.addEventListener('click', () => this.openSourceEditor());
         $('rawInput')?.addEventListener('keydown', event => {
             if (!(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || event.isComposing) return;
@@ -281,6 +262,7 @@ const SourceController = {
             }
         });
         $('sourceWrapToggle')?.addEventListener('change', event => {
+            clearDraftColumns();
             $('fullSourceInput').wrap = event.target.checked ? 'soft' : 'off';
             if (!event.target.checked) $('sourceWrapMeasure').replaceChildren();
             renderSourceLineNumbers(this._sourceEditorSession);
@@ -335,6 +317,7 @@ const SourceController = {
         });
         dialog.addEventListener('close', () => {
             if (dialog.open) return;
+            clearDraftColumns();
             clearTimeout(this._sourceEditorStatsTimer);
             this._sourceEditorStatsTimer = null;
             this._sourceEditorSession = null;
@@ -1230,9 +1213,13 @@ const SourceController = {
     _bindMainEditor() {
         const rawInput = $('rawInput');
         if (!rawInput) return;
+        this._clearInlineColumns = bindColumnEditor(rawInput, MAX_IMPORT_BYTES);
 
         // Input changes → dispatch source:changed
         rawInput.oninput = () => {
+            // A native multiline command can deliver queued input events
+            // after displayText has switched this control to a bounded preview.
+            if (rawInput.dataset?.sourcePreview === 'true') return;
             const text = rawInput.value;
             const owner = editorOwners.get(rawInput);
             if(editorOwners.has(rawInput) && owner !== Store.getDocument()) {
@@ -1247,8 +1234,12 @@ const SourceController = {
                 Toast.show('原文超过 128 MiB 安全限制；超出部分未保留', true);
                 return;
             }
-            dispatch('source:changed', { text, preservePaste:Boolean(SourceController.getCurrentPaste(text)) });
-            if (text.length > SourceController.EDITOR_LIMIT) SourceController.displayText(text, rawInput);
+            const preservePaste = Boolean(SourceController.getCurrentPaste(text));
+            if (text.length > SourceController.EDITOR_LIMIT) {
+                SourceController.commitSourceEdit(text, {preservePaste});
+                return;
+            }
+            dispatch('source:changed', {text, preservePaste});
         };
 
         // Paste with HTML detection

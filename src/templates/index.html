@@ -82,7 +82,8 @@
                             <input type="file" id="sourceFileInput" class="hidden" accept=".csv,.tsv,.json,.txt,.log,.md,.markdown,.html,.htm,text/plain,text/csv,application/json,text/html">
                         </div>
                         <div class="textarea-shell">
-                            <textarea id="rawInput" wrap="off" spellcheck="false" aria-label="原始表格数据" aria-describedby="sourcePreviewNotice" aria-keyshortcuts="Control+f Meta+f Control+h Meta+h Control+g Meta+g" placeholder="粘贴数据，或拖入文件" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
+                            <textarea id="rawInput" wrap="off" spellcheck="false" aria-label="原始表格数据" aria-describedby="sourcePreviewNotice columnEditHint" title="Alt + 鼠标左键拖动进行列编辑" aria-keyshortcuts="Control+f Meta+f Control+h Meta+h Control+g Meta+g" placeholder="粘贴数据，或拖入文件" style="resize:none; line-height:1.5; white-space:pre; overflow-x:auto;"></textarea>
+                            <span class="visually-hidden" id="columnEditHint">按住 Alt 并用鼠标左键拖动，或用 Alt+Shift+方向键选择矩形区域。输入文字可同时编辑所选行，Esc 退出列编辑。</span>
                             <button class="sm text-button source-sample" id="sampleBtn" type="button">加载示例</button>
                             <div class="input-resizer" id="inputResizer" title="拖拽调整高度"></div>
                         </div>
@@ -367,7 +368,7 @@
         <p id="sourceEditorFeedback" class="source-editor-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
         <div class="source-editor-body">
             <div class="source-line-gutter" aria-hidden="true"><pre id="sourceLineNumbers"></pre></div>
-            <textarea id="fullSourceInput" wrap="off" spellcheck="false" aria-label="完整原文" placeholder="完整原文" autocomplete="off"></textarea>
+            <textarea id="fullSourceInput" wrap="off" spellcheck="false" aria-label="完整原文" aria-describedby="columnEditHint" title="Alt + 鼠标左键拖动进行列编辑" placeholder="完整原文" autocomplete="off"></textarea>
             <div id="sourceWrapMeasure" aria-hidden="true"></div>
         </div>
         <footer class="source-editor-foot">

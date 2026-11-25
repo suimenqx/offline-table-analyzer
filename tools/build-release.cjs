@@ -67,6 +67,7 @@ const MODULES = [
   ['ui/modal-controller.js',      'modal dialogs and selectors'],
   ['ui/view-manager.js',          'JOIN view CRUD management modal'],
   ['ui/join-editor.js',           'JOIN editor UI'],
+  ['ui/source-column-editor.js',  'textarea geometry and column editing'],
   ['ui/source-controller.js',     'source editor and file import'],
   ['ui/cell-edit-controller.js',  'inline cell editing with undo/redo'],
   ['ui/filter-controller.js',     'column filter popover'],

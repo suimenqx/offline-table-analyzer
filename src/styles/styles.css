@@ -212,6 +212,16 @@
         #fullSourceInput { flex:1; min-width:0; height:100%; min-height:0; resize:none; border-radius:0; white-space:pre; overflow:auto; background:var(--bg-card); }
         #fullSourceInput[wrap="soft"], #sourceWrapMeasure { white-space:pre-wrap; overflow-wrap:anywhere; word-break:normal; }
         #sourceWrapMeasure { position:absolute; inset:0 auto auto 0; height:100%; padding-block:0; overflow:hidden; visibility:hidden; pointer-events:none; contain:strict; }
+        .column-overlay { position:absolute; overflow:hidden; pointer-events:none; z-index:1; }
+        .column-probe { position:absolute; inset:0; overflow:hidden; opacity:0; }
+        .column-marks { position:absolute; inset:0; pointer-events:none; }
+        .column-mark { position:absolute; background:color-mix(in srgb, var(--primary) 30%, transparent); }
+        .column-mark.caret { background:var(--text-strong); }
+        textarea.column-editing { caret-color:transparent; }
+        @media (forced-colors:active) {
+            .column-mark { forced-color-adjust:none; background:Highlight; opacity:.5; }
+            .column-mark.caret { background:CanvasText; opacity:1; }
+        }
         .source-editor-foot { min-height:54px; padding:8px 14px; border-top:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
         .source-editor-foot .muted { font-size: 12px; }
         .source-editor-footer-actions { display:flex; align-items:center; gap:8px; }

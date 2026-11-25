@@ -9,7 +9,7 @@
 - 领域代码难以复用到 Node 测试或未来的 XLSX 导入模块。
 - 发布单文件的约束与开发源文件的可维护性相互冲突。
 
-这些问题推动了源模块拆分。现在由 `src/` 维护业务代码，`tools/build-release.cjs` 将 47 个源模块内联为单文件发布产物；Node 测试通过同一构建清单加载源模块。发布产物仍可直接打开，保持零运行时依赖、v20 工作区契约、解析器与 JOIN 回归覆盖以及隐私边界。
+这些问题推动了源模块拆分。现在由 `src/` 维护业务代码，`tools/build-release.cjs` 按清单将源模块内联为单文件发布产物。Node 测试通过同一构建清单加载源模块。发布产物仍可直接打开，保持零运行时依赖、v20 工作区契约、解析器与 JOIN 回归覆盖以及隐私边界。
 
 ## 2. 重构时的方案比较
 
@@ -66,7 +66,7 @@ App orchestrator → bootstrap
 
 ## 5. 已落地模块地图
 
-当前发布构建包含 47 个源模块，按目录分层：
+当前发布构建包含 48 个源模块，按目录分层：
 
 | 目录 | 文件 | 职责 | 主要公开对象 |
 | --- | --- | --- | --- |
@@ -107,6 +107,7 @@ App orchestrator → bootstrap
 | | `view-manager.js` | JOIN 视图管理 | `ViewManager` |
 | | `join-editor.js` | JOIN 编辑器 UI | `JoinEditor` |
 | | `source-controller.js` | 源文本、文件/剪贴板浏览器适配、事务式完整原文编辑和输入尺寸控制 | `SourceController` |
+| | `source-column-editor.js` | 两个原文输入框共用的矩形选区、列编辑及行布局测量 | `bindColumnEditor`、`buildLineBlocks` |
 | | `cell-edit-controller.js` | 原始表单元格修正、撤销/重做和多行内联编辑 | `CellEditController` |
 | | `filter-controller.js` | 列筛选弹窗和交互 | `FilterController` |
 | | `tab-controller.js` | 页签创建、激活、排序与重命名 | `TabController` |
