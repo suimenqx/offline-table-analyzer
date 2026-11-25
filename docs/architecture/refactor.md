@@ -9,7 +9,7 @@
 - 领域代码难以复用到 Node 测试或未来的 XLSX 导入模块。
 - 发布单文件的约束与开发源文件的可维护性相互冲突。
 
-这些问题推动了源模块拆分。现在由 `src/` 维护业务代码，`tools/build-release.cjs` 按清单将源模块内联为单文件发布产物。Node 测试通过同一构建清单加载源模块。发布产物仍可直接打开，保持零运行时依赖、v20 工作区契约、解析器与 JOIN 回归覆盖以及隐私边界。
+这些问题推动了源模块拆分。现在由 `src/` 维护业务代码，`tools/build-release.cjs` 按清单将源模块内联为单文件发布产物。Node 测试通过同一构建清单加载源模块。发布产物仍可直接打开，保持零运行时依赖、schema 22 工作区契约（并兼容 schema 21、20 和旧版数据）、解析器与 JOIN 回归覆盖以及隐私边界。
 
 ## 2. 重构时的方案比较
 
@@ -19,7 +19,7 @@
 | 浏览器原生 ES Module | 依赖方向清晰，调试体验好 | 直接打开 `file://` 时存在模块加载/CORS 兼容问题，无法满足单文件交付 | 暂不作为发布形态 |
 | 引入 Vite/Webpack/React | 工程能力强，适合大型 UI | 引入依赖、构建链和生态升级成本，偏离“单文件/零依赖”产品定位 | 暂不选 |
 | **源模块 + 确定性内联构建** | 保持单 HTML、无运行时依赖；源文件可拆分；构建和回退可验证 | 需要维护轻量 registry；暂时不是标准 ESM | **当前选型** |
-| 纯函数核心 + 可选 ESM | 保持领域逻辑可测试、可维护 | 需要先稳定领域契约 | 当前采用纯函数核心，后台线程不在本计划内 |
+| 纯函数核心 + 可选 ESM | 保持领域逻辑可测试、可维护 | 需要先稳定领域契约 | 纯函数核心已在 Window 和内嵌 Worker 中复用；ESM 仍不是发布形态 |
 
 ## 3. 当前决策：源模块 + 单文件发布
 
@@ -38,9 +38,9 @@
 依赖方向从底层到上层单向流动：
 
 ```text
-template / styles → OTA registry / runtime / TableUtils / SourceSnapshot / FilterEngine
+template / styles → OTA registry / runtime / TableUtils / SourceSnapshot / FilterEngine / BackgroundService
       ↓
-Store → dispatch
+WorkspaceStorage / Store → dispatch
       ↓
 Exporter / ClipboardFormatter
       ↓
@@ -73,13 +73,16 @@ App orchestrator → bootstrap
 | `core/` | `module-loader.js` | 无依赖的本地模块 registry | `OTA.define`, `OTA.require`, `OTA.start` |
 | | `runtime.js` | DOM 查询、Tooltip、Toast | `$`, `createEl`, `Tooltip`, `Toast` |
 | | `table-utils.js` | 文本、单元格、行宽、表头工具 | `TableUtils` |
-| | `source-snapshot.js` | 临时剪贴板/文件来源元数据、诊断预览限长、页签与文本匹配 | `SourceSnapshot` |
+| | `source-snapshot.js` | 临时剪贴板/文件来源元数据、诊断预览限长、卡片与文本匹配 | `SourceSnapshot` |
 | | `filter-engine.js` | 纯过滤/高亮/列投影逻辑（token 解析、操作符匹配、正则），零 DOM 依赖 | `FilterEngine` |
+| | `background-service.js` | 内嵌 Worker 生命周期、版本握手、取消和消息传输 | `BackgroundService` |
 | | `query-service.js` | 统一 JOIN、过滤、Focus、分页和预览结果缓存 | `QueryService` |
+| | `worker-runtime.js` | Worker 中的多卡片数据集、查询、JOIN 和 XLSX 会话 | `WorkerRuntime` |
 | | `dispatch.js` | UI 到 Store 的命令入口 | `dispatch` |
 | | `table-registry.js` | 解析结果及表/列元数据访问；用 QueryService 的表池规则派生列目录 | `TableRegistry` |
 | | `extraction-session.js` | 当前来源提取、复用、取消、过期检查及结果发布 | `ExtractionSession` |
-| `state/` | `store.js` | schema、迁移、页签、持久化 | `Store`, 常量 |
+| `state/` | `workspace-storage.js` | IndexedDB 原文快照的异步事务提交、读取与清理 | `WorkspaceStorage` |
+| | `store.js` | schema、迁移、工程/卡片工作区、持久化 | `Store`, 常量 |
 | `export/` | `exporter.js` | 下载、无依赖 XLSX ZIP/XML | `Exporter` |
 | | `clipboard.js` | 剪贴板序列化 | `ClipboardFormatter` |
 | `parsing/` | `header-resolver.js` | 自动/强制表头推断 | `HeaderResolver` |
@@ -195,7 +198,7 @@ DOM event
 
 - **模块使用轻量 registry 而非 ESM**：保留它以支持 `file://` 单文件发布和零运行时依赖；开发期由架构校验检查模块清单、依赖存在性和加载顺序。只有出现明确且反复的作者体验问题，证明轻量工具不足以支撑已排定能力时，才重新评估 ESM 或更重的构建链。
 - **App 仍偏大**：先用测试保护行为，再按用户流程拆 controller；不进行没有回归保护的机械搬迁。
-- **大数据计算**：已建立桌面 CI fixture 与离线机制证据；22.1 的后台计算、异步原文恢复和预算由[大数据 ADR](large-data.md)规定。HTML DOMParser 保持主线程；23.1 起完整文本解析表保留在 Worker，Window 仅接收当前页及描述信息，容量仍有限。多卡片工作区的共享会话多数据集模型、表池派生与预算见[多卡片工作区 ADR](multi-card-workspace.md)（已决策待实施）。
+- **大数据计算**：已建立桌面 CI fixture 与离线机制证据；22.1 的后台计算、异步原文恢复和预算由[大数据 ADR](large-data.md)规定。HTML DOMParser 保持主线程；23.1 起完整文本解析表保留在 Worker，Window 仅接收当前页及描述信息，容量仍有限。多卡片工作区的共享会话、多数据集表池和预算已实施，决策与边界见[多卡片工作区 ADR](multi-card-workspace.md)。
 - **浏览器兼容**：发布脚本保持标准语法；浏览器相关改动运行 Node/静态校验，并在受支持的平台或 CI 运行 Chromium 回归。Safari 等浏览器仍需补充验证。
 - **schema 演进**：任何 schema 变化必须增加迁移函数、旧 payload fixture、失败恢复测试和版本说明。
 

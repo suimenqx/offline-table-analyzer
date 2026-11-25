@@ -1,6 +1,6 @@
 # 多卡片工作区验收基线
 
-状态：已定义，2026-10-18，待实施。来源：[Wayfinder 地图 #13](https://github.com/suimenqx/offline-table-analyzer/issues/13) 票「多卡片验收基线」决议。实施会话按本文定义验收；实测结果按既有惯例归档（[baselines/](baselines/)）。
+状态：已实施。本文的验收范围记录于 2026-10-18；工程/卡片迁移、Worker 多数据集、表池和项目级 view 已落地。当前覆盖位置包括 `tests/unit/table-pool.test.js`、`tests/unit/worker-runtime.test.js`、`tests/unit/store.test.js`、`tests/integration/card-ui.test.js`、`tests/integration/card-worker-metadata.test.js`、`e2e/multi-card-flow.e2e.js` 和 `e2e/multi-card.perf.js`。当前架构结果见[多卡片工作区 ADR](../architecture/multi-card-workspace.md)。本文中的原始用例数与门槛是当时的验收计划，不代表当前 CI 汇总数。
 
 ## 测试边界
 

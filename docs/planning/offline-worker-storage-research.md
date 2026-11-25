@@ -2,6 +2,8 @@
 
 调查日期：2026-10-08。范围：Wayfinder《单文件后台计算与异步原文存储是否可行》。本文关闭事实调查，不批准架构、存储技术、容量、交互或持久化合同变更；未运行浏览器探针、原型或耗时基准。
 
+后续状态（2026-11-26）：这些结论是决策前的历史记录。离线 Blob Worker 和 IndexedDB 持久化已由[大数据 ADR](../architecture/large-data.md)批准并实现；实际 file://、断网、事务提交、重开和隐私模式探针见[离线机制基线](../testing/baselines/2026-10-08-offline/offline-mechanisms.json)。下文“尚未决定/未执行”均指 2026-10-08 调查结束时，不表示当前仍未实施。
+
 已确认用户条件：桌面 Chrome、整机 32 GB 内存；大原文接受有限预览；覆盖导入、解析、筛选、翻页、JOIN、导出；需要自动恢复；超过当前约 25 MiB 的输入纳入规划，具体预算等待实测。整机内存不等于标签页可用堆或磁盘存储配额。
 
 ## 核心结论
@@ -35,7 +37,7 @@
 
 不能原样迁移的边界：`runtime`/UI 构造 DOM；Store 使用 localStorage、页面事件与主题；TableRegistry 依赖 Store 并向调用者同步提供整表；Exporter 依赖 runtime，下载使用 document；ClipboardFormatter 依赖 Store。完整流程后台化仍需改变这些接口或提取真正的计算所有者，不能靠新增 Worker 开关完成。[Store](../../src/state/store.js)、[TableRegistry](../../src/core/table-registry.js)、[Exporter](../../src/export/exporter.js)、[ClipboardFormatter](../../src/export/clipboard.js)
 
-当前 [架构文档](../architecture/architecture.md) 将 Worker/IndexedDB 延后，[架构校验器](../../tools/validate-architecture.cjs) 明确拒绝新增 Worker/IndexedDB。若后续选择该路线，必须先记录 ADR 并针对批准边界加强校验；本调查未改变这些约束。
+截至 2026-10-08 调查日，当时的[架构文档](../architecture/architecture.md)将 Worker/IndexedDB 延后，[架构校验器](../../tools/validate-architecture.cjs)也拒绝新增 Worker/IndexedDB。后续路线需要先记录 ADR 并针对批准边界加强校验；该 ADR 后来完成并获批准，当前实现见开篇状态说明。
 
 ## HTML 解析一致性是独立问题
 
@@ -45,7 +47,7 @@
 
 例如省略合法可省的 `</td>`/`</tr>`，浏览器树构造可生成完整单元格，而当前无 DOM 分支要求闭合标签；嵌套表格、畸形结构、实体规范化和带引号属性也需对照。此处是规范和源码支持的差异分析，示例没有在桌面 Chrome 实跑。Node 的无 DOM 测试通过不能证明浏览器迁移等价。
 
-后续必须决定如何保持 HTML 输入合同：保留受控 Window 分支、建立行为一致的纯解析边界，或明确能力范围；选择尚未作出。仍应按既有安全边界将导入内容保持为惰性文本，不插入活动 DOM、不执行脚本，并验证输入包含资源 URL 时不会产生外部请求。
+截至调查日，后续仍需决定如何保持 HTML 输入合同：保留受控 Window 分支、建立行为一致的纯解析边界，或明确能力范围；当时尚未作出选择。当前实现保留 Window DOMParser 分支。仍应按既有安全边界将导入内容保持为惰性文本，不插入活动 DOM、不执行脚本，并验证输入包含资源 URL 时不会产生外部请求。
 
 ## 消息、取消与故障恢复
 
@@ -69,7 +71,7 @@ OPFS 的 getDirectory/普通读写为异步接口；同步访问句柄适用于�
 
 Storage 标准对不透明来源/禁用存储返回失败；persistent 获准后可避免存储压力下的默认驱逐，但仍允许用户清除。配额根据磁盘、浏览器和策略变化；estimate 只是估计，隐私窗口配额可能不同且数据通常在模式结束后删除。因此不能由 32 GB RAM 或普通网页下的配额宣传推算本地文件可保存量。[Storage 标准](https://storage.spec.whatwg.org/)、[MDN 配额与驱逐](https://developer.mozilla.org/en-US/docs/Web/API/Storage_API/Storage_quotas_and_eviction_criteria)
 
-自动恢复仍待决定：采用何种存储、绑定何种本地工作区身份、原文与小设置如何一致提交、何时报告已保存、旧 localStorage 如何迁移，以及不可持久化时如何满足需求。需覆盖文件路径不变的重开、改名/搬移、覆盖升级、多窗口、隐私窗口和用户清理；本调查不保证任意 file URL 的这些行为相同。
+截至调查日期，自动恢复仍待决定：采用何种存储、绑定何种本地工作区身份、原文与小设置如何一致提交、何时报告已保存、旧 localStorage 如何迁移，以及不可持久化时如何满足需求。该决策随后由[大数据 ADR](../architecture/large-data.md)记录并实施；探针结果与适用边界见上方后续状态。
 
 ## 后续最小兼容性探针（未执行）
 
@@ -98,4 +100,4 @@ Storage 标准对不透明来源/禁用存储返回失败；persistent 获准后
 - 读回缺失、损坏或版本不匹配，不能默认为空源并覆盖旧存储；保存失败不得先删除旧的可读恢复版本。
 - 原文与设置分开保存若被选用，必须定义提交边界和来源修订一致性；浏览器 API 不能替应用保证两个独立存储写入原子一致。
 
-本票已能回答“规范支持哪些机制、项目哪里有语义障碍、还需验证什么”。后台包封装、HTML 保真政策、Worker 生命周期、存储选择及预算仍属于后续决策；本次没有实现或批准它们。
+截至 2026-10-08 调查结束，本票回答了“规范支持哪些机制、项目哪里有语义障碍、还需验证什么”，但没有实现或批准后台包封装、HTML 保真政策、Worker 生命周期、存储选择及预算。后续 ADR 与离线机制验收已完成，见开篇状态说明；本文只保留调查时的依据和结论。

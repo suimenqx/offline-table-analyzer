@@ -1,5 +1,7 @@
 # 本地 Wayfinder 跟踪器
 
+> **已归档（2026-11-26）：** 以下流程说明仅服务于 2026-10 的历史决策周期。此 scratch 树不再是活跃跟踪器；票面 open/claimed 状态和操作说明均为历史快照，不代表当前任务或认领状态。
+
 本仓库尚未提供跟踪器配置，本轮采用 wayfinder 的 local-markdown 默认方式。后续可运行 `/setup-matt-pocock-skills` 固定跟踪器配置；无需为本地图创建远程 issue 或分支。
 
 约定来自技能包的 `setup-matt-pocock-skills/issue-tracker-local.md`。本地文件没有原生 issue blocking，因此用 `Blocked by:` 记录依赖。

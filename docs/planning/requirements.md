@@ -33,9 +33,9 @@ The defining constraints are:
 ### Source editing
 
 - Resizable primary editor.
-- Full-screen editor with synchronized format/header controls and statistics.
+- Transactional full-source editor with find/replace and line jump; parse format and header controls remain in the source panel.
 - Paste, clear, sample, and raw export actions.
-- Persist source and UI state per analysis tab.
+- Persist each project's source cards and their UI state. Parsed table results are session data and are reconstructed from saved source text when needed.
 
 ### Workspace
 
@@ -43,7 +43,7 @@ The defining constraints are:
 - Maintain unique IDs and titles. Projects (tabs) and cards may all be deleted; reads, preview renders and reloads must preserve the empty state instead of creating replacement content.
 - Reset automatic project numbering to `Analysis 1` only when all projects are gone. Clearing a project's cards does not remove the project, reset project numbering, or delete its views.
 - Empty projects and empty workspaces remain valid for local persistence and backup/restore. The first visit still opens a default project with one card; after deletion, users explicitly add a project/card.
-- Preserve theme, global JOIN views, and copy preferences. `copyFormat` remains the existing global field and accepts `default`, `csv`, `markdown`, `ascii`, `json-inline`, `json-expanded`, `lua-inline`, or `lua-expanded`; the older `json` value retains the expanded layout.
+- Preserve theme and copy preferences. JOIN view definitions and enabled-view selections belong to each project, not to the whole workspace. `copyFormat` remains the existing global field and accepts `default`, `csv`, `markdown`, `ascii`, `json-inline`, `json-expanded`, `lua-inline`, or `lua-expanded`; the older `json` value retains the expanded layout.
 - Backup/restore tabs and import/export configuration.
 
 ### Card browsing and recovery (2026-10-25)
@@ -95,13 +95,13 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - Schema version `22`, application version `23.2.0`. Empty `projects`/`docs` and `activeProjectId`/`activeCardId: null` are valid existing schema-22 shapes; no new persisted fields or schema bump are needed. Schema 21 migrates each old document into one project/card; explicit empty legacy backups remain empty.
 - Card labels and export naming are distinct: new default cards use unique `数据段 N` names while projects keep `Analysis N`; historical names are not rewritten. Optional schema-22 `exportTitleFromProject: true` explicitly preserves the new default main card's project-based download prefix. Missing/false keeps the old card-title policy; explicit card renaming and duplication use card names, reordering does not change the policy, and workspace backups preserve it. Old schema 20/21/22 fixtures without the field remain compatible; no result counts are persisted.
 - Released 21.x–22.1.0 correction keys migrate from literal table names to `$` + table name; `cellEditKeyEncoding: dollar-v1` makes the migration idempotent. Backups without this release metadata retain the canonical source contract.
-- Settings key `ota_v21_workspace`; migrate `ota_v20_workspace` and `v16_4_store`, removing the legacy key only after a successful new write.
+- Current schema-22 settings remain under the historically named key `ota_v21_workspace`; migrate schema 21, schema 20, `ota_v20_workspace`, and `v16_4_store` data, removing a legacy key only after a successful new write.
 - Large raw snapshots commit in IndexedDB before the settings reference is published; unchanged raw reuses its snapshot. Recovery uses the latest settings and matching raw document IDs/revisions. Failed recovery blocks automatic overwrite.
 - Raw snapshots retain exact UTF-16 strings, including BOM, CRLF and lone surrogates; released UTF-8 Blob snapshots remain readable without consuming their BOM. New snapshots contain only source identity/raw and commit metadata. Recovery ignores obsolete snapshot UI, so legitimate correction overlays exceeding 2000 edited rows cannot block original recovery. External import safety checks remain unchanged.
 - A superseding save ends earlier saving/cleanup status even when rejected before I/O. Snapshot cleanup failures are visible and retried on the next save, without replacing the committed workspace or repeating successful cleanup for unchanged raw.
 - Show saving/restoring/cleanup status. Background storage errors preserve memory and the previous committed workspace. Wait for a saved status before closing; pending save offers the browser close confirmation.
 - Catch `QuotaExceededError` in `save()` and report the specific failure in the status bar; in-memory data remains usable.
-- Show saved/failed state, estimated storage use (`json.length * 2` for UTF-16 approximation), and a usage meter in the status bar.
+- Show saved/failed state and estimated workspace size (settings JSON plus persisted raw-text UTF-16 estimate). The meter uses a fixed visual reference and is not the browser's available quota.
 - Support temporary raw-data mode via the `persistRaw` flag: when false, raw source strings are serialized as empty to save space.
 - The `loadFailed` flag prevents destructive overwrite of an unreadable workspace with an empty default.
 - Clear local data removes current/legacy keys, `v16_4_inputHeight`, and IndexedDB raw snapshots. Temporary mode clears stored raw asynchronously while retaining the current in-memory text; cleanup failure is visible.
@@ -161,7 +161,7 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - "Export displayed columns": when `exportCols === 'shown'`, the shared export derivation projects focus columns during full export.
 - Window and Worker share TableUtils column projection: preserve requested order, ignore missing columns, fall back to all columns when none are valid, and leave the original table unchanged.
 - Export options (`exportOnlyChecked`, `exportCols`) are stored per-tab in the doc UI state and restored on tab changes.
-- HTML clipboard state is scoped to the current tab via `docId` tracking in `lastPaste`; it is cleared on tab switch or plain-text edit.
+- HTML clipboard state is scoped to the active source card via `docId` tracking in `lastPaste`; it is cleared when the active card/project changes or its plain text is edited.
 - Large-source modal Cancel/Escape discards its draft. Save checks the opening card ID and source revision before one Store source transition; no pass-through synchronization function or second source owner is introduced.
 - Cell corrections are persisted as a non-destructive overlay in `ui.cellEdits`, applied during `applyStoredCellEdits()`, and support session undo/redo.
 
@@ -281,4 +281,4 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - Native-app packaging.
 - Virtual scrolling, Arrow/SQL engines, external-memory queries, and streaming XLSX; the product remains a bounded single-file offline workbench. Local Workers and IndexedDB are included by the 22.1 ADR.
 
-These remain deferred in the roadmap while schema 20 migration and existing reliability contracts are maintained.
+These remain deferred in the roadmap while schema 22 and its supported migration paths remain in place.

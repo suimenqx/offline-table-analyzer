@@ -2,6 +2,8 @@
 
 调研日期：2026-10-08。本文只记录方案、依据与建议，不代表已经批准或实施 Worker、IndexedDB、WASM、流式导出或新的容量上限；不改变现有架构决策、工作区 schema 与发布边界。
 
+现状说明（2026-11-26）：这是大数据实现前的历史调研。Worker 与 IndexedDB 后续经授权写入[大数据 ADR](../architecture/large-data.md)并已实施，性能和恢复结果见[22.1.1 结果](large-data-performance-results.md)及[23.1 结果](large-data-23.1-results.md)。本文中的旧版代码路径、容量限制和“尚未批准”措辞只描述 2026-10-08 的状态；虚拟滚动、Arrow/SQL、外存查询和流式 XLSX 仍未进入当前交付。
+
 ## 结论与适用范围
 
 问题场景是桌面浏览器粘贴 CLI `table-data`，10 万行以上、每行 30 多字段，并且刚粘贴就失去响应。10 万行不是浏览器统一的硬上限；行数、字段长度、数据表示、临时副本、查询中间结果和 DOM 都会影响可承载规模。
@@ -122,4 +124,4 @@ Web Storage 的读写是同步的，适合小设置；对大文本即使延迟 3
 
 建议顺序：**先建立真实粘贴基线并修输入/保存重复开销 → Worker 数据集 + 行索引查询 → 按结果评估紧凑存储/流式导出 → 对复杂分析用相同样本对照 DuckDB-Wasm**。每一步比较正确性、端到端总耗时、最长阻塞、峰值内存和发布复杂度；不根据不同硬件、数据和预热状态的宣传吞吐量直接承诺速度。
 
-Worker、IndexedDB、虚拟滚动和流式导出当前被 [Roadmap](roadmap.md) 列为延后架构。落实任何相关提议前，需要把经过验证的决定与兼容性边界记录到 [Architecture](../architecture/architecture.md) / [Refactor architecture](../architecture/refactor.md)，并继续遵守 [Refactor requirements](refactor-requirements.md) 的离线、单文件与数据完整性要求。
+在本文调研时，Worker 和 IndexedDB 尚未批准；后续已按[大数据 ADR](../architecture/large-data.md)授权实施。虚拟滚动、Arrow/SQL、外存查询和流式 XLSX 仍是路线图中的延后提案。实施任何其他架构提案前，仍须记录决定与兼容性边界，并遵守[重构要求](refactor-requirements.md)的离线、单文件与数据完整性要求。

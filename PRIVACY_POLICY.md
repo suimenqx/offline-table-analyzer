@@ -10,7 +10,7 @@ The release `index.html` contains no external scripts, stylesheets, fonts, image
 
 The application stores small workspace settings in browser `localStorage`. Large original text uses local IndexedDB snapshots; both remain in the browser profile. Stored data may include:
 
-- analysis tabs and their names;
+- analysis projects, their names, and the names of their data cards;
 - raw source text, when **Save raw data on this device** is enabled;
 - filters, highlight rules, visible columns, pagination, and preview orientation;
 - JOIN view definitions;
@@ -21,11 +21,11 @@ Disable raw-data persistence to omit source text from saved state and asynchrono
 
 ## Removing data
 
-Use **Clear local data** in the bottom status bar, then refresh the page. Clearing site data through browser settings has the same effect. Workspace JSON or Excel files you downloaded are outside the browser storage and must be deleted separately.
+Use **Clear local data** in the bottom status bar to remove this app's current and legacy workspace keys, saved source-editor height, and IndexedDB raw snapshots. Refresh the page afterward. Clearing this site's browser storage has the same effect. Workspace JSON or Excel files you downloaded are outside the browser storage and must be deleted separately.
 
 ## Browser storage limitations
 
-`localStorage` and IndexedDB capacity and behavior vary by browser and by `file://` privacy policy. The application reports write failures but cannot guarantee durable storage. Export a workspace backup for important work.
+`localStorage` and IndexedDB capacity and behavior vary by browser and by `file://` privacy policy. The status meter estimates workspace size; it does not report available browser quota. The application reports write failures but cannot guarantee durable storage. Export a workspace backup for important work.
 
 ## Clipboard and downloads
 

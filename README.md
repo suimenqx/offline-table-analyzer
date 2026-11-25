@@ -46,7 +46,7 @@ Additional import capabilities:
 
 ### Analysis workbench
 
-- **Multiple named, reorderable analysis tabs**, each with independent state.
+- **Multiple named, reorderable analysis projects**, each with independent state and multiple source cards. Each card keeps its own source and parse options; visible cards form the project's table pool.
 - **Three-level filtering**: global filter across all tables, per-table filter, and per-column filter. Rules support equals, contains, not-equal, numeric comparisons, regex, AND/OR logic, and quoted multi-word values.
 - **Highlight rules** with a highlight-only (focus) mode that hides non-matching rows.
 - **Per-table visible-column selection** and collapsible table cards.
@@ -69,7 +69,7 @@ Additional import capabilities:
 
 ### Copy, export, and recovery
 
-- **Copy formats**: TSV (default), CSV, Markdown, ASCII, Lua inline, and Lua expanded. Lua copies use plain-text/code HTML payloads so they paste as code rather than a table.
+- **Copy formats**: TSV (default), CSV, Markdown, ASCII, JSON inline/expanded, and Lua inline/expanded. JSON and Lua copies use plain-text/code HTML payloads so they paste as code rather than a table.
 - **Spreadsheet formula injection protection**: cells starting with `=`, `+`, `@`, or a non-numeric `-` are prefixed to prevent accidental execution when pasting into spreadsheet applications.
 - Lua serialization does not apply spreadsheet formula prefixes and converts numbers, booleans, empty cells, hexadecimal values, and strings to Lua literals.
 - **Excel export**:
@@ -79,9 +79,9 @@ Additional import capabilities:
 - Paste and click **Full Excel** directly: exports prepare the latest source, reuse a matching completed or pending parse, and honor the chosen format/header options. Cancellation or a changed source prevents an outdated download; the original text stays intact.
 - Safe numeric serialization keeps long identifiers, unsafe leading-zero values, high-precision numeric-looking strings, and non-finite values as Excel text.
 - **Versioned workspace backup** (JSON): export the entire workspace and restore it later, choosing to **replace** the current workspace or **append** each tab as a new analysis.
-- **Configuration export / import**: rules and views only, no raw data. 5 MB file limit. Useful for sharing analysis setups without exposing underlying data.
+- **Configuration export / import**: rules, JOIN views, and per-card UI settings, with no raw data. 5 MB file limit. Useful for sharing analysis setups without exposing underlying data.
 - **Temporary data mode**: disable raw-text persistence so source data stays only in the current page session. Rules and preferences are still saved.
-- **Visible storage status** in the footer with a usage meter and clear failure reporting when `localStorage` quota is exceeded.
+- **Visible storage status** in the footer, with an estimated workspace-size meter and clear reporting for local settings or IndexedDB snapshot failures. The estimate is not the browser's available quota.
 
 ## Quick start
 
@@ -97,13 +97,13 @@ No server is required. A local static server is useful only during development.
 
 This is a desktop-browser application. The release target is the latest two versions of Chrome, Edge, and Firefox on Windows, macOS, and Linux, plus the latest Safari on macOS. Mobile layouts are a fallback; developing from a phone does not make Android browsers or touch interaction the primary acceptance target.
 
-The application uses modern browser APIs including `localStorage`, `FileReader`, `DOMParser`, `Blob`, `TextEncoder`, and the Clipboard event API.
+The application uses modern browser APIs including `localStorage`, IndexedDB, Web Workers, `FileReader`, `DOMParser`, `Blob`, `TextEncoder`, and the Clipboard event API.
 
 ## Privacy and local storage
 
 All parsing, filtering, JOIN processing, copying, and Excel generation happen in the browser. The application contains no external resources or network API calls.
 
-By default, small settings are stored under `ota_v21_workspace` in browser `localStorage`; large original text is committed to IndexedDB before its snapshot reference is saved. Unchanged original text reuses its committed snapshot when settings or pages change. Schema 20 and legacy workspaces migrate automatically after a successful save. Disable **Save raw data on this device** to keep source text only in the current page session. The **Clear local data** button removes all stored workspace data. A storage usage meter in the status bar helps monitor quota consumption. When saving fails (e.g., quota exceeded), the status bar reports the failure and the in-memory data remains available for backup.
+By default, small settings are stored under the historically named `ota_v21_workspace` key in browser `localStorage`; the current workspace schema is 22. Large original text is committed to IndexedDB before its snapshot reference is saved. Unchanged original text reuses its committed snapshot when settings or pages change. Schema 21, schema 20, and legacy workspaces migrate automatically after a successful save. Disable **Save raw data on this device** to keep source text only in the current page session. **Clear local data** removes the app's workspace settings and raw snapshots. The status-bar meter estimates saved workspace size; it does not measure available browser quota. If a settings write or raw-snapshot operation fails, the status bar reports the failure and the in-memory data remains available for backup.
 
 Read [PRIVACY_POLICY.md](PRIVACY_POLICY.md) before using the tool with sensitive data.
 

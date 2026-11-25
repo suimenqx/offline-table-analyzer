@@ -2,7 +2,7 @@
 
 调研日期：2026-10-18。本文只记录一手来源事实、测量与适用性判断，供「编辑形态决策」（issue #9）使用；不代表已经批准任何内嵌编辑器、依赖变更或新的编辑架构。不改变现有架构决策、工作区 schema 与发布边界。
 
-后续决策（2026-11-22）：用户批准在不添加运行时依赖、不更改发布边界的前提下，先实施原生 textarea 的事务式完整原文编辑；512 Ki UTF-16 码元为主编辑区预览阈值。本文关于任意大文本无性能保证的事实仍然适用；更换虚拟化编辑器或提高产品容量承诺仍需单独测量和架构决策。
+后续决策与实施（2026-11-22）：用户批准在不添加运行时依赖、不更改发布边界的前提下，实施原生 textarea 的事务式完整原文编辑；512 Ki UTF-16 码元为主编辑区预览阈值。功能已进入当前应用，操作说明见[用户指南](../guides/user-guide.md)，边界见[大数据 ADR](../architecture/large-data.md)。本文关于任意大文本无性能保证的事实仍然适用；更换虚拟化编辑器或提高产品容量承诺仍需单独测量和架构决策。
 
 ## 结论与适用范围
 
@@ -65,7 +65,7 @@ npm registry 一手数据（2026-10-18 实测 `dist.tarball` 下载字节；unpa
 | @codemirror/commands | 6.11.1 | 50,461 | 246,640 |
 | 合计（4 核心包） | — | ≈ 552 KB | ≈ 2.25 MB |
 
-来源：[npm registry](https://registry.npmjs.org/@codemirror/state/latest) 等四个包的 `latest` 元数据。tarball 含 README/CHANGELOG，最小化后 JS 更小，但作为「内嵌进单 HTML 的体量」量级参考：**核心四包 tarball 约 550 KB**，尚未计入 basic-setup、语法扩展、样式与主题。
+来源为测量日期对应的固定版本元数据：[state 6.7.6](https://registry.npmjs.org/@codemirror/state/6.7.6)、[view 6.43.14](https://registry.npmjs.org/@codemirror/view/6.43.14)、[language 6.13.1](https://registry.npmjs.org/@codemirror/language/6.13.1)、[commands 6.11.1](https://registry.npmjs.org/@codemirror/commands/6.11.1)。tarball 含 README/CHANGELOG，最小化后 JS 更小，但作为「内嵌进单 HTML 的体量」量级参考：**核心四包 tarball 约 550 KB**，尚未计入 basic-setup、语法扩展、样式与主题。
 
 Reference Manual 明确其分发形态：「You'll have to use some kind of bundler or loader to run them in the browser」——即内嵌需要构建期打包步骤（本仓库已有 build-release.cjs 管线，但打包第三方 ESM 仍是新的构建边界决策）。
 

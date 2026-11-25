@@ -27,4 +27,4 @@ Include:
 
 ## Not a secure vault
 
-Browser local storage is not encrypted. Do not treat the application as a secrets manager. Use temporary-data mode and clear browser data when working on a shared device.
+Browser-managed `localStorage` and IndexedDB are not encrypted by this application. Do not treat it as a secrets manager. Use temporary-data mode and clear this site's browser storage when working on a shared device.

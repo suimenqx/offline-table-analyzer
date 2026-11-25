@@ -30,7 +30,7 @@ All notable changes are documented here. The project follows semantic versioning
 - Each card is a data segment with independent parse options (format / header mode) and a visibility toggle; the **table pool (表池)** is the set of tables from visible cards — same-name same-structure tables are concatenated without deduplication, differently-shaped same-name tables are shown side by side with the card name as a qualifier, and card order is the concatenation order.
 - The Worker session now holds one dataset per card and derives the table pool from the visible list; corrections apply per source card, concatenated tables are read-only, and deleting a card releases its dataset. Session budget is enforced with an explicit error.
 - The source area shows a card list (click to select, 👁 to toggle visibility, double-click to rename, keyboard accessible); the tab bar manages projects.
-- The full-screen source editor is removed; large-source previews keep guiding users to edit data in their own local editor before pasting.
+- Replace the earlier source-editor removal with a transactional full-source editor that supports find, replace, and line jumps; large-source previews remain bounded and continue to open that editor for complete changes.
 - Allow deleting every card and project without silently rebuilding placeholders. Preserve empty states across reload and backup/restore, keep views in cardless projects, reset project numbering to `Analysis 1` only after all projects are removed, and synchronize the editor/focus/Worker datasets after deletion.
 - Workspace schema 22: tabs migrate 1:1 to projects + cards with preserved ids; per-document enabled views move up to the project; backups and old snapshots import through the same migration.
 
@@ -39,6 +39,10 @@ All notable changes are documented here. The project follows semantic versioning
 - Add a synthetic region-extraction evaluation tool (`npm run eval:regions`) reporting region recall, boundary accuracy, cell precision, silent mis-split, confirmation rate, and runtime budget; it fails on regressions against the designed behavior encoded in its fixtures.
 
 - Name original-source downloads as `<analysis-title>_source_<YYYYMMDD_HHMMSS>.txt`, sharing the full Excel export's timestamp and safe filename conventions while preserving the complete source text.
+
+### Documentation
+
+- Align current guides and architecture references with schema 22 projects/cards, Worker and IndexedDB storage behavior, current resource limits, and implemented UI. Mark superseded implementation research and the local Wayfinder tracker as historical records.
 
 ## 23.2.0 — 2026-10-17
 

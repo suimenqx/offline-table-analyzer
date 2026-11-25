@@ -1,5 +1,7 @@
 # 大数据完整分析流程保持响应
 
+> **归档记录（2026-11-26）：** 本地图和子票记录的是 2026-10-08 实施期间的决策与状态快照，不再是当前任务看板。其开放/认领状态不得作为当前待办；功能现状以[大数据 ADR](../../docs/architecture/large-data.md)和[路线图](../../docs/planning/roadmap.md)为准。测量证据保留作历史基线。
+
 Labels: wayfinder:map
 Status: open
 

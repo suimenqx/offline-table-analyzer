@@ -31,7 +31,7 @@ If the auto-detected format was already set to "Auto detect", the selector is up
 
 The **Format** dropdown includes fourteen options:
 
-1. **Auto detect** — runs all parsers and picks the highest-confidence match (recommended).
+1. **Auto detect** — checks strong format signatures, scores a bounded set of parser candidates on progressively larger samples, then parses the complete input with the selected parser (recommended).
 2. **CLI table-data** — multi-table blocks with `table-data <name>` headers and `validflag` rows.
 3. **Data-Block** — named tables using `data <table> [...]`, with one output table per block.
 4. **CLI multi-block** — repeated aligned CLI blocks with independent table names.
@@ -66,7 +66,7 @@ The **Aligned fixed width** parser is intended for reports whose columns line up
 - multiple tables in one input;
 - preserves cell text such as `--` instead of interpreting it as empty.
 
-Columns must have at least two spaces between header words. A standalone line between tables can be used as the next table's name. Values are sliced by the header's character ranges, so a value wider than its header may be truncated at the next column boundary.
+Column boundaries are inferred from stable character positions across the data rows; header words do not all need two spaces between them. A standalone line between tables can be used as the next table's name. Values are sliced at the inferred column boundaries, so a value that overlaps the next column can be cut at that boundary.
 
 ### 1.5 Header selection
 
@@ -139,7 +139,7 @@ The Config tab uses collapsible accordion sections for **View settings**, **Rule
 
 ## 4. Analysis tabs
 
-Each analysis **tab** (page) is an independent workspace — it stores its own source text, parsed tables, filter rules, column focus, page size, preview orientation, cell corrections, and export preferences.
+Each analysis **tab** is a project that can contain multiple source cards. A card stores its own original text, parse options, visibility, and cell-correction overlay. Project-level JOIN views and enabled-view settings are shared by its cards; each card's filter, column, page, and preview settings remain attached to that card. Parsed tables are session data reconstructed from saved source text when needed, not persisted in the workspace.
 
 | Action | Method |
 | --- | --- |
@@ -274,7 +274,7 @@ Select a **target table** from the dropdown, then either type comma-separated co
 - **Double-click** a table heading in the preview area to collapse/expand it.
 - Use the **Collapse / Expand** button in the table toolbar.
 
-Collapsed tables show only the header bar; the data body is hidden. The collapse state is saved per table per tab.
+Collapsed tables show only the header bar; the data body is hidden. The collapse state is saved per table on its source card.
 
 ---
 
@@ -353,6 +353,8 @@ Choose **50, 100, 250, or 500** rows per page from the sub-bar selector. Paginat
 
 When an input contains many tables or a large number of cells, the preview automatically switches to **single-table mode**. The sub-bar shows a table selector with each table's row and column counts; only the selected table is materialized in the page, while filtering and preview export still cover all matching rows across the visible cards of the current project. Each table uses its own horizontal/vertical scroll area, and long cells are shown on one line with the full value available on hover.
 
+The Worker session keeps complete datasets for resident cards. Parsing and query/export work share an 8-million-cell session budget; hiding a card only excludes it from the table pool and does not release its resident dataset. Delete a card to release that dataset. Operations that exceed the applicable budget report an error and keep the original source.
+
 ---
 
 ## 10. Cell corrections
@@ -363,7 +365,7 @@ Double-click any cell in a **raw table** (source tables, not JOIN views) to edit
 
 The inline editor supports line breaks. Press **Shift+Enter** to insert a newline, **Enter** or **Tab** to commit, **Escape** to cancel, or click away to commit. Existing line breaks remain intact while editing.
 
-Corrections are scoped per analysis tab and are saved with the workspace.
+Corrections are scoped per source card and are saved with the workspace.
 
 ---
 
@@ -376,7 +378,7 @@ Cell corrections support undo and redo during the current session:
 | Undo | `Ctrl/Cmd+Z` | ↶ button |
 | Redo | `Ctrl/Cmd+Y` (or `Ctrl/Cmd+Shift+Z`) | ↷ button |
 
-The undo/redo history is cleared when you switch tabs or re-parse.
+The undo/redo history is session-only and is cleared when you switch cards or projects, or re-parse.
 
 ---
 
@@ -467,7 +469,7 @@ When enabled (default), cells that start with potentially executable spreadsheet
 | `-` followed by non-numeric | Yes |
 | `-` followed by a number (e.g., `-42`) | No — treated as a negative number |
 
-This prevents pasted data from being interpreted as formulas in Excel, Google Sheets, and similar tools. Disable formula protection in **Config → Export options** when you need exact formula text and trust the destination. JSON and Lua formats never apply this spreadsheet prefix: a cell such as `=value` remains a JSON or Lua string regardless of the toggle.
+This prevents pasted data from being interpreted as formulas in Excel, Google Sheets, and similar tools. Disable formula protection in **复制设置** in the top toolbar when you need exact formula text and trust the destination. JSON and Lua formats never apply this spreadsheet prefix: a cell such as `=value` remains a JSON or Lua string regardless of the toggle.
 
 ---
 
@@ -477,17 +479,17 @@ This prevents pasted data from being interpreted as formulas in Excel, Google Sh
 
 For a direct conversion, leave **Format → Auto detect**, paste the original text and click **Full Excel**. No separate parse click is needed, including for 100,000-row inputs or when automatic parsing is disabled. The default full export includes all rows and columns across all pages; explicit table/column/JOIN export settings still apply. A manually selected format or header mode remains authoritative.
 
-All Excel actions reuse a matching completed parse (and its corrections), wait for a matching in-progress parse, or parse the latest source first. Large text is parsed and exported in the background with visible stages and a **Cancel** control. Parse/export failures stop the download without losing the original text. Replacing the source, changing parse settings or switching tabs prevents a download from the previous source; click export again for the new data.
+All Excel actions reuse a matching completed parse (and its corrections), wait for a matching in-progress parse, or parse the latest source first. Large text is parsed and exported in the background with visible stages and a **Cancel** control. Parse/export failures stop the download without losing the original text. Replacing the source, changing parse settings or switching cards/projects prevents a download from the previous source; click export again for the new data.
 
 | Export | Button location | Contents |
 | --- | --- | --- |
 | **Raw Excel** | Top toolbar → "工作区" → "原始 Excel" | All visible source tables (no filters, no JOIN views). One sheet per table. |
 | **Full Excel** | Top toolbar → "全量 Excel" | Selected raw tables **plus** enabled JOIN views. Respects "Export displayed columns" if enabled. No row filtering applied. |
-| **Export preview** | Top toolbar → "导出预览" | Filtered and highlighted results for **ALL matching rows** across all pages in the current tab. Uses the active focus columns. |
+| **Export preview** | Top toolbar → "导出预览" | Filtered and highlighted results for **ALL matching rows** across all pages in the current project. Uses the active focus columns. |
 | **Back up workspace** | Top toolbar → "工作区" → "备份工作区" | Complete workspace as versioned JSON: all tabs, raw sources, rules, cell corrections, JOIN views, and preferences. |
 | **Restore backup** | Top toolbar → "工作区" → "恢复备份" | Import a workspace JSON. Choose to **replace** the current workspace or **append** backup tabs as new tabs. |
-| **Export configuration** | Top toolbar → "工作区" → "导出配置" | Rules, JOIN views, and UI settings only. **No raw source data.** |
-| **Import configuration** | Top toolbar → "工作区" → "导入配置" | Apply exported configuration to the current workspace. Matches docs by **title first**, then by ID. Offers to create new docs for unmatched configs. |
+| **Export configuration** | Top toolbar → "工作区" → "导出配置" | Rules, JOIN views, and per-card UI settings only. **No raw source data.** |
+| **Import configuration** | Top toolbar → "工作区" → "导入配置" | Apply exported configuration to the current project. Matches cards by **title first**, then by ID. |
 
 ### 13.2 Excel format
 
@@ -495,7 +497,7 @@ Excel files are `.xlsx` (Office Open XML) generated entirely in the browser. The
 
 ### 13.3 Export file naming
 
-Exported files are named with a safe sanitized prefix derived from the current tab title (or a fallback), followed by a UTC timestamp:
+Exported files are named with a safe sanitized prefix followed by a UTC timestamp. The default main card uses its project title; a renamed card uses its card title. Workspace and configuration backups use the active project's export title:
 ```
 <Title>_<YYYYMMDD_HHMMSS>.xlsx
 ```
@@ -520,14 +522,14 @@ Toggle **复制设置 → 公式防护**. Controls whether a leading apostrophe 
 
 ### 14.3 Clear local data
 
-The **Clear local data** button in the status bar removes ALL `localStorage` data for the app. Use this when storage is corrupted or you want a fresh start. The page does not auto-refresh, so you can still back up before clearing.
+The **Clear local data** button in the status bar removes the app's current and legacy workspace keys, saved source-editor height, and its IndexedDB raw snapshots. It does not erase unrelated browser storage or downloaded files. Use this when you want a fresh start; back up first if you need to keep the current workspace.
 
 ### 14.4 Storage status
 
 The status bar reports save state in real time:
 - **"已保存 · X KB"** — data saved successfully, with estimated size.
 - **"原文仅保留在当前页面 · 规则已保存"** — raw data persistence is off.
-- **"保存失败"** (in red) — `localStorage` write failed (e.g., quota exceeded). A visual storage meter with a colored bar shows usage proportion.
+- **"保存失败"** (in red) — saving settings or an IndexedDB raw snapshot failed. The colored meter estimates saved workspace size against a fixed reference; it does not measure actual browser quota.
 
 If storage is full, **do not close the page** — download a workspace backup first, then clear local data.
 
@@ -574,7 +576,7 @@ All processing (parsing, filtering, JOIN execution, Excel generation) runs in th
 | --- | --- |
 | Activate focused tab | `Enter` or `Space` |
 | Rename focused tab | `F2` |
-| Close focused tab | `Delete` (must leave ≥ 1 tab) |
+| Close focused tab | `Delete` (the workspace may be left with no projects) |
 | Move to previous/next tab | `←` / `→` |
 
 ---
@@ -583,8 +585,8 @@ All processing (parsing, filtering, JOIN execution, Excel generation) runs in th
 
 The bottom status bar provides:
 
-- **100% 本地离线** indicator — confirms no network activity.
+- **100% 本地离线** indicator — the app is designed to process data locally and makes no runtime network requests.
 - **Save status** — current workspace state (saved / temporary / error).
-- **Storage meter** — visual gauge of `localStorage` usage.
+- **Storage meter** — approximate saved workspace size, including raw text when persistence is enabled; it is not a browser-quota meter.
 - **Keyboard hint** — quick reminder of the two most common shortcuts.
-- **Clear local data** — removes all stored state.
+- **Clear local data** — removes this app's current and legacy workspace keys, saved source-editor height, and IndexedDB raw snapshots.

@@ -15,7 +15,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | `OTA` (module-loader) | Local module registry: `define`, `require`, `start` (`src/core/module-loader.js`) |
 | `runtime` | DOM query helpers (`$`, `createEl`), `Tooltip`, `Toast` |
 | `TableUtils` | Text/cell normalization, row width handling, unique names and headers, shared export column projection |
-| `SourceSnapshot` | Ephemeral clipboard/file source metadata, bounded diagnostic previews, and tab/text matching |
+| `SourceSnapshot` | Ephemeral clipboard/file source metadata, bounded diagnostic previews, and card/text matching |
 | `FilterEngine` | Pure filtering, highlighting, and column-projection logic (token parsing, regex matching, operator rules). Zero DOM/storage dependencies. |
 | `BackgroundService` | Sole owner of local Blob Worker lifecycle, version handshake, cancellation and acknowledged transport |
 | `WorkerRuntime` | Background normalized dataset session, query/JOIN/statistics/XLSX and storage jobs |
@@ -159,7 +159,7 @@ Store owns one session-only deletion recovery slot with a 15-second expiry. `car
 
 ### Ephemeral paste/source snapshot
 
-`SourceSnapshot` keeps the most recent clipboard or file source in a session-only snapshot rather than in `Store`. `SourceController` adapts browser clipboard and `FileReader` inputs into that interface. The snapshot records the active document id, available clipboard MIME types, bounded previews for diagnostic display, parser inputs (`text/plain` and `text/html`), rich-text/custom format metadata, and file/item metadata. It is cleared when the source no longer matches the captured plain text, when the active tab changes, or when the source is cleared.
+`SourceSnapshot` keeps the most recent clipboard or file source in a session-only snapshot rather than in `Store`. `SourceController` adapts browser clipboard and `FileReader` inputs into that interface. The snapshot records the active card id, available clipboard MIME types, bounded previews for diagnostic display, parser inputs (`text/plain` and `text/html`), rich-text/custom format metadata, and file/item metadata. It is cleared when the source no longer matches the captured plain text, when the active card or project changes, or when the source is cleared.
 
 The source editor continues to display plain text. `App.getParseOptions()` reuses the matching HTML payload for the existing HTML-table priority path, while the optional “粘贴源” diagnostic opens escaped code previews and reports the format actually selected. No clipboard payload is persisted to workspace storage, and raw HTML is never rendered by the diagnostic view.
 
@@ -176,7 +176,7 @@ diagnostics[]
 
 All downstream operations consume this shape regardless of the original source format.
 
-`JsonTableParser` accepts arrays of objects, two-dimensional arrays, a single object record, or an object whose values are table arrays. Object keys become headers in first-seen order; nested values become compact JSON cell text. JSON clipboard output is an array of objects built from the selected headers and record rows. `json-inline` puts one compact object on each line, while `json-expanded` puts each field on its own line. Cell values remain strings to preserve the normalized table contract and string identifiers such as `"001"`. JSON and Lua copy restore transposed selections to record orientation and always include selected headers as field names. The existing `copyFormat` field stores the new options; saved `json` values retain the expanded layout. The copy fields remain compatible through the schema 20 → 21 migration.
+`JsonTableParser` accepts arrays of objects, two-dimensional arrays, a single object record, or an object whose values are table arrays. Object keys become headers in first-seen order; nested values become compact JSON cell text. JSON clipboard output is an array of objects built from the selected headers and record rows. `json-inline` puts one compact object on each line, while `json-expanded` puts each field on its own line. Cell values remain strings to preserve the normalized table contract and string identifiers such as `"001"`. JSON and Lua copy restore transposed selections to record orientation and always include selected headers as field names. The existing `copyFormat` field stores the new options; saved `json` values retain the expanded layout. Schema 20 and 21 backups continue through the migration chain to current schema 22.
 
 For pasted JSON-like input, `JsonTableParser` tries standard JSON first, then a local text lexer for bare field names, single-quoted strings, comments, trailing commas, field bodies, and record lists without outer brackets. It can recover complete records from a selection cut through adjacent records and retain confirmed fields in a final record cut inside a string, number, or nested value. An unfinished field value is omitted; the corresponding normalized cell is empty when another row established that column. Truncation or skipped boundaries produce `JSON_FRAGMENT_RECOVERED`, and a retained partial row also produces `JSON_PARTIAL_RECORD`; other relaxed syntax produces `JSON_RELAXED_SYNTAX`. Input without any complete field or record still fails visibly. The parser never evaluates input, does not rewrite the stored source, and keeps normalized cells as strings. Workspace and configuration JSON imports continue to use strict JSON parsing.
 
@@ -200,7 +200,7 @@ validator checks this boundary for every file under `src/ui/`.
 The store maintains three derived invalidation counters:
 
 - `revision` increments for every accepted state transition;
-- `viewRevision` increments when global JOIN views change;
+- `viewRevision` increments when the active project's JOIN views change;
 - `queryRevision` increments when views, query controls, UI state, or the parsed
   dataset changes.
 
@@ -230,13 +230,13 @@ paste / drop / file / full-source modal
   → ClipboardFormatter text/HTML payload or preview XLSX / full XLSX / workspace JSON / config JSON
 ```
 
-Drag-and-drop of local files onto the source area is supported. Large inputs use a bounded preview with an explicit full-source editor; the modal commits once on Save and leaves Store untouched on Cancel/Escape. Config import/export (`table-tool-config` kind, 5 MB limit) transfers rules, filters, views, and UI settings across documents.
+Drag-and-drop of local files onto the source area is supported. Large inputs use a bounded preview with an explicit full-source editor; the modal commits once on Save and leaves Store untouched on Cancel/Escape. Config import/export (`table-tool-config` kind, 5 MB limit) transfers rules, filters, views, and per-card UI settings for cards in the active project.
 
 Both source editors bind the same column-editing module so that pointer coordinates, soft wraps and input-method commits follow the same rules. The module measures inert text with the browser’s layout engine and publishes each block edit through the textarea’s input event. SourceController retains ownership of draft saves, card revisions and preview limits.
 
-The full processed result remains in memory for export, while only the selected page is materialized as table DOM.
+The full processed result remains in Worker memory for export, while only the selected page is returned to Window and materialized as table DOM.
 
-Excel buttons use `App.prepareExport()` through an injected `ExportController.init({prepareSource})` callback. App synchronizes the editor and delegates extraction to ExtractionSession. The same session supplies card diagnostics with matching work and source/lifetime validation. `App.run()` keeps its boolean or Promise-of-boolean contract. Preparation returns a transient download validator or null after an already-reported parse failure/empty input. ExportController owns one lock and stage feedback across preparation and serialization, then invokes the validator immediately before download. Cancellation invalidates the validator; a changed source/options/tab rejects the old result.
+Excel buttons use `App.prepareExport()` through an injected `ExportController.init({prepareSource})` callback. App synchronizes the editor and delegates extraction to ExtractionSession. The same session supplies card diagnostics with matching work and source/lifetime validation. `App.run()` keeps its boolean or Promise-of-boolean contract. Preparation returns a transient download validator or null after an already-reported parse failure/empty input. ExportController owns one lock and stage feedback across preparation and serialization, then invokes the validator immediately before download. Cancellation invalidates the validator; a changed source/options or active card/project rejects the old result.
 
 ### Shared Excel table derivation (2026-10-25)
 
@@ -283,7 +283,7 @@ Store remembers the exact settings record it opened or last committed. Each sett
 
 Failed raw recovery retains the saved snapshot reference on disk. Appending a backup requires a readable base workspace. A user can replace a failed workspace with a complete backup or explicitly export a partial copy of recoverable in-memory edits.
 
-`ota_v21_workspace` is the authoritative small workspace key; startup falls back to `ota_v20_workspace` and `v16_4_store`, migrating to schema 21. Large original text uses immutable IndexedDB snapshots through WorkspaceStorage on an independent Worker queue. A reference is published only after the transaction commits. Unchanged raw text reuses the same snapshot while the local settings remain authoritative; recovery combines matching document IDs/revisions with the latest settings. Missing snapshots block automatic overwrite. A legacy key is removed only after the new storage succeeds. `clearLocalData()` removes current/legacy keys, `v16_4_inputHeight`, and background raw snapshots.
+`ota_v21_workspace` is the authoritative small workspace key; the key name is retained for compatibility while the current payload schema is 22. Startup also supports schema 21, schema 20, and `v16_4_store` data. Large original text uses immutable IndexedDB snapshots through WorkspaceStorage on an independent Worker queue. A reference is published only after the transaction commits. Unchanged raw text reuses the same snapshot while the local settings remain authoritative; recovery combines matching document IDs/revisions with the latest settings. Missing snapshots block automatic overwrite. A legacy key is removed only after the new storage succeeds. `clearLocalData()` removes current/legacy keys, `v16_4_inputHeight`, and background raw snapshots.
 
 Writes are guarded. Quota or security failures update visible status and do not discard the in-memory workspace. If a saved JSON payload cannot be read, automatic writes are blocked so the unreadable value is not silently replaced; users may restore a backup or explicitly clear local data.
 

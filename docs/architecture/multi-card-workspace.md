@@ -1,6 +1,8 @@
 # ADR: 卡片式数据源工作区与 Worker 多数据集会话
 
-状态：已决策，2026-10-18，待实施。来源：[Wayfinder 地图 #13](https://github.com/suimenqx/offline-table-analyzer/issues/13)，票「卡片/表池/view 领域模型与迁移」「卡片的产品交互设计」「卡片工作区原型」「Worker 多数据集架构决策」的决议汇总。本文记录架构决定；交互决议与术语见对应票与 GLOSSARY。
+状态：已实施。初始决策于 2026-10-18 记录，主要工作区与 Worker 实现随后完成，跨卡 view 设计器元数据于 2026-11-23 补齐。来源：[Wayfinder 地图 #13](https://github.com/suimenqx/offline-table-analyzer/issues/13)，票「卡片/表池/view 领域模型与迁移」「卡片的产品交互设计」「卡片工作区原型」「Worker 多数据集架构决策」的决议汇总。本文记录当前架构边界；交互决议与术语见对应验收基线与 GLOSSARY。
+
+当前实现将分析页签作为工程、工程内的数据源作为卡片；Store schema 22 持久化工程和卡片，Worker 会话保留多个已解析卡片的数据集并在 Worker 内派生可见表池。实现由 [架构模块图](refactor.md)、[多卡片验收基线](../testing/multi-card-baseline.md)及 `tests/unit/`、`tests/integration/` 和 `e2e/multi-card-flow.e2e.js` 覆盖。本文中的“初值”只描述当时的决策口径；当前仍执行 800 万单元格的会话预算。
 
 ## 决定
 
