@@ -14,7 +14,7 @@ Operational data rarely arrives as a perfect spreadsheet. It is often copied fro
 - One portable `index.html`
 - No accounts, telemetry, analytics, or network requests
 - Designed for sensitive operational and troubleshooting data
-- English documentation with a [Chinese guide](README.zh-CN.md)
+- English documentation with a [Chinese README](README.zh-CN.md)
 
 ## Features
 
@@ -33,7 +33,8 @@ Automatic detection checks explicit structures, validates bounded candidate samp
 9. **Semicolon-delimited CSV**
 10. **Fixed-width text** — columns separated by repeated spaces
 11. **Aligned fixed-width text** — delimiter-free aligned output with character-position columns
-12. **Whitespace-delimited plain text** (fallback)
+12. **JSON tables** — arrays of records, two-dimensional arrays, object records, and named table arrays
+13. **Whitespace-delimited plain text** (fallback)
 
 Additional import capabilities:
 
@@ -73,7 +74,7 @@ Additional import capabilities:
 - **Spreadsheet formula injection protection**: cells starting with `=`, `+`, `@`, or a non-numeric `-` are prefixed to prevent accidental execution when pasting into spreadsheet applications.
 - Lua serialization does not apply spreadsheet formula prefixes and converts numbers, booleans, empty cells, hexadecimal values, and strings to Lua literals.
 - **Excel export**:
-  - **Raw Excel** — the parsed tables as stored, before any filtering.
+  - **Raw Excel** — visible source tables from the current project's table pool, without filters or JOIN views.
   - **Full Excel** — select which tables and views to include, with display-column projection.
   - **Preview Excel** — all currently filtered results across pages.
 - Paste and click **Full Excel** directly: exports prepare the latest source, reuse a matching completed or pending parse, and honor the chosen format/header options. Cancellation or a changed source prevents an outdated download; the original text stays intact.
@@ -115,8 +116,7 @@ Read [PRIVACY_POLICY.md](PRIVACY_POLICY.md) before using the tool with sensitive
 - Default rendered page: 100 rows per table (switchable to 50, 250, or 500)
 - Wait for the saved status before closing. Storage failures preserve current data for original-text/workspace backup. Private browser sessions do not retain data after closing; changing the HTML path/browser profile can change storage access.
 - Automatic detection validates bounded, progressively enlarged samples; only the selected format parses the complete input. Unresolved large-input ambiguity offers manual format selection.
-- Large-text tables stay in the local Worker; Window receives only table descriptors and current-page records. CSV/TSV records and CLI lines are consumed incrementally.
-- Large table-data and text computation runs in a local Worker. HTML/DOMParser parsing retains its Window path. The [large-data architecture decision](docs/architecture/large-data.md) records the boundaries.
+- Large table-data/text parsing, filtering, JOIN and XLSX work stays in a local Worker; Window receives table descriptors and current-page records. CSV/TSV records and CLI lines are consumed incrementally, while HTML/DOMParser parsing retains its Window path. See the [large-data architecture decision](docs/architecture/large-data.md) for the boundaries.
 - XLSX files can be exported but are not imported
 - JOIN conditions are equality-based; data types are compared as represented in the parsed table
 
@@ -157,12 +157,13 @@ On a supported desktop host, install Chromium with `node node_modules/playwright
 ## Documentation
 
 - [User guide](docs/guides/user-guide.md)
+- [Testing strategy](docs/testing/strategy.md)
 - [Termux browser validation](docs/testing/termux.md)
-- [Requirements and scope](docs/planning/requirements.md)
+- [Product requirements](docs/planning/requirements.md)
+- [Roadmap](docs/planning/roadmap.md)
 - [Architecture](docs/architecture/architecture.md)
 - [Refactor requirements](docs/planning/refactor-requirements.md)
-- [Refactor architecture](docs/architecture/refactor.md)
-- [Roadmap](docs/planning/roadmap.md)
+- [Release architecture](docs/architecture/refactor.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 - [Changelog](CHANGELOG.md)
