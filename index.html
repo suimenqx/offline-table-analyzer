@@ -192,15 +192,18 @@
         .source-card-actions { display: flex; align-items: center; gap: 6px; }
         #sourceEditorDialog { position:fixed; inset:0; width:100vw; max-width:none; height:100vh; max-height:none; margin:0; padding:0; border:0; color:var(--text-main); background:var(--bg-app); }
         #sourceEditorDialog::backdrop { background:rgba(15,23,42,.72); }
-        .source-editor-shell { width:100%; height:100%; background:var(--bg-card); display:flex; flex-direction:column; overflow:hidden; }
-        .source-editor-head { padding:10px 16px; border-bottom:1px solid var(--border); display:grid; gap:2px; }
+        .source-editor-shell { --source-tools-width:640px; width:100%; height:100%; background:var(--bg-card); display:flex; flex-direction:column; overflow:hidden; }
+        .source-editor-head { padding:10px 16px; border-bottom:1px solid var(--border); }
+        .source-editor-head-row { display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:12px; max-width:var(--source-tools-width); }
+        .source-editor-context { display:grid; gap:2px; }
+        .source-editor-actions { display:flex; align-items:center; gap:8px; }
         .source-editor-head h2 { margin:0; min-width:0; font-size:16px; color:var(--text-strong); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .source-editor-head .muted { margin:0; font-size:12px; }
         .source-editor-toolbar { padding:6px 16px; max-height:42vh; overflow:auto; border-bottom:1px solid var(--border); }
         .source-wrap-control { position:relative; float:inline-start; display:inline-flex; align-items:center; gap:7px; height:28px; margin:0 14px 0 0; cursor:pointer; font-size:12px; font-weight:600; }
         .source-wrap-control input { position:absolute; inset:0; z-index:1; width:100%; height:100%; margin:0; opacity:0; cursor:pointer; }
         .source-editor-tools-panel > summary { display:flow-root list-item; width:fit-content; list-style-position:inside; line-height:28px; cursor:pointer; color:var(--text-mid); font-size:12px; font-weight:650; }
-        .source-editor-tool-fields { clear:both; display:grid; gap:8px; max-width:640px; padding:8px 0 4px; }
+        .source-editor-tool-fields { clear:both; display:grid; gap:8px; max-width:var(--source-tools-width); padding:8px 0 4px; }
         .source-tool-row { display:grid; grid-template-columns:5em minmax(0, 1fr) 166px; gap:8px; align-items:center; }
         .source-tool-row label { margin:0; font-size:12px; }
         .source-tool-row input { min-width:0; width:100%; height:32px; padding:0 9px; border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text-strong); background:var(--bg-input); font:inherit; }
@@ -235,9 +238,6 @@
             .column-mark { forced-color-adjust:none; background:Highlight; opacity:.5; }
             .column-caret { forced-color-adjust:none; background:CanvasText; }
         }
-        .source-editor-foot { min-height:54px; padding:8px 14px; border-top:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
-        .source-editor-foot .muted { font-size: 12px; }
-        .source-editor-footer-actions { display:flex; align-items:center; gap:8px; }
 
         /* Accordion */
         .accordion { display: flex; flex-direction: column; gap: 8px; }
@@ -590,7 +590,6 @@
         kbd { padding: 2px 6px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--bg-elevated); color: var(--text-mid); font: 10px var(--font-mono); }
         .storage-meter { width: 76px; height: 5px; border-radius: 999px; background: var(--border); overflow: hidden; }
         .storage-meter span { display: block; height: 100%; background: var(--accent); width: 0; transition: width .2s ease; }
-        .source-editor-head, .source-editor-foot { background: var(--bg-card); }
         #rawInputLarge { border-radius: 10px; }
         .sidebar.collapsed { width: 64px; min-width: 64px; }
         .sidebar.collapsed .sidebar-header { padding: 0 10px; }
@@ -1081,8 +1080,16 @@
 <dialog id="sourceEditorDialog" aria-labelledby="sourceEditorTitle" aria-describedby="sourceEditorMeta sourceEditorFeedback">
     <div class="source-editor-shell">
         <header class="source-editor-head">
-            <h2 id="sourceEditorTitle">编辑完整原文</h2>
-            <p id="sourceEditorMeta" class="muted"></p>
+            <div class="source-editor-head-row">
+                <div class="source-editor-context">
+                    <h2 id="sourceEditorTitle">编辑完整原文</h2>
+                    <p id="sourceEditorMeta" class="muted"></p>
+                </div>
+                <div class="source-editor-actions">
+                    <button class="sm" id="sourceEditorCancelBtn" type="button" title="放弃草稿（Esc）">取消</button>
+                    <button class="primary sm" id="sourceEditorSaveBtn" type="button" title="用草稿替换当前原文（Ctrl / ⌘ + S）">保存原文</button>
+                </div>
+            </div>
         </header>
         <div class="source-editor-toolbar" role="group" aria-label="原文编辑工具">
             <label class="source-wrap-control">
@@ -1119,13 +1126,6 @@
             <textarea id="fullSourceInput" wrap="off" spellcheck="false" aria-label="完整原文" aria-describedby="columnEditHint" title="Alt + 鼠标左键拖动进行列编辑" placeholder="完整原文" autocomplete="off"></textarea>
             <div id="sourceWrapMeasure" aria-hidden="true"></div>
         </div>
-        <footer class="source-editor-foot">
-            <span class="muted">编辑内容只在保存后替换当前原文；取消或按 Esc 放弃草稿。</span>
-            <div class="source-editor-footer-actions">
-                <button class="sm" id="sourceEditorCancelBtn" type="button">取消</button>
-                <button class="primary sm" id="sourceEditorSaveBtn" type="button">保存原文</button>
-            </div>
-        </footer>
     </div>
 </dialog>
 

@@ -71,25 +71,35 @@ test('完整原文的行号随草稿、滚动和自动换行对齐', async ({pag
   await expect.poll(rows).toMatch(/^1\n2\n3\n/);
 });
 
-test('换行开关与查找并排，页脚统一取消或保存草稿', async ({page}) => {
+test('换行开关与查找并排，标题旁统一取消或保存草稿', async ({page}) => {
   await page.locator('#rawInput').fill('one\ntwo');
   const opener = page.getByRole('button', {name:'编辑完整原文', exact:true});
   await opener.click();
   const dialog = page.getByRole('dialog', {name:/编辑完整原文/});
   const cancel = dialog.getByRole('button', {name:'取消', exact:true});
   await expect(cancel).toHaveCount(1);
-  const footer = dialog.locator('footer');
-  await expect(footer.getByRole('button', {name:'取消'})).toBeVisible();
-  await expect(footer.getByRole('button', {name:'保存原文'})).toBeVisible();
+  const save = dialog.getByRole('button', {name:'保存原文', exact:true});
+  await expect(save).toHaveCount(1);
   const tools = dialog.getByRole('group', {name:'原文编辑工具'});
   const wrap = tools.getByRole('switch', {name:'自动换行'});
   const summary = tools.locator('summary');
   const draft = dialog.getByRole('textbox', {name:'完整原文', exact:true});
-  for (const width of [1280, 360]) {
-    await page.setViewportSize({width, height:720});
+  for (const [width, height] of [[2560, 1440], [1280, 720], [360, 720]]) {
+    await page.setViewportSize({width, height});
     for (const expanded of [false, true]) {
       await expect(tools.locator('details')).toHaveJSProperty('open', expanded);
       const toggleBox = await wrap.boundingBox(), searchBox = await summary.boundingBox();
+      const titleBox = await dialog.getByRole('heading').boundingBox();
+      const cancelBox = await cancel.boundingBox(), saveBox = await save.boundingBox();
+      expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(cancelBox.x);
+      expect(cancelBox.x + cancelBox.width).toBeLessThan(saveBox.x);
+      expect(cancelBox.y).toBe(saveBox.y);
+      expect(saveBox.y + saveBox.height).toBeLessThan(searchBox.y);
+      expect(saveBox.x + saveBox.width).toBeLessThanOrEqual(width);
+      if (expanded) {
+        const replaceAll = await tools.getByRole('button', {name:'全部替换'}).boundingBox();
+        expect(Math.abs(saveBox.x + saveBox.width - replaceAll.x - replaceAll.width)).toBeLessThan(2);
+      }
       expect(toggleBox.x + toggleBox.width).toBeLessThanOrEqual(searchBox.x);
       expect(Math.abs((toggleBox.y + toggleBox.height / 2) - (searchBox.y + searchBox.height / 2))).toBeLessThan(2);
       await wrap.focus();

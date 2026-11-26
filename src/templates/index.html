@@ -334,8 +334,16 @@
 <dialog id="sourceEditorDialog" aria-labelledby="sourceEditorTitle" aria-describedby="sourceEditorMeta sourceEditorFeedback">
     <div class="source-editor-shell">
         <header class="source-editor-head">
-            <h2 id="sourceEditorTitle">编辑完整原文</h2>
-            <p id="sourceEditorMeta" class="muted"></p>
+            <div class="source-editor-head-row">
+                <div class="source-editor-context">
+                    <h2 id="sourceEditorTitle">编辑完整原文</h2>
+                    <p id="sourceEditorMeta" class="muted"></p>
+                </div>
+                <div class="source-editor-actions">
+                    <button class="sm" id="sourceEditorCancelBtn" type="button" title="放弃草稿（Esc）">取消</button>
+                    <button class="primary sm" id="sourceEditorSaveBtn" type="button" title="用草稿替换当前原文（Ctrl / ⌘ + S）">保存原文</button>
+                </div>
+            </div>
         </header>
         <div class="source-editor-toolbar" role="group" aria-label="原文编辑工具">
             <label class="source-wrap-control">
@@ -372,13 +380,6 @@
             <textarea id="fullSourceInput" wrap="off" spellcheck="false" aria-label="完整原文" aria-describedby="columnEditHint" title="Alt + 鼠标左键拖动进行列编辑" placeholder="完整原文" autocomplete="off"></textarea>
             <div id="sourceWrapMeasure" aria-hidden="true"></div>
         </div>
-        <footer class="source-editor-foot">
-            <span class="muted">编辑内容只在保存后替换当前原文；取消或按 Esc 放弃草稿。</span>
-            <div class="source-editor-footer-actions">
-                <button class="sm" id="sourceEditorCancelBtn" type="button">取消</button>
-                <button class="primary sm" id="sourceEditorSaveBtn" type="button">保存原文</button>
-            </div>
-        </footer>
     </div>
 </dialog>
 
