@@ -115,6 +115,15 @@ describe('Composite keys & edge cases', () => {
     const r = Joiner.run(basic, { ...cfg(), on: 'missing=id' });
     assert.equal(r, null);
   });
+
+  it('rejects the whole compound relationship in execution, statistics and headers', () => {
+    for (const on of ['id=id,value=removed','removed=name,id=id','id=id,broken']) {
+      const join = {...cfg(), on};
+      assert.equal(Joiner.run(basic,join),null);
+      assert.equal(Joiner.stats(basic,join),null);
+      assert.deepEqual(Joiner.getHeaders(basic,join),[]);
+    }
+  });
 });
 
 describe('Dependency cycle detection', () => {

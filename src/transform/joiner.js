@@ -1,13 +1,48 @@
 OTA.define('joiner', ["table-utils"], ({TableUtils}) => {
 /* Joiner */
+function checkRelations(cfg, leftHeaders, rightHeaders) {
+    const pairs = [];
+    const missing = new Set();
+    for (const clause of (typeof cfg.on === 'string' ? cfg.on : '').split(',')) {
+        const fields = clause.split('=').map(field => field.trim());
+        if (fields.length !== 2 || fields.some(field => !field)) {
+            return {pairs:[], error:`视图“${cfg.view}”的关联条件不完整（${clause}）`};
+        }
+        const [left, right] = fields;
+        if (!leftHeaders.includes(left)) missing.add(`${cfg.left}.${left}`);
+        if (!rightHeaders.includes(right)) missing.add(`${cfg.right}.${right}`);
+        pairs.push(fields);
+    }
+    if (missing.size) return {pairs:[], error:`视图“${cfg.view}”缺少关联列 ${[...missing].join('、')}`};
+    return {pairs};
+}
+
 const Joiner = {
     MAX_ROWS:1000000,
     MAX_CELLS:8000000,
+    describeView(rawTables, cfg, views=[], stack=[], memo=new Map()) {
+        if (!cfg || stack.includes(cfg.view)) return {headers:[], error:'视图引用无效'};
+        if (memo.has(cfg.view)) return memo.get(cfg.view);
+        const resolve = name => {
+            const raw = rawTables.find(table => table.name === name);
+            if (raw) return {headers:raw.headers};
+            const view = views.find(item => item && item.view === name);
+            return view ? this.describeView(rawTables, view, views, [...stack, cfg.view], memo)
+                : {headers:[], error:`来源“${name}”不在当前表池`};
+        };
+        const left = resolve(cfg.left), right = resolve(cfg.right);
+        let result = [left,right].find(source => source.error);
+        if (!result) {
+            const {error} = checkRelations(cfg, left.headers, right.headers);
+            result = error ? {headers:[], error, invalidRelation:true} : {
+                headers:TableUtils.ensureUniqueHeaders(this.buildSelectTokens(cfg.select).map(token => token.alias || token.col || token.raw))
+            };
+        }
+        memo.set(cfg.view, result);
+        return result;
+    },
     getHeaders(rawTables,cfg,views=[],stack=[]) {
-        if(!cfg || stack.includes(cfg.view))return [];
-        const resolve=name=>{const raw=rawTables.find(table=>table.name===name);if(raw)return raw.headers;const view=views.find(item=>item.view===name);return view?this.getHeaders(rawTables,view,views,[...stack,cfg.view]):[];};
-        if(!this.parsePairs(cfg,{headers:resolve(cfg.left)},{headers:resolve(cfg.right)}).length)return [];
-        return TableUtils.ensureUniqueHeaders(this.buildSelectTokens(cfg.select).map(token=>token.alias || token.col || token.raw));
+        return this.describeView(rawTables,cfg,views,stack).headers;
     },
     resolve(name, rawTables, views, stack=[]) {
         if(stack.includes(name)) return null; 
@@ -42,12 +77,7 @@ const Joiner = {
             .filter(Boolean);
     },
     parsePairs(cfg, L, R) {
-        if(!cfg || typeof cfg.on !== 'string') return [];
-        const pairs = cfg.on.split(',').map(s => {
-            const p = s.split('=');
-            return p.length === 2 ? [p[0].trim(), p[1].trim()] : null;
-        }).filter(Boolean);
-        return pairs.filter(([leftCol, rightCol]) => L.headers.includes(leftCol) && R.headers.includes(rightCol));
+        return cfg ? checkRelations(cfg, L.headers, R.headers).pairs : [];
     },
     compositeKey(row, map, cols) {
         return JSON.stringify(cols.map(col => {

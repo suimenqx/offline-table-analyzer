@@ -8,6 +8,50 @@ const { QueryService } = OTA.require('query-service');
 beforeEach(() => QueryService.clearCache());
 
 describe('QueryService — shared result contract', () => {
+  it('never weakens a saved compound JOIN after a source column changes, including dependent views', () => {
+    const left = {name:'Stock', headers:['id','region'], rows:[['42','east'],['42','west']]};
+    const right = {name:'Prices', headers:['id','region','price'], rows:[['42','east','10'],['42','west','20']]};
+    const join = {view:'Regional', left:'Stock', right:'Prices', on:'id=id,region=region', select:'left.id,right.price'};
+    const child = {view:'Child', left:'Regional', right:'Stock', on:'id=id', select:'left.price'};
+    const input = {rawTables:[left,right], globalViews:[join,child], ui:{enabledViews:['Regional']}};
+    const names = data => QueryService.getPagePreview(data).tables.map(item => item.table.name);
+    const stale = {...input, rawTables:[left,{...right,headers:['id','area','price']}]};
+    for (const name of ['Regional','Child']) {
+      stale.ui = {enabledViews:[name]};
+      assert.deepEqual(names(stale), ['Stock','Prices']);
+      for (const mode of ['preview','full']) assert.throws(() => QueryService.getExportTables(stale,mode), /Regional.*Prices.*region/);
+      assert.deepEqual(QueryService.getExportTables(stale,'raw'),stale.rawTables);
+    }
+    assert.deepEqual(QueryService.getExportTables(input,'full').at(-1).rows,[['42','10'],['42','20']]);
+  });
+
+  it('matches complete regexes in preview and export, including spaces, operators and negated alternation', () => {
+    const rawTables = [{name:'Log', headers:['message'], rows:[['id=42'],['connection timeout'],['fine']]}];
+    for (const [globalFilter, expected] of [
+      ['/id=42/', ['id=42']], ['/connection timeout/', ['connection timeout']],
+      ['!/id=42|connection timeout/', ['fine']], ['message="fine|other"|/id=42/', ['id=42']],
+    ]) {
+      const input = {rawTables, ui:{globalFilter}};
+      assert.deepEqual(QueryService.getPagePreview(input).tables[0].res.rows.map(row => row.d[0]), expected);
+      assert.deepEqual(QueryService.getExportTables(input,'preview')[0].rows.flat(), expected);
+    }
+  });
+
+  it('reuses matching rows across pages and exports, with stable source positions and shared column mapping', () => {
+    const table = {name:'T', headers:['id','note'], rows:Array.from({length:40}, (_,i) => [String(i), i%2?'hit':'skip'])};
+    const input = {rawTables:[table], ui:{globalFilter:'note=hit',pageSize:3,rules:{T:{focus:['note','id'],hl:'id>=9'}}}};
+    const first = QueryService.getPagePreview(input).tables[0].res;
+    assert.equal(first.totalRows,20);
+    assert.equal(first.rows[0]._sourceCols,first.rows[1]._sourceCols);
+    assert.ok(Object.isFrozen(first.rows[0]._sourceCols));
+    const second = QueryService.getPagePreview({...input, ui:{...input.ui,tablePages:{T:2}}}).tables[0].res;
+    assert.equal(second.rows[0]._sourceCols, first.rows[0]._sourceCols);
+    assert.deepEqual(second.rows.map(row => [row._resultIndex,row._sourceRow,row._hl,row.d[1]]),
+      [[3,7,false,'7'],[4,9,true,'9'],[5,11,true,'11']]);
+    const exported = QueryService.getExportTables(input,'preview')[0];
+    assert.equal(exported.rows.length,20);
+    assert.deepEqual(exported.rows.at(-1),['hit','39']);
+  });
   it('reuses the full query across pagination and invalidates corrections', () => {
     const rawTables=[{name:'T',headers:['id'],rows:[['001']]}];
     const first=QueryService.getPreview({rawTables,ui:{tablePages:{T:1}},stateRevision:1,queryRevision:1});

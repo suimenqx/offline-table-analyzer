@@ -206,12 +206,12 @@ describe('App bootstrap', () => {
     const { App } = OTA.require('app');
     const { QueryService } = OTA.require('query-service');
     const expected = [{ table: { name: 'Preview' }, res: { headers: ['id'], rows: [] }, tIdx: 0 }];
-    const previousGetPreview = QueryService.getPreview;
-    QueryService.getPreview = () => ({ tables: expected });
+    const previousGetPreview = QueryService.getPagePreview;
+    QueryService.getPagePreview = () => ({ tables: expected });
     try {
       assert.equal(App.getPreviewProcessedTables(), expected);
     } finally {
-      QueryService.getPreview = previousGetPreview;
+      QueryService.getPagePreview = previousGetPreview;
     }
   });
 

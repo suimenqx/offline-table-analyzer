@@ -54,6 +54,37 @@ function cloneForResult(table) {
     };
 }
 
+function indexedQuery({rawTables=[], globalViews=[], ui={}, ...meta}={}) {
+    const key = querySignature(ui, {...meta, globalViews, rawToken:objectIdentity(rawTables)});
+    if (cache.has(key)) return cache.get(key);
+    const tables = QueryService.collectTables(rawTables, globalViews, ui).map((source, tIdx) => {
+        // Raw cells can be edited in place. Each query keeps one stable snapshot;
+        // JOIN output is already privately owned by this query.
+        const table = source.isView ? source : cloneForResult(source);
+        const index = FilterEngine.indexTable(table, ui.rules?.[table.name] || {}, ui,
+            ui.globalFilter, ui.enableHighlight, ui.onlyHighlighted);
+        return {table, index, tIdx};
+    });
+    const result = {
+        tables, full:null,
+        meta:{
+            key,
+            sourceRevision:Number(meta.sourceRevision) || 0, stateRevision:Number(meta.stateRevision) || 0,
+            viewRevision:Number(meta.viewRevision) || 0, queryRevision:Number(meta.queryRevision) || 0,
+        },
+    };
+    cache.set(key, result);
+    while (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+    return result;
+}
+
+function pageBounds(totalRows, requested, pageSize) {
+    const size = Math.max(1, Math.trunc(Number(pageSize)) || 100);
+    const pageCount = Math.max(1, Math.ceil(totalRows / size));
+    const page = Math.min(pageCount, Math.max(1, Math.trunc(Number(requested)) || 1));
+    return {page, pageCount, offset:(page - 1) * size, size};
+}
+
 const QueryService = {
     MAX_CELLS:8000000,
     /**
@@ -108,8 +139,14 @@ const QueryService = {
     getExportTables(input={}, mode='full') {
         const {rawTables=[], globalViews=[], ui={}} = input;
         if(mode === 'raw') return this.collectTables(rawTables, [], {}, false);
-        if(mode === 'preview') return this.getPreview(input).tables.map(({table, res}) => ({
-            name:table.name || 'Sheet', headers:res.headers, rows:res.rows.map(row => row.d),
+        for (const name of ui.enabledViews || []) {
+            const cfg = globalViews.find(view => view && view.view === name);
+            if (!cfg) continue;
+            const status = Joiner.describeView(rawTables, cfg, globalViews);
+            if (status.invalidRelation) throw new Error(`无法导出“${name}”。${status.error}`);
+        }
+        if(mode === 'preview') return indexedQuery(input).tables.map(({table, index}) => ({
+            name:table.name || 'Sheet', headers:index.headers.slice(), rows:index.exportRows(),
         }));
         const tables = this.collectTables(rawTables, globalViews, ui, !!ui.exportOnlyChecked);
         return ui.exportCols === 'shown'
@@ -120,58 +157,28 @@ const QueryService = {
 
     getCacheSize() { return cache.size+asyncCache.size; },
 
-    getPreview({rawTables=[], globalViews=[], ui={}, docId='', sourceRevision=0, stateRevision=0, viewRevision=0, queryRevision=0}={}) {
-        const key = querySignature(ui, {
-            docId,
-            sourceRevision,
-            stateRevision,
-            viewRevision,
-            queryRevision,
-            rawToken:objectIdentity(rawTables),
-            globalViews,
-        });
-        const cached = cache.get(key);
-        if(cached) return cached;
-
-        const tables=this.collectTables(rawTables,globalViews,ui);
-
-        const processedTables = tables.map((table, tableIndex) => {
-            const snapshot = cloneForResult(table);
-            const rules = (ui.rules && ui.rules[table.name]) || {};
-            const result = FilterEngine.processTable(
-                snapshot,
-                rules,
-                ui,
-                ui.globalFilter || '',
-                ui.enableHighlight !== false,
-                ui.onlyHighlighted || false
-            );
-            result.rows.forEach((row, index) => { row._resultIndex = index; });
-            return { table:snapshot, res:result, tIdx:tableIndex };
-        });
-
-        const result = Object.freeze({
-            key,
-            tables:Object.freeze(processedTables),
-        sourceRevision:Number(sourceRevision) || 0,
-        stateRevision:Number(stateRevision) || 0,
-        viewRevision:Number(viewRevision) || 0,
-        queryRevision:Number(queryRevision) || 0,
-        });
-        cache.set(key, result);
-        while(cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
-        return result;
+    getPreview(input) {
+        const query = indexedQuery(input);
+        if (!query.full) {
+            const tables = query.tables.map(({table, index, tIdx}) => ({
+                table, res:{headers:index.headers, rows:index.readRows()}, tIdx
+            }));
+            query.full = Object.freeze({...query.meta, tables:Object.freeze(tables)});
+        }
+        return query.full;
     },
 
-    getPagePreview(input) {
-        const full=this.getPreview(input),ui=input.ui || {};
-        const single=TableUtils.useSingleTableView(full.tables.map(item=>item.table));
-        const active=full.tables.some(item=>item.table.name===ui.previewTable)?ui.previewTable:full.tables[0]?.table.name;
-        return {tables:full.tables.map(item=>{
-            const page=this.paginate(full.tables,item.table.name,ui.tablePages?.[item.table.name],ui.pageSize);
-            const visible=(!single || item.table.name===active) && !ui.collapsedTables?.[item.table.name];
-            return {tIdx:item.tIdx,table:TableUtils.describeTable(item.table),
-                res:{...page,rows:visible?page.rows:[],offset:(page.page-1)*(Number(ui.pageSize) || 100),paged:true}};
+    getPagePreview(input={}) {
+        const {tables} = indexedQuery(input);
+        const ui = input.ui || {};
+        const single = TableUtils.useSingleTableView(tables.map(item => item.table));
+        const active = tables.some(item => item.table.name === ui.previewTable) ? ui.previewTable : tables[0]?.table.name;
+        return {tables:tables.map(({table, index, tIdx}) => {
+            const {page, pageCount, offset, size} = pageBounds(index.totalRows, ui.tablePages?.[table.name], ui.pageSize);
+            const visible = (!single || table.name === active) && !ui.collapsedTables?.[table.name];
+            return {tIdx, table:TableUtils.describeTable(table), res:{
+                headers:index.headers.slice(), rows:visible ? index.readRows(offset, offset + size) : [],
+                page, pageCount, totalRows:index.totalRows, offset, paged:true}};
         })};
     },
 
@@ -194,15 +201,13 @@ const QueryService = {
     paginate(processed, tableName, page=1, pageSize=100) {
         const item = (processed || []).find(entry => entry.table.name === tableName);
         if(!item) return {headers:[], rows:[], page:1, pageCount:1, totalRows:0};
-        const size = Math.max(1, Number(pageSize) || 100);
         const totalRows = item.res.rows.length;
-        const pageCount = Math.max(1, Math.ceil(totalRows / size));
-        const current = Math.min(pageCount, Math.max(1, Number(page) || 1));
+        const bounds = pageBounds(totalRows, page, pageSize);
         return {
             headers:item.res.headers.slice(),
-            rows:item.res.rows.slice((current - 1) * size, current * size),
-            page:current,
-            pageCount,
+            rows:item.res.rows.slice(bounds.offset, bounds.offset + bounds.size),
+            page:bounds.page,
+            pageCount:bounds.pageCount,
             totalRows,
         };
     },

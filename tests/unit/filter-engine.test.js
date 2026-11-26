@@ -33,6 +33,11 @@ describe('FilterEngine.tokenize', () => {
   it('handles multiple spaces', () => {
     assert.deepEqual(FilterEngine.tokenize('a    b'), ['a', 'b']);
   });
+
+  it('preserves regex whitespace, escaped slashes and slashes inside character classes', () => {
+    const rule = String.raw`!/retry [/]path\/ failed/|level=WARN message:"A | B"`;
+    assert.deepEqual(FilterEngine.tokenize(rule), [String.raw`!/retry [/]path\/ failed/|level=WARN`, 'message:"A | B"']);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -189,6 +194,38 @@ describe('FilterEngine.processTable', () => {
     rows: [['WARN', 'memory'], ['ERROR', 'timeout'], ['INFO', 'ok']],
   };
   const ui = { columnFilters: {} };
+
+  it('scans filter cells once and reads projected cells only for the requested pages or export', () => {
+    let filterReads = 0, valueReads = 0;
+    const rows = Array.from({length:200}, (_, i) => {
+      const row = [];
+      Object.defineProperty(row, 0, {get() { filterReads++; return i % 2 ? 'ok' : 'skip'; }});
+      Object.defineProperty(row, 1, {get() { valueReads++; return String(i); }});
+      return row;
+    });
+    const index = FilterEngine.indexTable({name:'T',headers:['status','value'],rows},
+      {filter:'status=ok',focus:['value']},ui);
+    assert.equal(index.totalRows,100);
+    assert.equal(valueReads,0);
+    for (const start of [0,50,0]) {
+      const page = index.readRows(start,start + 10);
+      assert.equal(page.length,10);
+      assert.deepEqual(page[0].d,[String(start * 2 + 1)]);
+    }
+    assert.equal(valueReads,30);
+    assert.equal(index.exportRows().length,100);
+    assert.equal(valueReads,130);
+    assert.equal(filterReads,200);
+  });
+
+  it('preserves quoted pipes and doubled quotes while combining table filters, columns and highlights', () => {
+    const log = {name:'Log',headers:['kind','message'],rows:[
+      ['A|B','say "hello"'], ['A','say "hello"'], ['A|B','bye']
+    ]};
+    const rules = {filter:'kind="A|B"',hl:'message="say ""hello"""'};
+    const result = FilterEngine.processTable(log,rules,{columnFilters:{Log:{message:'/say|bye/'}}},'',true,true);
+    assert.deepEqual(result.rows.map(row => [row._sourceRow,row._hl]),[[0,true]]);
+  });
 
   it('returns all rows with no filters', () => {
     const result = FilterEngine.processTable(table, {}, ui, '', true, false);

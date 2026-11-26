@@ -202,6 +202,8 @@ Wrap a complete regular expression in `/` (forward slashes) to match across the 
 ```
 Performs a case-insensitive regex search for "timeout" or "refused".
 
+Spaces and comparison characters inside the slashes are part of the expression. For example, `/connection timeout/` matches that phrase and `/id=42/` searches the row for the literal text `id=42`.
+
 The complete `/.../` token is evaluated as one regular expression, so the `|` inside `/timeout|refused/` remains regex alternation rather than being split into plain-text OR terms.
 
 **Safety limit:** regex patterns longer than **200 characters** are silently ignored (the token returns `false`).
@@ -264,6 +266,8 @@ Click the multi-select chip area under **Show raw tables** (Config tab) to open 
 ### 7.2 Enable JOIN views
 
 Click the multi-select chip area under **Enable JOIN views** (or **Manage** to create views first) to toggle which JOIN views appear in the preview.
+
+If a source column used in a saved JOIN condition changes name or disappears, the preview identifies the missing column. Other tables remain available. Full and Preview Excel require you to repair or disable the affected view, including any enabled view that depends on it. Raw Excel remains available. Restoring the original column automatically restores the view.
 
 ### 7.3 Focus/display columns
 

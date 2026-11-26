@@ -3,123 +3,124 @@ OTA.define('filter-engine', ["table-utils"], ({TableUtils}) => {
    No DOM, no storage, no side effects. Consumes normalized tables and UI rules,
    produces filtered/projected row arrays. */
 
+// A rule is an AND of whitespace-separated groups. Each group can contain OR
+// alternatives. Delimiters inside a quoted value or a regex belong to the atom.
+function regexEnd(text, start) {
+    let inClass = false;
+    for (let i = start + 1; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '\\') i++;
+        else if (ch === '[') inClass = true;
+        else if (ch === ']') inClass = false;
+        else if (ch === '/' && !inClass && (i + 1 === text.length || /[\s|]/.test(text[i + 1]))) return i;
+    }
+    return -1;
+}
+
+function ruleGroups(rule) {
+    const groups = [];
+    let alternatives = [], atom = '', quote = '';
+    const finishGroup = () => {
+        if (atom || alternatives.length) groups.push([...alternatives, atom]);
+        alternatives = [];
+        atom = '';
+    };
+    const text = (rule || '').trim();
+    for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (quote) {
+            atom += ch;
+            if (ch === quote) quote = '';
+        } else if (ch === '"' || ch === "'") {
+            quote = ch;
+            atom += ch;
+        } else if (ch === '/' && /^!*$/.test(atom)) {
+            const end = regexEnd(text, i);
+            if (end >= 0) {
+                atom += text.slice(i, end + 1);
+                i = end;
+            } else atom += ch;
+        } else if (ch === '|') {
+            alternatives.push(atom);
+            atom = '';
+        } else if (/\s/.test(ch)) {
+            finishGroup();
+        } else atom += ch;
+    }
+    finishGroup();
+    return groups;
+}
+
+function compileRegex(token) {
+    const pattern = token.slice(1, -1);
+    if (pattern.length <= 200) {
+        try {
+            const regex = new RegExp(pattern, 'i');
+            return text => regex.test(text);
+        } catch (_) { /* Invalid patterns match no rows. */ }
+    }
+    return () => false;
+}
+
+function compileToken(token, headerMap) {
+    if (token.startsWith('!') && token.length > 1) {
+        const inner = compileToken(token.slice(1), headerMap);
+        return row => !inner(row);
+    }
+    if (token.startsWith('/') && token.endsWith('/')) {
+        const test = compileRegex(token);
+        return row => test(row.join(' '));
+    }
+    const field = token.match(/^(.+?)(!=|>=|<=|=|>|<|:)(.+)$/);
+    if (!field) {
+        const needle = token.toLowerCase();
+        return row => row.join(' ').toLowerCase().includes(needle);
+    }
+    const idx = headerMap.get(field[1].toLowerCase());
+    if (idx === undefined) return () => false;
+    const value = field[3].trim().replace(/^(["'])([\s\S]*)\1$/, (_, quote, body) => body.split(quote + quote).join(quote)).toLowerCase();
+    const text = row => String(row[idx] ?? '').toLowerCase();
+    const numeric = parseFloat(value);
+    switch (field[2]) {
+        case '=':  return row => text(row) === value;
+        case '!=': return row => text(row) !== value;
+        case ':':  return row => text(row).includes(value);
+        case '>':  return row => parseFloat(row[idx]) > numeric;
+        case '>=': return row => parseFloat(row[idx]) >= numeric;
+        case '<':  return row => parseFloat(row[idx]) < numeric;
+        case '<=': return row => parseFloat(row[idx]) <= numeric;
+    }
+}
+
+function compileRule(rule, headerMap) {
+    const tests = ruleGroups(rule).map(group => {
+        const alternatives = group.map(token => compileToken(token, headerMap));
+        return alternatives.length === 1 ? alternatives[0] : row => alternatives.some(test => test(row));
+    });
+    return tests.length === 1 ? tests[0] : row => tests.every(test => test(row));
+}
+
+function columnTests(headers, filters) {
+    const tests = [];
+    for (const [column, raw] of Object.entries(filters || {})) {
+        const idx = headers.indexOf(column);
+        const value = String(raw ?? '').trim();
+        if (idx < 0 || !value) continue;
+        if (value.startsWith('/') && value.endsWith('/')) {
+            const test = compileRegex(value);
+            tests.push(row => test(String(row[idx] ?? '')));
+        } else {
+            const needle = value.toLowerCase();
+            tests.push(row => String(row[idx] ?? '').toLowerCase().includes(needle));
+        }
+    }
+    return tests;
+}
+
 const FilterEngine = {
-    /**
-     * Parse a rule string into tokens, respecting quoted substrings.
-     * Tokens are separated by whitespace; "…" and '…' act as quoting.
-     * Returns an array of token strings.
-     */
-    tokenize(ruleStr) {
-        if (!ruleStr) return [];
-        const tokens = [];
-        let token = '', quote = '';
-        for (const ch of ruleStr.trim()) {
-            if (quote) {
-                token += ch;
-                if (ch === quote) quote = '';
-            } else if (ch === '"' || ch === "'") {
-                quote = ch; token += ch;
-            } else if (/\s/.test(ch)) {
-                if (token) { tokens.push(token); token = ''; }
-            } else {
-                token += ch;
-            }
-        }
-        if (token) tokens.push(token);
-        return tokens;
-    },
-
-    /**
-     * Test a single token against a row.
-     * Supported token formats:
-     *   key=value       — equality (case-insensitive)
-     *   key:value       — contains (case-insensitive)
-     *   key!=value      — not equal
-     *   key>value       — numeric greater-than
-     *   key>=value      — numeric greater-or-equal
-     *   key<value       — numeric less-than
-     *   key<=value      — numeric less-or-equal
-     *   /regex/         — full-row regex match (max pattern length 200)
-     *   plaintext       — full-row contains (case-insensitive)
-     *
-     * @param {string} token  A single token, e.g. "status=active" or a /regex-pattern/
-     * @param {string[]} row  The row values
-     * @param {Map<string,number>} headerMap  Lowercase header → column index
-     * @returns {boolean}
-     */
-    matchToken(token, row, headerMap) {
-        // NOT prefix: negate the result of the inner token
-        if (token.startsWith('!') && token.length > 1) {
-            return !this.matchToken(token.slice(1), row, headerMap);
-        }
-
-        // Operator-prefixed token:  key op value
-        const opMatch = token.match(/^(.+?)(!=|>=|<=|=|>|<|:)(.+)$/);
-        if (opMatch) {
-            const key = opMatch[1].toLowerCase();
-            const op = opMatch[2];
-            const rawVal = opMatch[3].trim();
-
-            // Strip surrounding quotes from value
-            const unquoted = ((rawVal.startsWith('"') && rawVal.endsWith('"')) ||
-                              (rawVal.startsWith("'") && rawVal.endsWith("'")))
-                ? rawVal.slice(1, -1) : rawVal;
-            const val = unquoted.toLowerCase();
-
-            const idx = headerMap.get(key);
-            if (idx === undefined) return false;
-
-            const cellVal = (row[idx] || '').toLowerCase();
-            const numC = parseFloat(cellVal);
-            const numV = parseFloat(val);
-            const isNum = !isNaN(numC) && !isNaN(numV);
-
-            switch (op) {
-                case '=':  return cellVal === val;
-                case ':':  return cellVal.includes(val);
-                case '!=': return cellVal !== val;
-                case '>':  return isNum && numC > numV;
-                case '>=': return isNum && numC >= numV;
-                case '<':  return isNum && numC < numV;
-                case '<=': return isNum && numC <= numV;
-                default:   return false;
-            }
-        }
-
-        // Regex token: /pattern/
-        if (token.startsWith('/') && token.endsWith('/')) {
-            const pattern = token.slice(1, -1);
-            if (pattern.length > 200) return false;
-            try {
-                return new RegExp(pattern, 'i').test(row.join(' '));
-            } catch (e) {
-                return false;
-            }
-        }
-
-        // Plain-text token: full-row contains
-        return row.join(' ').toLowerCase().includes(token.toLowerCase());
-    },
-
-    /**
-     * Evaluate a whitespace-delimited rule string against a row.
-     * Tokens combined with AND semantics.
-     * A token containing '|' is treated as OR (matches if ANY sub-token matches).
-     *
-     * @param {string} ruleStr  e.g. "status=active price>100" or a /regex/
-     * @param {string[]} row
-     * @param {Map<string,number>} headerMap
-     * @returns {boolean}
-     */
-    matchRule(ruleStr, row, headerMap) {
-        if (!ruleStr) return true;
-        const tokens = this.tokenize(ruleStr);
-        return tokens.every(t => {
-            if (t.startsWith('/') && t.endsWith('/')) return this.matchToken(t, row, headerMap);
-            if (t.includes('|')) return t.split('|').some(st => this.matchToken(st, row, headerMap));
-            return this.matchToken(t, row, headerMap);
-        });
-    },
+    tokenize(rule) { return ruleGroups(rule).map(group => group.join('|')); },
+    matchToken(token, row, headerMap) { return compileToken(token, headerMap)(row); },
+    matchRule(rule, row, headerMap) { return compileRule(rule, headerMap)(row); },
 
     /**
      * Build a lowercase-header → column-index map for fast lookups.
@@ -152,76 +153,51 @@ const FilterEngine = {
         return { headers, indexes };
     },
 
-    /**
-     * Apply all filters, highlights, focus projection and paging to a table.
-     *
-     * @param {Object} table  NormalizedTable { name, headers, rows, isView }
-     * @param {Object} rules  Per-table rules from ui.rules[tableName] or {}
-     * @param {Object} ui     Current document ui object
-     * @param {string} globalFilter  Global filter string (applied to all tables)
-     * @param {boolean} enableHighlight  Whether highlighting is enabled
-     * @param {boolean} onlyHighlighted  Whether only highlighted rows should be shown
-     * @returns {{headers: string[], rows: {d:string[], _hl:boolean, _sourceRow:number, _sourceCols:number[], _readOnly:boolean}[]}}
-     */
-    processTable(table, rules, ui, globalFilter, enableHighlight, onlyHighlighted) {
-        const { headers: focusHeaders, indexes: focusIndexes } =
-            this.resolveFocusColumns(table.headers, rules.focus || null);
-
+    /** Scan rules once per table. Paging only reads the requested matching positions. */
+    indexTable(table, rules, ui, globalFilter, enableHighlight, onlyHighlighted) {
+        const {headers, indexes} = this.resolveFocusColumns(table.headers, rules.focus);
+        const sourceCols = Object.freeze(indexes);
+        const allColumns = indexes.length === table.headers.length && indexes.every((col, i) => col === i);
         const headerMap = this.buildHeaderMap(table.headers);
-
-        const colFilterMap = (ui.columnFilters && ui.columnFilters[table.name]) || {};
-        const activeColFilters = Object.entries(colFilterMap).filter(
-            ([, v]) => (v ?? '').toString().trim()
-        );
-
-        const gF = globalFilter || '';
-        const tF = rules.filter || '';
-        const hlF = rules.hl || '';
-
-        const rows = [];
-        table.rows.forEach((row, sourceRow) => {
-            // Global filter
-            if (gF && !this.matchRule(gF, row, headerMap)) return;
-            // Table-level filter
-            if (tF && !this.matchRule(tF, row, headerMap)) return;
-            // Column-level filters (contains / regex, case-insensitive)
-            if (activeColFilters.length) {
-                const pass = activeColFilters.every(([col, val]) => {
-                    const idx = table.headers.indexOf(col);
-                    if (idx === -1) return true;
-                    const cellVal = (row[idx] ?? '').toString();
-                    const filterVal = val.toString().trim();
-                    // Regex token: /pattern/
-                    if (filterVal.startsWith('/') && filterVal.endsWith('/')) {
-                        const pattern = filterVal.slice(1, -1);
-                        if (pattern.length > 200) return false;
-                        try {
-                            return new RegExp(pattern, 'i').test(cellVal);
-                        } catch (e) {
-                            return false;
-                        }
-                    }
-                    // Default: contains (case-insensitive)
-                    return cellVal.toLowerCase().includes(filterVal.toLowerCase());
-                });
-                if (!pass) return;
-            }
-            // Highlight check
-            let hl = false;
-            if (enableHighlight !== false && hlF && this.matchRule(hlF, row, headerMap)) hl = true;
-            // Only-highlighted mode
-            if (onlyHighlighted && !hl) return;
-
-            rows.push({
-                d: focusIndexes.map(i => row[i]),
-                _hl: hl,
-                _sourceRow: sourceRow,
-                _sourceCols: focusIndexes.slice(),
-                _readOnly: !!table.isView
+        const filters = [globalFilter, rules.filter].filter(Boolean).map(rule => compileRule(rule, headerMap));
+        filters.push(...columnTests(table.headers, ui.columnFilters?.[table.name]));
+        const highlight = enableHighlight !== false && rules.hl ? compileRule(rules.hl, headerMap) : null;
+        const matches = filters.length || onlyHighlighted ? [] : null;
+        const highlighted = highlight ? new Uint8Array(table.rows.length) : null;
+        if (matches || highlight) {
+            table.rows.forEach((row, i) => {
+                if (!filters.every(test => test(row))) return;
+                const marked = highlight && highlight(row);
+                if (marked) highlighted[i] = 1;
+                if (matches && (!onlyHighlighted || marked)) matches.push(i);
             });
-        });
+        }
+        const totalRows = matches ? matches.length : table.rows.length;
+        const sourceIndex = i => matches ? matches[i] : i;
+        const project = i => {
+            const row = table.rows[i];
+            return allColumns && row.length === indexes.length ? row.slice() : indexes.map(col => row[col]);
+        };
+        return {
+            headers, totalRows,
+            readRows(start=0, end=totalRows) {
+                const rows = [];
+                for (let i = start; i < Math.min(end, totalRows); i++) {
+                    const source = sourceIndex(i);
+                    rows.push({d:project(source), _hl:!!highlighted?.[source], _sourceRow:source,
+                        _sourceCols:sourceCols, _readOnly:!!table.isView, _resultIndex:i});
+                }
+                return rows;
+            },
+            exportRows() {
+                return Array.from({length:totalRows}, (_, i) => project(sourceIndex(i)));
+            },
+        };
+    },
 
-        return { headers: focusHeaders, rows };
+    processTable(table, rules, ui, globalFilter, enableHighlight, onlyHighlighted) {
+        const index = this.indexTable(table, rules, ui, globalFilter, enableHighlight, onlyHighlighted);
+        return {headers:index.headers, rows:index.readRows()};
     }
 };
 

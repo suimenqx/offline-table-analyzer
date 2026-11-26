@@ -696,7 +696,7 @@ const App = {
 
     getPreviewProcessedTables() {
         const doc = Store.curr();
-        return QueryService.getPreview({
+        return QueryService.getPagePreview({
             rawTables: TableRegistry.getQueryTables(),
             globalViews: Store.getViews(),
             ui: Store.getActiveUI(),
@@ -1262,12 +1262,22 @@ validflag Time      Level   Message                 Code
         const vsRaw = Store.getEnabledViews();
         const vs = vsRaw.filter(v => viewNames.includes(v));
         if(vs.length !== vsRaw.length) dispatch('view:setEnabled', { enabledViews:vs });
-        const poolNames = TableRegistry.getPoolNames().length ? TableRegistry.getPoolNames() : TableRegistry.getRaw().map(t => t.name);
+        const catalog = vs.length ? TableRegistry.getAvailableRawTables() : [];
+        const warnings = new Set();
         $('viewsTrigger').innerHTML = vs.length ? vs.map(n=>{
             const cfg = Store.getViews().find(v => v.view === n);
-            const missing = cfg && [cfg.left, cfg.right].filter(Boolean).some(t => !poolNames.includes(t));
-            return `<span class="chip${missing ? ' view-unavailable' : ''}" title="${missing ? '引用的表不在表池（所在卡片已隐藏）' : ''}">${this.escapeHtml(n)}${missing ? ' · 不可用' : ''}</span>`;
+            const status = Joiner.describeView(catalog, cfg, Store.getViews());
+            const reason = this.escapeHtml(status.error || '');
+            if (status.invalidRelation) warnings.add(status.error);
+            const label = status.error ? ' · 不可用' : '';
+            return `<span class="chip${status.error ? ' view-unavailable' : ''}" title="${reason}">${this.escapeHtml(n)}${label}</span>`;
         }).join('') : `<span class="placeholder">未启用</span>`;
+        const notice = $('joinWarning');
+        if (notice) {
+            const message = warnings.size ? [...warnings, '请恢复关联列，或在分析规则中修改或停用视图。'].join('\n') : '';
+            if (notice.textContent !== message) notice.textContent = message;
+            notice.hidden = !message;
+        }
     },
 
     renderTabs() { TabController.render(); },
@@ -1465,8 +1475,7 @@ validflag Time      Level   Message                 Code
 
         if(confirmation) confirmation.className = 'parse-feedback';
 
-        // Keep filtered results for full preview export and column configuration,
-        // while only materializing one table's DOM in large-table mode.
+        // Retain displayed columns for the column picker. QueryService owns full export results.
         this.rendered = processedTables.map(({table, res}) => ({name:table.name, ...res}));
         const singleTableView = this.shouldUseSingleTableView(combined);
         const activeTableName = this.syncPreviewTablePicker(combined, singleTableView);
@@ -1525,9 +1534,9 @@ validflag Time      Level   Message                 Code
 
             const pageSize = Number(ui.pageSize) || 100;
             const totalRows=res.totalRows ?? res.rows.length;
-            const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
+            const totalPages = res.pageCount ?? Math.max(1, Math.ceil(totalRows / pageSize));
             const requestedPage = Number(ui.tablePages && ui.tablePages[t.name]) || 1;
-            const page = Math.min(totalPages, Math.max(1, requestedPage));
+            const page = res.page ?? Math.min(totalPages, Math.max(1, requestedPage));
             const tablePages = Object.assign({}, ui.tablePages || {});
             if(tablePages[t.name] !== page) {
                 tablePages[t.name] = page;

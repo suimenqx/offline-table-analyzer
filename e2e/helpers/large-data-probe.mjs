@@ -47,8 +47,8 @@ export function installLargeDataProbe() {
   for (const [module, name, method] of [
     ['import-engine', 'ImportEngine', 'parse'],
     ['table-utils', 'TableUtils', 'normalizeRows'],
-    ['query-service', 'QueryService', 'getPreview'],
-    ['filter-engine', 'FilterEngine', 'processTable'],
+    ['query-service', 'QueryService', 'getPagePreview'],
+    ['filter-engine', 'FilterEngine', 'indexTable'],
     ['joiner', 'Joiner', 'run'],
     ['store', 'Store', 'save'],
     ['exporter', 'Exporter', 'toExcel'],

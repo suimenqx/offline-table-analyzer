@@ -17,17 +17,21 @@ const cases = [
 for (const sample of cases) {
   test(`100k x 32 ${sample.variant} ${sample.method || 'clipboard'} run ${sample.run}`, async ({ page, context, browser }, testInfo) => {
     const fixture = createLargeTableData({ variant: sample.variant });
+    // Windows publishes native clipboard text with CRLF. Prepare that exact
+    // original before timing so clipboard and subsequent file import use identical bytes.
+    const sourceText = process.platform === 'win32' && sample.method !== 'file'
+      ? fixture.text.replace(/\r?\n/g, '\r\n') : fixture.text;
     // Real local-file delivery avoids Playwright's large base64 payload decoding
     // on Window, which is automation work rather than FileReader behavior.
     const inputDir=await fs.mkdtemp(path.join(os.tmpdir(),'ota-perf-input-'));
-    const inputFile=path.join(inputDir,'wide.txt');await fs.writeFile(inputFile,fixture.text);
+    const inputFile=path.join(inputDir,'wide.txt');await fs.writeFile(inputFile,sourceText);
     // Large input bypasses native insertion and retains its original CRLF in Store.
-    const receivedCharacters = fixture.text.length;
+    const receivedCharacters = sourceText.length;
     const report = {
       schemaVersion: 1,
       case: { ...sample, method: sample.method || 'clipboard', fileDelivery:'local-path', rows: fixture.rows, columns: fixture.columns,
-        textCharacters: fixture.text.length, receivedTextCharacters: receivedCharacters,
-        utf8Bytes: Buffer.byteLength(fixture.text), estimatedTextBytes: fixture.text.length * 2 },
+        textCharacters: sourceText.length, receivedTextCharacters: receivedCharacters,
+        utf8Bytes: Buffer.byteLength(sourceText), estimatedTextBytes: sourceText.length * 2 },
       environment: {
         commit: process.env.GITHUB_SHA || null, browserVersion: browser.version(), headless: true,
         platform: process.platform, architecture: process.arch, nodeVersion: process.version,
@@ -122,7 +126,7 @@ for (const sample of cases) {
         });
       } else {
         // Clipboard setup is excluded from paste timing. Control+V uses the native browser path.
-        await page.evaluate(text => navigator.clipboard.writeText(text), fixture.text);
+        await page.evaluate(text => navigator.clipboard.writeText(text), sourceText);
         await page.locator('#rawInput').click();
         await phase('paste', async () => {
           await page.locator('#rawInput').press('Control+V');

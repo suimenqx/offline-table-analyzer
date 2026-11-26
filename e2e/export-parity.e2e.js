@@ -20,6 +20,48 @@ const expected={
   ],
 };
 
+test('a saved compound JOIN reports the missing column and recovers after the source is restored', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#autoParseToggle').uncheck();
+  const sourceWith = rightKey => JSON.stringify({
+    Stock:[{id:'42',region:'east'},{id:'42',region:'west'}],
+    Prices:[{id:'42',[rightKey]:'east',price:'10'},{id:'42',[rightKey]:'west',price:'20'}],
+  });
+  const parse = async key => {
+    await page.locator('#rawInput').fill(sourceWith(key));
+    await page.locator('#parseBtn').click();
+  };
+  await parse('region');
+  await page.evaluate(() => {
+    const {Store} = OTA.require('store');
+    Store.transition('view:upsert',{view:{view:'Regional',left:'Stock',right:'Prices',type:'inner',
+      on:'id=id,region=region',select:'left.region,right.price'}});
+    Store.transition('view:setEnabled',{enabledViews:['Regional']});
+  });
+  const joined = page.locator('.table-container').filter({hasText:'JOIN:Regional'});
+  await expect(joined.locator('tbody tr')).toHaveCount(2);
+  await parse('area');
+  await expect(joined).toHaveCount(0);
+  await expect(page.locator('#joinWarning')).toBeVisible();
+  await expect(page.locator('#joinWarning')).toContainText('Prices.region');
+  await expect(page.locator('#viewsTrigger .view-unavailable')).toHaveAttribute('title', /Prices\.region/);
+  const downloads = [];
+  page.on('download', download => downloads.push(download));
+  for (const button of ['#exportFullBtn','#exportPrevBtn']) {
+    await page.locator(button).click();
+    await expect(page.locator('#toast')).toContainText(/导出失败.*Regional.*Prices\.region/);
+  }
+  await parse('region');
+  await expect(joined.locator('tbody tr')).toHaveCount(2);
+  await expect(page.locator('#viewsTrigger .view-unavailable')).toHaveCount(0);
+  await expect(page.locator('#joinWarning')).toBeHidden();
+  const pending = page.waitForEvent('download');
+  await page.locator('#exportFullBtn').click();
+  const workbook = await readExcelFile(await (await pending).path());
+  expect(workbook.find(sheet => sheet.sheet === 'JOIN_Regional').data).toEqual([['region','price'],['east',10],['west',20]]);
+  expect(downloads).toHaveLength(1);
+});
+
 for(const background of [false,true]) {
   test(`${background?'Worker':'Window'} exports the same complete raw/full/preview workbook semantics`,async({page})=>{
     const external=[];

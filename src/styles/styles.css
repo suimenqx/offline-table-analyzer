@@ -542,6 +542,7 @@
         #previewTableSelect { min-width: 220px; max-width: 360px; }
         #toggleSidebarMobileBtn { display: none; }
         .compact-select { width: auto; min-width: 92px; height: 28px; padding: 0 7px; font-size: 11px; }
+        .join-warning { padding: 8px 16px; max-height: 6em; overflow: auto; overflow-wrap: anywhere; white-space: pre-line; color: var(--text-strong); border-left: 3px solid var(--warning); background: var(--bg-card); }
         .preview-area { padding: 14px 16px 18px; gap: 12px; background: var(--bg-app); }
         .table-container { border-radius: 12px; box-shadow: none; overflow: visible; margin: 0; }
         .table-meta { min-height: 46px; padding: 8px 11px; background: var(--bg-card); position: relative; top: auto; z-index: 1; }
