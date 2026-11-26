@@ -334,18 +334,17 @@
 <dialog id="sourceEditorDialog" aria-labelledby="sourceEditorTitle" aria-describedby="sourceEditorMeta sourceEditorFeedback">
     <div class="source-editor-shell">
         <header class="source-editor-head">
-            <div class="source-editor-head-row">
-                <div class="source-editor-context">
-                    <h2 id="sourceEditorTitle">编辑完整原文</h2>
-                    <p id="sourceEditorMeta" class="muted"></p>
-                </div>
-                <div class="source-editor-actions">
-                    <button class="sm" id="sourceEditorCancelBtn" type="button" title="放弃草稿（Esc）">取消</button>
-                    <button class="primary sm" id="sourceEditorSaveBtn" type="button" title="用草稿替换当前原文（Ctrl / ⌘ + S）">保存原文</button>
-                </div>
-            </div>
+            <h2 id="sourceEditorTitle">编辑完整原文</h2>
+            <p id="sourceEditorMeta" class="muted"></p>
         </header>
         <div class="source-editor-toolbar" role="group" aria-label="原文编辑工具">
+            <div class="source-editor-actions">
+                <button class="sm ghost" id="sourceEditorSaveBtn" type="button" title="用草稿替换当前原文（Ctrl / ⌘ + S）" aria-keyshortcuts="Control+s Meta+s">
+                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 8 3 3 7-7"/></svg>
+                    保存原文
+                </button>
+                <button class="sm ghost" id="sourceEditorCancelBtn" type="button" title="放弃草稿（Esc）" aria-keyshortcuts="Escape">取消</button>
+            </div>
             <label class="source-wrap-control">
                 自动换行<input id="sourceWrapToggle" type="checkbox" role="switch" aria-controls="fullSourceInput">
                 <span class="switch-track" aria-hidden="true"></span>
