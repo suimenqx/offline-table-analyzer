@@ -144,11 +144,12 @@
                                 <div class="multi-select" id="tablesTrigger"><span class="placeholder">加载中...</span></div>
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label class="flex justify-between">
+                                <div class="join-entry">
                                     <span>启用 JOIN 视图</span>
                                     <button class="sm text-button" type="button" id="manageViewsBtn">管理</button>
-                                </label>
-                                <div class="multi-select" id="viewsTrigger"><span class="placeholder">未启用</span></div>
+                                    <button class="sm tonal" type="button" id="newJoinBtn" aria-label="新建 JOIN 视图">＋ 新建</button>
+                                </div>
+                                <button type="button" class="multi-select" id="viewsTrigger" aria-label="选择启用的 JOIN 视图"><span class="placeholder">未启用</span></button>
                             </div>
                         </div>
                     </div>
@@ -398,118 +399,96 @@
     </div>
 </div>
 
-<!-- Fullscreen Join Designer -->
+<!-- JOIN designer -->
 <div id="joinModal" class="fullscreen-modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeTitle">
     <div class="join-shell">
-        <div class="join-head">
-            <div class="join-head-left">
-                <div class="eyebrow">Join Designer</div>
-                <div class="join-title-row">
-                    <div style="font-weight:800; font-size:16px;" id="jeTitle">配置 JOIN 视图</div>
-                    <div class="join-warn" id="jeWarn"></div>
-                </div>
-            </div>
-            <div class="toolbar">
-                <button class="sm" id="jeCancel">取消</button>
-                <button class="primary sm" id="jeSave">保存视图</button>
-            </div>
-        </div>
+        <header class="join-head">
+            <div class="join-heading"><span class="join-symbol" aria-hidden="true"></span><h2 id="jeTitle">新建 JOIN 视图</h2><span id="jeDirty" hidden>未保存</span></div>
+            <label class="join-name" for="jeName">视图名称 <input type="text" id="jeName" placeholder="例如：订单明细" autocomplete="off"></label>
+        </header>
         <div class="join-body">
-            <div class="join-meta">
-                <div>
-                    <label>视图名称</label>
-                    <input type="text" id="jeName" placeholder="e.g. StockReport">
-                </div>
-                <div>
-                    <label>左表 (Source A)</label>
-                    <select id="jeLeftTable"></select>
-                </div>
-                <div>
-                    <label>右表 (Source B)</label>
-                    <select id="jeRightTable"></select>
-                </div>
-            </div>
-            <div class="join-grid">
-                <div class="join-col">
-                    <div class="join-col-head">
-                        <div class="join-col-title">
-                            <span>左表字段 <span class="col-count-badge" id="jeLCount">0/0</span></span>
-                            <label class="join-toggle"><input type="checkbox" id="jeLOnlySel">仅看已选</label>
-                        </div>
-                        <div class="join-col-tools">
-                            <input id="jeLSearch" class="join-search" placeholder="搜索...">
-                            <button class="sm" id="jeLAllFiltered" title="全选搜索结果">全选结果</button>
-                            <button class="icon-btn sm" id="jeLAll" title="全选/反选">✓</button>
-                        </div>
+            <div class="join-setup">
+                <section class="join-section">
+                    <h3>表与关联条件</h3>
+                    <div class="join-table-pair">
+                        <div class="join-source-l"><label for="jeLeftTable">左表</label><select id="jeLeftTable"></select></div>
+                        <div class="join-source-r"><label for="jeRightTable">右表</label><select id="jeRightTable"></select></div>
                     </div>
-                    <div class="join-list" id="jeLList"></div>
-                </div>
-
-                <div class="join-map">
-                    <div class="join-map-head">
-                        <span>关联条件 (ON)</span>
-                        <div class="flex gap-2">
-                            <select id="jeType" class="sm" style="height:32px;">
-                                <option value="inner">INNER · 仅匹配</option>
-                                <option value="left">LEFT · 保留左</option>
-                                <option value="right">RIGHT · 保留右</option>
-                                <option value="full">FULL · 全保留</option>
-                                <option value="semi">SEMI · 左匹配</option>
-                                <option value="anti">ANTI · 左排除</option>
-                            </select>
-                            <button class="sm" id="jeAutoRel">自动匹配</button>
-                            <button class="sm" id="jeAddRel">添加条件</button>
-                        </div>
+                    <div class="join-type-row">
+                        <label for="jeType">连接方式</label>
+                        <select id="jeType" aria-describedby="jeTypeHint">
+                            <option value="inner">内连接 · INNER</option>
+                            <option value="left">左连接 · LEFT</option>
+                            <option value="right">右连接 · RIGHT</option>
+                            <option value="full">全连接 · FULL</option>
+                            <option value="semi">半连接 · SEMI</option>
+                            <option value="anti">反连接 · ANTI</option>
+                        </select>
+                        <span id="jeTypeHint"></span>
                     </div>
-                    <div class="join-map-body">
-                        <div id="jeRelContainer"></div>
-                        <div>
-                            <div class="join-order-head">
-                                <div class="eyebrow">输出顺序</div>
-                                <div class="join-order-tools">
-                                    <button class="sm" id="jeOrderRebuild" title="按左→右重建顺序">重建</button>
-                                    <button class="sm" id="jeOrderClear" title="清空全部输出列">清空</button>
-                                    <button class="sm" id="jeOrderLeftOnly" title="仅保留左表列">只保留左</button>
-                                    <button class="sm" id="jeOrderRightOnly" title="仅保留右表列">只保留右</button>
-                                    <label class="join-toggle"><input type="checkbox" id="jeOrderShowL" checked>左</label>
-                                    <label class="join-toggle"><input type="checkbox" id="jeOrderShowR" checked>右</label>
-                                    <button class="icon-btn sm" id="jeOrderMoveTop" title="选中列移到最前" style="font-size:10px;">⏫</button>
-                                    <button class="icon-btn sm" id="jeOrderMoveBottom" title="选中列移到最后" style="font-size:10px;">⏬</button>
-                                </div>
+                    <div class="join-section-head">
+                        <h4>匹配字段 <small id="jeRelHint"></small></h4>
+                        <button class="sm text-button" id="jeAutoRel">匹配同名字段</button>
+                    </div>
+                    <div id="jeRelContainer"></div>
+                    <button class="sm" id="jeAddRel">添加条件</button>
+                </section>
+                <section class="join-section">
+                    <h3>选择输出字段</h3>
+                    <div class="join-fields">
+                        <div class="join-source join-source-l">
+                            <div class="join-field-heading"><strong>左表字段 <small id="jeLSourceName"></small></strong><span id="jeLCount"></span></div>
+                            <input type="search" id="jeLSearch" aria-label="搜索左表字段" placeholder="搜索字段">
+                            <div class="join-list-tools">
+                                <label class="join-toggle"><input type="checkbox" id="jeLOnlySel">仅看已选</label>
+                                <button class="sm text-button" id="jeLAll" type="button">全选</button>
                             </div>
-                            <div id="jeOrderList" class="join-order"></div>
+                            <div class="join-list" id="jeLList"></div>
+                        </div>
+                        <div class="join-source join-source-r">
+                            <div class="join-field-heading"><strong>右表字段 <small id="jeRSourceName"></small></strong><span id="jeRCount"></span></div>
+                            <input type="search" id="jeRSearch" aria-label="搜索右表字段" placeholder="搜索字段">
+                            <div class="join-list-tools">
+                                <label class="join-toggle"><input type="checkbox" id="jeROnlySel">仅看已选</label>
+                                <button class="sm text-button" id="jeRAll" type="button">全选</button>
+                            </div>
+                            <div class="join-list" id="jeRList"></div>
                         </div>
                     </div>
-                </div>
-
-                <div class="join-col">
-                    <div class="join-col-head">
-                        <div class="join-col-title">
-                            <span>右表字段 <span class="col-count-badge" id="jeRCount">0/0</span></span>
-                            <label class="join-toggle"><input type="checkbox" id="jeROnlySel">仅看已选</label>
+                </section>
+                <details class="join-details"><summary>查看来源依赖</summary><div id="jeDependency"></div></details>
+            </div>
+            <aside class="join-result" aria-label="JOIN 结果">
+                <section class="join-stats">
+                    <div class="join-stats-head"><h3>匹配预览</h3><span class="join-shape" id="jeJoinShape" aria-hidden="true"><i></i></span></div>
+                    <div id="jePreview" role="status" aria-live="polite"></div>
+                </section>
+                <section class="join-output">
+                    <div class="join-section-head"><h3>输出列</h3><span id="jeStatus" role="status"></span></div>
+                    <div id="jeOrderList" class="join-order"></div>
+                    <details class="join-details"><summary>排序与批量操作</summary>
+                        <div class="join-order-tools">
+                            <label class="join-toggle"><input type="checkbox" id="jeOrderShowL" checked>显示左表列</label>
+                            <label class="join-toggle"><input type="checkbox" id="jeOrderShowR" checked>显示右表列</label>
+                            <button class="sm" id="jeOrderMoveTop">移到最前</button>
+                            <button class="sm" id="jeOrderMoveBottom">移到最后</button>
+                            <button class="sm" id="jeOrderRebuild">按左右表重排</button>
+                            <button class="sm" id="jeOrderLeftOnly">仅保留左表</button>
+                            <button class="sm" id="jeOrderRightOnly">仅保留右表</button>
+                            <button class="sm danger" id="jeOrderClear">清空输出列</button>
                         </div>
-                        <div class="join-col-tools">
-                            <input id="jeRSearch" class="join-search" placeholder="搜索...">
-                            <button class="sm" id="jeRAllFiltered" title="全选搜索结果">全选结果</button>
-                            <button class="icon-btn sm" id="jeRAll" title="全选/反选">✓</button>
-                        </div>
-                    </div>
-                    <div class="join-list" id="jeRList"></div>
-                </div>
-            </div>
+                    </details>
+                </section>
+            </aside>
         </div>
-        <div class="join-foot">
-            <div class="join-foot-left">
-                <div class="muted" id="jeStatus">已选输出列: 0</div>
-                <div class="join-preview" id="jePreview">预览: -</div>
-                <div class="join-dependency" id="jeDependency"></div>
-                <div class="join-hints">快捷键: Enter 保存 · Esc 关闭 · / 搜索 · Alt+↑↓ 移动列</div>
+        <footer class="join-foot">
+            <div id="jeWarn" role="status"></div>
+            <div class="join-save-actions">
+                <label class="join-toggle"><input type="checkbox" id="jeEnabled">在当前工程启用</label>
+                <button id="jeCancel">取消</button>
+                <button class="primary" id="jeSave" title="保存视图（Ctrl / ⌘ + Enter）">保存视图</button>
             </div>
-            <div class="toolbar">
-                <button class="sm" id="jeCancelFooter">取消</button>
-                <button class="primary sm" id="jeSaveFooter">保存视图</button>
-            </div>
-        </div>
+        </footer>
     </div>
 </div>
 

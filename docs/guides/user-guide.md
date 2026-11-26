@@ -265,7 +265,7 @@ Click the multi-select chip area under **Show raw tables** (Config tab) to open 
 
 ### 7.2 Enable JOIN views
 
-Click the multi-select chip area under **Enable JOIN views** (or **Manage** to create views first) to toggle which JOIN views appear in the preview.
+Click the selection under **Enable JOIN views** to choose which saved views appear in the preview. With an empty library, this opens the JOIN designer.
 
 If a source column used in a saved JOIN condition changes name or disappears, the preview identifies the missing column. Other tables remain available. Full and Preview Excel require you to repair or disable the affected view, including any enabled view that depends on it. Raw Excel remains available. Restoring the original column automatically restores the view.
 
@@ -284,54 +284,44 @@ Collapsed tables show only the header bar; the data body is hidden. The collapse
 
 ## 8. Build a JOIN view
 
-Click **Manage** next to **Enable JOIN views**, then add or edit a view. The JOIN designer opens as a full-screen modal.
+Click **New** (＋ 新建) beside **Enable JOIN views** in the configuration sidebar. **Manage** opens the saved views for this project, with search, edit, copy, export, delete and JSON import.
 
-### 8.1 Setup
+### 8.1 Sources and match conditions
 
-1. **Name** the view (e.g., `StockReport`).
-2. Choose a **left table** and **right table** from the parsed sources.
-3. Select a **JOIN type**:
-   - **Inner Join** — only rows where keys match on both sides.
-   - **Left Join** — all left rows; unmatched right columns are empty.
-   - **Right Join** — all right rows; unmatched left columns are empty.
-   - **Full Join** — all matched and unmatched rows from both sides.
-   - **Semi Join** — one output row per left row that has at least one right match (right columns are from the first match).
-   - **Anti Join** — left rows that have no match on the right.
-4. Add **equality conditions** (ON clauses): select a left column and a right column for each condition. Multiple conditions are AND-ed.
-   - Use **Auto match** to automatically pair columns with the same name.
+1. Name the view and choose its left and right sources. A source can be a parsed table or a saved JOIN view. A new view starts with two different sources when available.
+2. Choose which rows the JOIN will return.
 
-### 8.2 Column selection
+   | Type | Output |
+   | --- | --- |
+   | Inner | Every matching pair |
+   | Left | Every matching pair plus each unmatched left row |
+   | Right | Every matching pair plus each unmatched right row |
+   | Full | Every matching pair plus the unmatched rows from both sides |
+   | Semi | One row per matched left row, using the first match for right-side fields |
+   | Anti | Each unmatched left row |
 
-Each side has:
-- A **search** box to filter columns by name.
-- A **Only selected** checkbox to show only the picked columns.
-- **Select all** (✓) to toggle all currently visible columns.
-- **Select filtered** to pick only the columns matching the current search.
+3. Pick one field from each source, or click **Match same-name fields** (匹配同名字段). Add a condition to match on a compound key. Each pair must match for the rows to join.
+4. Check **Match preview** (匹配预览). It shows output rows, matching pairs and unmatched rows on each side. Repeated keys can produce several matching pairs for one source row.
 
-### 8.3 Output column order
+### 8.2 Output fields and order
 
-The center panel shows the output column order. Features:
-- **Drag** chips to reorder output columns.
-- **Arrow buttons** (↑ ↓) move a column one position.
-- **×** removes a column from the output.
-- Add **aliases**: type an alias in the text field after a column name. Use `:` or `AS` syntax in select expressions (e.g., `left.col AS alias`).
-- **Show/hide left** and **Show/hide right** toggles to filter the order view.
-- **Rebuild** repopulates the order from current selections.
-- **Clear** empties the order list.
-- **Keep only left** / **Keep only right** to trim to one side.
+Search either source by field name and check the fields you need. **Select all** applies to the visible search results. **Only selected** shows the fields you have picked.
 
-### 8.4 Validation
+In **Output columns** (输出列), enter a display alias, drag a row or use its arrow buttons to change its position. The remove button drops that field. Expand **Sorting and bulk actions** to move a selected field to either end, show columns from one side, rebuild the left-to-right order or clear selections.
 
-- **Unchanged detection** — warns before closing if no changes were made (for new views).
-- **Dependency cycle detection** — blocks saving a view that would create a circular dependency.
-- **Missing fields** and **name conflicts** are flagged.
+### 8.3 Saving and enabling
 
-### 8.5 Keyboard shortcuts in the JOIN designer
+The footer identifies the next item needed to save, including incomplete conditions, missing output fields, conflicting names and circular dependencies. Closing the designer with unsaved changes asks for confirmation.
+
+**Enable in this project** (在当前工程启用) is selected for a new view. Clear it to save the definition for later. Editing a saved view starts with its current enabled setting.
+
+### 8.4 Keyboard shortcuts
 
 | Key | Action |
 | --- | --- |
-| `/` | Focus the left-side column search (when no input is focused) |
-| `Enter` | Save the view |
+| `/` | Focus the left field search from outside an input |
+| `Alt+↑` / `Alt+↓` | Move the focused or selected output column |
+| `Ctrl/Cmd+Enter` | Save a valid view, including from a text input |
 | `Escape` | Close the designer |
 
 ---
@@ -564,7 +554,7 @@ All processing (parsing, filtering, JOIN execution, Excel generation) runs in th
 | Action | Shortcut |
 | --- | --- |
 | Focus left column search | `/` (when no input is focused) |
-| Save view | `Enter` |
+| Save view | `Ctrl/Cmd+Enter` |
 | Close designer | `Escape` |
 
 ### 15.4 Cell editing

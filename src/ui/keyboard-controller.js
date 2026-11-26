@@ -30,6 +30,12 @@ const KeyboardController = {
             return;
         }
 
+        const editor = $('joinModal');
+        if(editor && !editor.classList.contains('hidden')) {
+            JoinEditor.handleKeydown(e);
+            return;
+        }
+
         const mod = e.ctrlKey || e.metaKey;
         const tag = document.activeElement && document.activeElement.tagName || '';
         const typing = /INPUT|TEXTAREA|SELECT/.test(tag);
@@ -51,20 +57,6 @@ const KeyboardController = {
         if (e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeProjectId); return; }
         if (e.key === '?' && !typing)  { e.preventDefault(); app.showHelp(); return; }
 
-        // ── JOIN editor shortcuts (only when JOIN modal is open) ──
-        const joinModal = $('joinModal');
-        if (!joinModal || joinModal.classList.contains('hidden')) return;
-        if (modalOverlay && !modalOverlay.classList.contains('hidden')) return;
-
-        if (e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); return; }
-        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-            e.preventDefault();
-            const idx = JoinEditor.state.selectedOrderIdx;
-            if (idx >= 0) JoinEditor.moveOrder(idx, e.key === 'ArrowUp' ? -1 : 1);
-            return;
-        }
-        if (e.key === '/' && !typing) { e.preventDefault(); $('jeLSearch').focus(); return; }
-        if (e.key === 'Enter' && !e.shiftKey && !typing) { e.preventDefault(); JoinEditor.save(); return; }
     }
 };
 

@@ -923,8 +923,8 @@ validflag Time      Level   Message                 Code
 
         $('tablesTrigger').onclick = () => this.modTables();
         $('viewsTrigger').onclick = () => this.modViews();
-        // FIX: Correctly call JoinEditor.modManageViews
-        $('manageViewsBtn').onclick = e => { e.stopPropagation(); JoinEditor.modManageViews(); };
+        $('newJoinBtn').onclick = () => JoinEditor.open();
+        $('manageViewsBtn').onclick = () => ViewManager.modManageViews();
         $('selectColsBtn').onclick = () => this.modCols();
         $('themeBtn').onclick = () => dispatch('ui:theme');
         if($('helpBtn')) $('helpBtn').onclick = () => this.showHelp();
@@ -959,49 +959,7 @@ validflag Time      Level   Message                 Code
         // Export/copy/workspace/config handled by ExportController.init()
 
         
-        // Editor Bindings
-        const closeJoin = () => JoinEditor.close();
-        $('jeCancel').onclick = closeJoin;
-        $('jeCancelFooter').onclick = closeJoin;
-        $('jeSave').onclick = () => JoinEditor.save();
-        $('jeSaveFooter').onclick = () => JoinEditor.save();
-        $('jeAddRel').onclick = () => JoinEditor.addRel();
-        $('jeAutoRel').onclick = () => JoinEditor.autoMatchRels();
-        $('jeOrderRebuild').onclick = () => JoinEditor.rebuildOrder();
-        $('jeOrderClear').onclick = () => JoinEditor.clearOrder();
-        $('jeOrderLeftOnly').onclick = () => JoinEditor.keepOnly('l');
-        $('jeOrderRightOnly').onclick = () => JoinEditor.keepOnly('r');
-        $('jeOrderShowL').onchange = e => { JoinEditor.state.showL = e.target.checked; JoinEditor.renderSelectedOrder(); };
-        $('jeOrderShowR').onchange = e => { JoinEditor.state.showR = e.target.checked; JoinEditor.renderSelectedOrder(); };
-        if($('jeOrderMoveTop')) $('jeOrderMoveTop').onclick = () => JoinEditor.moveOrderToEdge('top');
-        if($('jeOrderMoveBottom')) $('jeOrderMoveBottom').onclick = () => JoinEditor.moveOrderToEdge('bottom');
-
-        $('jeLeftTable').onchange = () => JoinEditor.handleTableChange('l');
-        $('jeRightTable').onchange = () => JoinEditor.handleTableChange('r');
-        $('jeType').onchange = () => { JoinEditor.markDirty(); JoinEditor.updateAll(); };
-        $('jeName').oninput = () => { JoinEditor.markDirty(); JoinEditor.updateSaveState(); };
-
-        $('jeLSearch').oninput = () => {
-            clearTimeout(JoinEditor._searchTimerL);
-            JoinEditor._searchTimerL = setTimeout(() => JoinEditor.renderColList('jeLList', App.getCols($('jeLeftTable').value), JoinEditor.state.lSel, 'l'), 200);
-        };
-        $('jeRSearch').oninput = () => {
-            clearTimeout(JoinEditor._searchTimerR);
-            JoinEditor._searchTimerR = setTimeout(() => JoinEditor.renderColList('jeRList', App.getCols($('jeRightTable').value), JoinEditor.state.rSel, 'r'), 200);
-        };
-        $('jeLAll').onclick = () => JoinEditor.toggleAll('l');
-        $('jeRAll').onclick = () => JoinEditor.toggleAll('r');
-        $('jeLAllFiltered').onclick = () => JoinEditor.selectFiltered('l');
-        $('jeRAllFiltered').onclick = () => JoinEditor.selectFiltered('r');
-        $('jeLOnlySel').onchange = e => { JoinEditor.state.lOnlySel = e.target.checked; JoinEditor.renderColList('jeLList', App.getCols($('jeLeftTable').value), JoinEditor.state.lSel, 'l'); };
-        $('jeROnlySel').onchange = e => { JoinEditor.state.rOnlySel = e.target.checked; JoinEditor.renderColList('jeRList', App.getCols($('jeRightTable').value), JoinEditor.state.rSel, 'r'); };
-        const helpToggle = $('jeHelpToggle');
-        const helpBody = $('jeHelpBody');
-        if(helpToggle && helpBody) {
-            helpToggle.onclick = () => helpBody.classList.toggle('show');
-        }
-        const jm = $('joinModal');
-        if(jm) jm.addEventListener('click', e => { if(e.target === jm) closeJoin(); });
+        JoinEditor.init();
 
         // Keyboard shortcuts — delegated to KeyboardController
         KeyboardController.init(this);
@@ -1011,8 +969,6 @@ validflag Time      Level   Message                 Code
             }
         });
 
-        // Register ViewManager edit callback (ViewManager → JoinEditor)
-        ViewManager.setEditCallback((idx) => JoinEditor.open(idx));
 
 
     },
@@ -1271,7 +1227,7 @@ validflag Time      Level   Message                 Code
             if (status.invalidRelation) warnings.add(status.error);
             const label = status.error ? ' · 不可用' : '';
             return `<span class="chip${status.error ? ' view-unavailable' : ''}" title="${reason}">${this.escapeHtml(n)}${label}</span>`;
-        }).join('') : `<span class="placeholder">未启用</span>`;
+        }).join('') : `<span class="placeholder">${viewNames.length ? '选择要启用的视图' : '创建第一个 JOIN 视图'}</span>`;
         const notice = $('joinWarning');
         if (notice) {
             const message = warnings.size ? [...warnings, '请恢复关联列，或在分析规则中修改或停用视图。'].join('\n') : '';
@@ -1602,7 +1558,11 @@ validflag Time      Level   Message                 Code
     modal(title, html) { ModalController.show(title, html); },
 
     modTables() { ModalController.showTableSelector(TableRegistry.getRaw().map(t => t.name), Store.getActiveUI().displayTables); },
-    modViews() { ModalController.showViewSelector(Store.getViews(), Store.getEnabledViews()); },
+    modViews() {
+        const views = Store.getViews();
+        if(views.length) ModalController.showViewSelector(views, Store.getEnabledViews());
+        else JoinEditor.open();
+    },
     
     modCols() {
         const tName = $('targetTableSelect').value;

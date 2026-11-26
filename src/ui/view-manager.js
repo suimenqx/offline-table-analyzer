@@ -127,71 +127,56 @@ const ViewManager = {
 
             if (filtered.length === 0) {
                 return filterText
-                    ? '<div style="padding:20px; color:#999; text-align:center;">无匹配视图</div>'
-                    : '<div style="padding:20px; color:#999; text-align:center;">暂无视图</div>';
+                    ? '<div class="join-empty">没有找到匹配的视图</div>'
+                    : '<div class="join-empty">当前工程还没有 JOIN 视图。新建视图后，可在这里编辑或复用配置。</div>';
             }
 
             return filtered.map((v) => {
                 const i = v.originalIndex;
                 const stamp = self._formatTime(v.updatedAt || v.createdAt);
                 const fieldCount = getFieldCount(v.select);
-                const joinLabel = joinTypeLabel[v.type] || 'Inner';
-                const meta = `${joinLabel} · ${v.left} ⟕ ${v.right} · ${fieldCount}列${stamp ? ' · ' + stamp : ''}`;
-
+                const joinLabel = Object.hasOwn(joinTypeLabel, v.type) ? joinTypeLabel[v.type] : 'Inner';
                 return `
-                <div class="view-item" data-index="${i}" style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid var(--border-light); margin-bottom:8px; border-radius:6px; background:var(--bg-card);">
-                    <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
-                        <input type="checkbox" class="view-checkbox" data-index="${i}" style="flex-shrink:0;">
-                        <div style="min-width:0; flex:1;">
-                            <div style="font-weight:600; color:var(--primary); margin-bottom:2px;">${escapeHtml(v.view)}</div>
-                            <div style="font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(meta)}">${escapeHtml(meta)}</div>
-                        </div>
+                <div class="view-item" data-index="${i}">
+                    <input type="checkbox" class="view-checkbox" data-index="${i}" aria-label="选择 ${escapeHtml(v.view)}">
+                    <div class="view-item-info">
+                        <strong>${escapeHtml(v.view)}</strong><span class="view-item-type">${joinLabel.toUpperCase()}</span>
+                        <small>${escapeHtml(v.left)} × ${escapeHtml(v.right)} · ${fieldCount} 列</small>
+                        <small>${escapeHtml(v.on || '')}${stamp ? ' · ' + stamp : ''}</small>
                     </div>
-                    <div style="display:flex; gap:4px; flex-shrink:0; align-items:center;">
-                        <span id="jeActions_${i}" style="display:flex; gap:4px;">
-                            <button class="sm" id="jeEdit_${i}" title="编辑">✎</button>
-                            <button class="sm" id="jeCopy_${i}" title="复制">❐</button>
-                            <button class="sm" id="jeExport_${i}" title="导出">⬇</button>
-                            <button class="sm danger" id="jeDel_${i}" title="删除">×</button>
-                        </span>
-                        <span id="jeConfirm_${i}" style="display:none; gap:4px; align-items:center; white-space:nowrap;">
-                            <span style="font-size:11px; color:var(--danger);">确认删除?</span>
-                            <button class="sm" id="jeDelCancel_${i}">取消</button>
-                            <button class="sm danger" id="jeDelOk_${i}">删除</button>
-                        </span>
+                    <div class="view-actions" id="jeActions_${i}">
+                        <button class="sm" id="jeEdit_${i}">编辑</button>
+                        <button class="sm text-button" id="jeCopy_${i}">复制</button>
+                        <button class="sm text-button" id="jeExport_${i}">导出</button>
+                        <button class="sm text-button" id="jeDel_${i}">删除</button>
+                    </div>
+                    <div class="view-actions" id="jeConfirm_${i}" hidden>
+                        <span>确认删除？</span>
+                        <button class="sm" id="jeDelCancel_${i}">取消</button>
+                        <button class="sm danger" id="jeDelOk_${i}">删除</button>
                     </div>
                 </div>`;
             }).join('');
         };
 
-        ModalController.show('管理全局视图', `
-            <div style="margin-bottom:10px; display:flex; gap:8px;">
-                <input type="text" id="jeViewSearch" placeholder="🔍 搜索视图..." style="flex:1; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:13px;">
-                <select id="jeViewSort" style="width:100px; height:36px; font-size:12px;">
-                    <option value="name">按名称</option>
-                    <option value="time">按时间</option>
-                </select>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <label class="flex items-center gap-2" style="font-size:12px; cursor:pointer;">
-                    <input type="checkbox" id="jeViewSelectAll" style="cursor:pointer;">
-                    <span>全选</span>
-                </label>
-                <div class="flex gap-2">
-                    <button class="sm" id="jeBatchExport" disabled>⬇ 批量导出</button>
-                    <button class="sm danger" id="jeBatchDelete" disabled>× 批量删除</button>
+        ModalController.show('管理 JOIN 视图', `
+            <div class="view-library">
+                <div class="view-toolbar">
+                    <input type="search" id="jeViewSearch" aria-label="搜索视图" placeholder="搜索名称、来源表或匹配字段">
+                    <select id="jeViewSort" aria-label="排列视图"><option value="name">按名称</option><option value="time">最近修改</option></select>
+                    <button class="primary" id="jeAddNew">新建视图</button>
                 </div>
-            </div>
-            <div id="viewList" style="max-height:340px; overflow-y:auto; margin-bottom:10px;">
-                ${renderList()}
-            </div>
-            <div style="margin-bottom:10px;">
-                <label>粘贴配置 (JSON)</label>
-                <textarea id="jePaste" style="height:80px; font-size:12px;" placeholder='{"view":"MyView","left":"A","right":"B","on":"ID=ID","select":"left.ID,right.Name"}'></textarea>
-                <div class="flex gap-2" style="margin-top:8px;">
-                    <button class="sm" id="jePasteBtn">导入</button>
-                    <button class="primary w-full" id="jeAddNew">＋ 新增视图</button>
+                <div class="view-batch" ${vs.length ? '' : 'hidden'}>
+                    <label class="join-toggle"><input type="checkbox" id="jeViewSelectAll">全选当前列表</label>
+                    <button class="sm" id="jeBatchExport" disabled>导出所选</button>
+                    <button class="sm danger" id="jeBatchDelete" disabled>删除所选</button>
                 </div>
+                <div id="viewList">${renderList()}</div>
+                <details class="view-import">
+                    <summary>从 JSON 导入视图</summary>
+                    <textarea id="jePaste" aria-label="视图 JSON 配置" placeholder="粘贴视图配置"></textarea>
+                    <button class="sm" id="jePasteBtn">导入配置</button>
+                </details>
             </div>
         `);
 
@@ -251,10 +236,11 @@ const ViewManager = {
         }
 
         this._bindActions(vs);
+        this._updateBatchButtons();
 
         const addNewBtn = $('jeAddNew');
         if (addNewBtn) addNewBtn.onclick = () => {
-            $('modalOverlay').classList.add('hidden');
+            ModalController.close();
             if (typeof self._onEdit === 'function') self._onEdit(-1);
         };
 
@@ -266,6 +252,11 @@ const ViewManager = {
 
     _updateBatchButtons() {
         const selectedCount = document.querySelectorAll('.view-checkbox:checked').length;
+        const total = document.querySelectorAll('.view-checkbox').length;
+        const selectAll = $('jeViewSelectAll');
+        selectAll.checked = total > 0 && total === selectedCount;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < total;
+        selectAll.disabled = total === 0;
         const batchDeleteBtn = $('jeBatchDelete');
         const batchExportBtn = $('jeBatchExport');
         if (batchDeleteBtn) batchDeleteBtn.disabled = selectedCount === 0;
@@ -284,7 +275,7 @@ const ViewManager = {
             const checkbox = document.querySelector(`.view-checkbox[data-index="${i}"]`);
 
             if (editBtn) editBtn.onclick = () => {
-                $('modalOverlay').classList.add('hidden');
+                ModalController.close();
                 if (typeof self._onEdit === 'function') self._onEdit(i);
             };
             if (copyBtn) copyBtn.onclick = () => {
@@ -296,12 +287,14 @@ const ViewManager = {
             };
             if (exportBtn) exportBtn.onclick = () => Exporter.toJson({ kind: 'join-view', view: v }, `join_${v.view}`);
             if (delBtn) delBtn.onclick = () => {
-                $(`jeActions_${i}`).style.display = 'none';
-                $(`jeConfirm_${i}`).style.display = 'inline-flex';
+                $(`jeActions_${i}`).hidden = true;
+                $(`jeConfirm_${i}`).hidden = false;
+                delCancelBtn.focus();
             };
             if (delCancelBtn) delCancelBtn.onclick = () => {
-                $(`jeActions_${i}`).style.display = 'inline-flex';
-                $(`jeConfirm_${i}`).style.display = 'none';
+                $(`jeActions_${i}`).hidden = false;
+                $(`jeConfirm_${i}`).hidden = true;
+                delBtn.focus();
             };
             if (delOkBtn) delOkBtn.onclick = () => {
                 dispatch('view:removeMany', { indexes:[i] });

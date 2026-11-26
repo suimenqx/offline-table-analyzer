@@ -1,16 +1,72 @@
 OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager","dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}, {dispatch}) => {
-/* Join Editor - v2: improved UX */
+/* Project-scoped JOIN designer. */
 const JoinEditor = {
-    state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '', selectedOrderIdx: -1 },
+    state: { editIdx: -1, rels: [], lSel: [], rSel: [], order: [], dirty: false, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, selectedOrderIdx: -1 },
     metaCache: {},
     dragIdx: null,
-    _shiftSelecting: false,
     escapeHtml,
     formatBytes,
 
-    // Register ViewManager edit callback (called once during bootstrap)
-    _initViewManager() {
-        ViewManager.setEditCallback((idx) => this.open(idx));
+    init() {
+        ViewManager.setEditCallback(idx => this.open(idx));
+        $('jeCancel').onclick = () => this.close();
+        $('jeSave').onclick = () => this.save();
+        $('jeEnabled').onchange = () => this.markDirty();
+        $('jeAddRel').onclick = () => this.addRel();
+        $('jeAutoRel').onclick = () => this.autoMatchRels();
+        $('jeOrderRebuild').onclick = () => this.rebuildOrder();
+        $('jeOrderClear').onclick = () => this.clearOrder();
+        $('jeOrderLeftOnly').onclick = () => this.keepOnly('l');
+        $('jeOrderRightOnly').onclick = () => this.keepOnly('r');
+        $('jeOrderMoveTop').onclick = () => this.moveOrderToEdge('top');
+        $('jeOrderMoveBottom').onclick = () => this.moveOrderToEdge('bottom');
+        $('jeLeftTable').onchange = () => this.handleTableChange('l');
+        $('jeRightTable').onchange = () => this.handleTableChange('r');
+        $('jeType').onchange = () => { this.markDirty(); this.updateAll(); };
+        $('jeName').oninput = () => { this.markDirty(); this.updateSaveState(); };
+        for(const side of ['l','r']) {
+            const letter = side.toUpperCase();
+            $(`je${letter}Search`).oninput = () => this.renderSide(side);
+            $(`je${letter}All`).onclick = () => this.toggleAll(side);
+            $(`je${letter}OnlySel`).onchange = e => {
+                this.state[`${side}OnlySel`] = e.target.checked;
+                this.renderSide(side);
+            };
+            $(`jeOrderShow${letter}`).onchange = e => {
+                this.state[`show${letter}`] = e.target.checked;
+                this.renderSelectedOrder();
+            };
+        }
+        $('joinModal').addEventListener('click', e => { if(e.target === $('joinModal')) this.close(); });
+    },
+
+    handleKeydown(e) {
+        if(e.isComposing || e.keyCode === 229) return;
+        const target = e.target;
+        const typing = target.matches('input,textarea,select');
+        if(e.key === 'Escape') {
+            e.preventDefault();
+            this.close();
+        } else if(e.key === 'Enter' && ((e.ctrlKey || e.metaKey) || (!e.shiftKey && !target.closest('button,summary,input,textarea,select')))) {
+            e.preventDefault();
+            if(!$('jeSave').disabled) this.save();
+        } else if(e.key === '/' && !typing) {
+            e.preventDefault();
+            $('jeLSearch').focus();
+        } else if(e.altKey && !typing && ['ArrowUp','ArrowDown'].includes(e.key)) {
+            e.preventDefault();
+            const row = target.closest('.join-chip');
+            const idx = row ? Number(row.dataset.idx) : this.state.selectedOrderIdx;
+            if(idx >= 0) this.moveOrder(idx, e.key === 'ArrowUp' ? -1 : 1);
+        } else if(e.key === ' ' && target.matches('.join-chip')) {
+            e.preventDefault();
+            target.click();
+        }
+    },
+
+    renderSide(side) {
+        const cols = TableRegistry.getCols($(side === 'l' ? 'jeLeftTable' : 'jeRightTable').value);
+        this.renderColList(`je${side.toUpperCase()}List`, cols, this.state[`${side}Sel`], side);
     },
 
     formatTime(ts) {
@@ -34,7 +90,7 @@ const JoinEditor = {
     typeIcon(type) {
         const map = { numeric: ['#','col-num'], text: ['T','col-txt'], date: ['D','col-date'], empty: ['-','col-empty'] };
         const [letter, cls] = map[type] || ['?','col-txt'];
-        return `<span class="col-type-icon ${cls}">${letter}</span>`;
+        return `<span aria-hidden="true" class="col-type-icon ${cls}">${letter}</span>`;
     },
     getColMeta(tableName, col) {
         if(!tableName || !col) return { type: 'empty', sample: '-' };
@@ -44,9 +100,9 @@ const JoinEditor = {
         if(!table) return { type: 'empty', sample: '-' };
         const idx = table.headers.indexOf(col);
         if(idx === -1) return { type: 'empty', sample: '-' };
-        let sample = table.columnSamples?.[idx]?.value || '';
-        for(const row of table.rows.slice(0,1000)) {
-            const v = row[idx];
+        let sample = table.columnSamples?.[idx]?.value ?? '';
+        for(let i = 0; i < Math.min(table.rows.length, 1000); i++) {
+            const v = table.rows[i][idx];
             if(v !== undefined && v !== null && String(v).trim() !== '') { sample = v; break; }
         }
         const type = table.columnSamples?.[idx]?.truncated || (sample==='' && (table.isView || table.remote || table.rows.length>1000))?'unknown':this.inferType(sample);
@@ -79,142 +135,80 @@ const JoinEditor = {
         return list;
     },
     renderColList(id, cols, selected, side) {
-        const tableName = side === 'l' ? ($('jeLeftTable') && $('jeLeftTable').value) : ($('jeRightTable') && $('jeRightTable').value);
+        const tableName = $(side === 'l' ? 'jeLeftTable' : 'jeRightTable').value;
         const list = this.getFilteredCols(side, cols);
-        const allCols = cols || [];
-        const total = allCols.length;
-        const selCount = selected.length;
-
-        // Update count badge
-        const badgeId = side === 'l' ? 'jeLCount' : 'jeRCount';
-        const badge = $(badgeId);
-        if(badge) {
-            badge.textContent = `${selCount}/${total}`;
-            badge.title = `已选 ${selCount} / 共 ${total} 列`;
-        }
-
+        const letter = side.toUpperCase();
+        const bulk = $(`je${letter}All`);
+        bulk.disabled = !list.length;
+        const refreshCounts = () => {
+            $(`je${letter}Count`).textContent = `${selected.length}/${cols.length}`;
+            bulk.textContent = list.length && list.every(c => selected.includes(c)) ? '取消全选' : '全选';
+        };
+        refreshCounts();
+        bulk.title = '作用于当前显示的字段';
+        const box = $(id);
+        const focused = box.contains(document.activeElement) ? document.activeElement.value : null;
+        let anchor = null;
         if(!list.length) {
-            $(id).innerHTML = '<div style="padding:8px; color:#999;">无匹配字段</div>';
+            box.innerHTML = '<div class="join-empty">没有符合条件的字段</div>';
+            if(focused !== null) $(`je${letter}Search`).focus();
             return;
         }
-
-        const html = list.map((c, fi) => {
-            const meta = this.getColMeta(tableName, c);
-            const icon = this.typeIcon(meta.type);
-            const checked = selected.includes(c);
-            return `
-            <label class="checkbox-row" data-col="${this.escapeHtml(c)}" data-idx="${fi}">
-                <input type="checkbox" data-side="${side}" value="${this.escapeHtml(c)}" ${checked?'checked':''}>
-                ${icon}<span>${this.escapeHtml(c)}</span>
-            </label>`;
+        box.innerHTML = list.map(col => {
+            const {type} = this.getColMeta(tableName, col);
+            const safe = escapeHtml(col);
+            return `<label class="checkbox-row"><input type="checkbox" value="${safe}" ${selected.includes(col) ? 'checked' : ''}>
+                ${this.typeIcon(type)}<span>${safe}</span></label>`;
         }).join('');
-        $(id).innerHTML = html;
-
-        // Bind checkbox events with shift-click support
-        const checkboxes = $(id).querySelectorAll('input[type="checkbox"]');
-        checkboxes.forEach((chk, idx) => {
-            chk.onchange = () => {
-                if(this._shiftSelecting) return;
-                this.setSelection(side, chk.value, chk.checked);
-            };
-            chk.onclick = (e) => {
-                if(e.shiftKey && this._lastCheckIdx && this._lastCheckIdx.side === side) {
-                    e.preventDefault();
-                    this._shiftSelecting = true;
-                    const prevIdx = this._lastCheckIdx.idx;
-                    const start = Math.min(prevIdx, idx);
-                    const end = Math.max(prevIdx, idx);
-                    const willCheck = !chk.checked;
-                    for(let i = start; i <= end; i++) {
-                        if(checkboxes[i]) {
-                            checkboxes[i].checked = willCheck;
-                            this.setSelection(side, checkboxes[i].value, willCheck, false);
-                        }
-                    }
-                    this._shiftSelecting = false;
-                    this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
-                    this.renderSelectedOrder();
-                    this.updateAll();
-                    this.markDirty();
+        const checks = Array.from(box.querySelectorAll('input'));
+        if(focused !== null) (checks.find(input => input.value === focused) || checks[0]).focus();
+        checks.forEach((input, index) => {
+            input.onclick = event => {
+                const range = event.shiftKey && anchor !== null
+                    ? list.slice(Math.min(anchor, index), Math.max(anchor, index) + 1)
+                    : [input.value];
+                anchor = index;
+                this.selectColumns(side, range, input.checked);
+                if(this.state[`${side}OnlySel`] && !input.checked) {
+                    this.renderSide(side);
+                } else {
+                    if(range.length > 1) checks.forEach(check => { check.checked = selected.includes(check.value); });
+                    refreshCounts();
                 }
-                this._lastCheckIdx = { side, idx };
             };
         });
     },
 
-    /* ── Selection management ── */
-    setSelection(side, col, checked, appendToEnd=true) {
-        const arr = side === 'l' ? this.state.lSel : this.state.rSel;
-        const idx = arr.indexOf(col);
-        if(checked) {
-            if(idx === -1) arr.push(col);
-        } else {
-            if(idx > -1) arr.splice(idx,1);
+    selectColumns(side, cols, checked) {
+        const selected = this.state[`${side}Sel`];
+        for(const col of cols) {
+            const idx = selected.indexOf(col);
+            if(checked && idx < 0) selected.push(col);
+            if(!checked && idx >= 0) selected.splice(idx, 1);
         }
-        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value), appendToEnd ? {side, col, checked} : null);
+        this.syncOrderFromSelections();
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
     },
-
     toggleAll(side) {
-        const cols = this.getFilteredCols(side, TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
-        if(!cols.length) return;
-        const selected = side === 'l' ? this.state.lSel : this.state.rSel;
-        const allChecked = cols.every(c => selected.includes(c));
-        // Batch update: modify array directly, then sync once
-        const arr = side === 'l' ? this.state.lSel : this.state.rSel;
-        cols.forEach(c => {
-            const idx = arr.indexOf(c);
-            if(!allChecked && idx === -1) arr.push(c);
-            else if(allChecked && idx > -1) arr.splice(idx, 1);
-        });
-        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
-        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
-        this.renderSelectedOrder();
-        this.updateAll();
-        this.markDirty();
-    },
-    selectFiltered(side) {
-        const cols = this.getFilteredCols(side, TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
-        if(!cols.length) return;
-        // Batch: add all missing at once
-        const arr = side === 'l' ? this.state.lSel : this.state.rSel;
-        cols.forEach(c => { if(!arr.includes(c)) arr.push(c); });
-        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
-        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
-        this.renderSelectedOrder();
-        this.updateAll();
-        this.markDirty();
+        const table = $(side === 'l' ? 'jeLeftTable' : 'jeRightTable').value;
+        const cols = this.getFilteredCols(side, TableRegistry.getCols(table));
+        this.selectColumns(side, cols, !cols.every(col => this.state[`${side}Sel`].includes(col)));
+        this.renderSide(side);
     },
 
     /* ── Order sync ── */
-    syncOrderFromSelections(lCols, rCols, lastChange=null) {
-        this.state.order = this.state.order.filter(o => {
-            const list = o.side === 'l' ? this.state.lSel : this.state.rSel;
-            return list.includes(o.col);
-        });
+    syncOrderFromSelections() {
+        const current = this.state.order[this.state.selectedOrderIdx];
+        this.state.order = this.state.order.filter(o => this.state[`${o.side}Sel`].includes(o.col));
         const seen = new Set(this.state.order.map(o => `${o.side}:${o.col}`));
-
-        if(lastChange && lastChange.checked) {
-            const key = `${lastChange.side}:${lastChange.col}`;
-            if(!seen.has(key)) {
-                this.state.order.push({ side:lastChange.side, col:lastChange.col, alias:'' });
-                seen.add(key);
+        for(const side of ['l','r']) {
+            for(const col of this.state[`${side}Sel`]) {
+                if(!seen.has(`${side}:${col}`)) this.state.order.push({side, col, alias:''});
             }
         }
-
-        const appendMissing = (side, arr, cols=[]) => {
-            arr.forEach(c => {
-                const key = `${side}:${c}`;
-                if(!seen.has(key) && (!cols.length || cols.includes(c))) {
-                    this.state.order.push({ side, col:c, alias:'' });
-                    seen.add(key);
-                }
-            });
-        };
-        appendMissing('l', this.state.lSel, lCols || []);
-        appendMissing('r', this.state.rSel, rCols || []);
+        this.state.selectedOrderIdx = this.state.order.indexOf(current);
     },
 
     /* ── Order rendering ── */
@@ -222,7 +216,7 @@ const JoinEditor = {
         const box = $('jeOrderList'); if(!box) return;
         const visible = this.state.order.filter(o => (o.side === 'l' ? this.state.showL : this.state.showR));
         if(!visible.length) {
-            box.innerHTML = '<div style="font-size:11px; color:var(--text-tertiary);">未选择输出列 — 勾选左侧字段列表</div>';
+            box.innerHTML = this.state.order.length ? '<div class="join-empty">当前筛选下没有输出列</div>' : '<div class="join-empty">勾选来源字段后，可在此调整顺序与列名。</div>';
             return;
         }
         const leftSel = $('jeLeftTable');
@@ -239,13 +233,13 @@ const JoinEditor = {
             return `
             <div class="join-chip${selectedClass}" data-idx="${idx}" draggable="true" tabindex="0">
                 <div class="join-chip-main">
-                    <span class="join-chip-label" title="${label}">${label}</span>
-                    <input class="join-alias" data-idx="${idx}" placeholder="别名" value="${alias}">
+                    <span class="join-chip-label" title="${label}">${this.escapeHtml(o.col)}<small>${o.side === 'l' ? '左表' : '右表'} · ${this.escapeHtml(tableName)}</small></span>
+                    <input class="join-alias" data-idx="${idx}" aria-label="${label} 的输出别名" placeholder="别名" value="${alias}">
                 </div>
                 <div class="join-chip-actions">
-                    <button class="icon-btn sm" data-move="-1" title="上移 (Alt+↑)" style="width:22px; height:22px;">↑</button>
-                    <button class="icon-btn sm" data-move="1" title="下移 (Alt+↓)" style="width:22px; height:22px;">↓</button>
-                    <button class="icon-btn sm danger" data-remove="1" title="移除" style="width:22px; height:22px;">×</button>
+                    <button class="icon-btn sm" data-move="-1" aria-label="上移 ${label}" title="上移 (Alt+↑)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                    <button class="icon-btn sm" data-move="1" aria-label="下移 ${label}" title="下移 (Alt+↓)" ${idx === this.state.order.length - 1 ? 'disabled' : ''}>↓</button>
+                    <button class="icon-btn sm danger" data-remove="1" aria-label="移除 ${label}" title="移除">×</button>
                 </div>
             </div>`;
         }).join('');
@@ -282,7 +276,7 @@ const JoinEditor = {
             chip.onclick = () => {
                 const idx = +chip.dataset.idx;
                 this.state.selectedOrderIdx = (this.state.selectedOrderIdx === idx) ? -1 : idx;
-                this.renderSelectedOrder();
+                box.querySelectorAll('.join-chip').forEach(row => row.classList.toggle('selected', +row.dataset.idx === this.state.selectedOrderIdx));
             };
             // DnD
             chip.addEventListener('dragstart', e => {
@@ -332,6 +326,7 @@ const JoinEditor = {
         this.state.order.splice(target, 0, item);
         this.state.selectedOrderIdx = target;
         this.renderSelectedOrder();
+        $('jeOrderList').querySelector(`.join-chip[data-idx="${target}"]`)?.focus();
         this.updateAll();
         this.markDirty();
     },
@@ -389,7 +384,7 @@ const JoinEditor = {
     },
     clearOrder() {
         if(this.state.order.length === 0) return;
-        if(!confirm(`确定清空全部 ${this.state.order.length} 个输出列吗？此操作可撤销（重新勾选字段即可恢复）。`)) return;
+        if(!confirm(`清空全部 ${this.state.order.length} 个输出列及其别名？`)) return;
         this.state.lSel = [];
         this.state.rSel = [];
         this.state.order = [];
@@ -418,77 +413,61 @@ const JoinEditor = {
 
     /* ── ON conditions (rels) ── */
     renderRels() {
-        const lName = $('jeLeftTable').value;
-        const rName = $('jeRightTable').value;
-        const lCols = TableRegistry.getCols(lName);
-        const rCols = TableRegistry.getCols(rName);
-        const lOpts = lCols.map(c=>`<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
-        const rOpts = rCols.map(c=>`<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
-
-        $('jeRelContainer').innerHTML = this.state.rels.map((r, i) => {
-            const valid = r.l && r.r;
-            const cardClass = valid ? 'valid' : (r.l || r.r ? 'incomplete' : '');
-            return `
-            <div class="join-rel-card ${cardClass}" data-idx="${i}">
-                <div class="je-row">
-                    <select class="je-rel-l" data-idx="${i}" title="左表: ${this.escapeHtml(lName || '?')}">${lOpts || '<option>无字段</option>'}</select>
-                    <span style="opacity:0.6; flex-shrink:0;">=</span>
-                    <select class="je-rel-r" data-idx="${i}" title="右表: ${this.escapeHtml(rName || '?')}">${rOpts || '<option>无字段</option>'}</select>
-                    <button class="icon-btn sm" data-swap="${i}" title="交换左右">⇄</button>
-                    <button class="icon-btn sm danger" data-del="${i}" title="删除此条件">×</button>
-                </div>
-                <div class="rel-meta-row">
-                    <span class="rel-meta" id="jeRelMetaL_${i}"></span>
-                    <span class="rel-meta" id="jeRelMetaR_${i}"></span>
-                </div>
-            </div>`;
+        const opts = name => TableRegistry.getCols(name).map(col => {
+            const safe = escapeHtml(col);
+            return `<option value="${safe}">${safe}</option>`;
         }).join('');
-
-        // Set values from state (DOM-to-state sync point)
-        const ls = document.querySelectorAll('.je-rel-l');
-        const rs = document.querySelectorAll('.je-rel-r');
-        this.state.rels.forEach((r, i) => {
-            if(ls[i] && r.l && lCols.includes(r.l)) ls[i].value = r.l;
-            else if(ls[i]) { ls[i].selectedIndex = 0; r.l = ''; }
-            if(rs[i] && r.r && rCols.includes(r.r)) rs[i].value = r.r;
-            else if(rs[i]) { rs[i].selectedIndex = 0; r.r = ''; }
-        });
-
-        // Bind events - sync DOM → state immediately
-        ls.forEach(s => {
-            s.onchange = () => {
-                const i = +s.dataset.idx;
-                this.state.rels[i].l = s.value;
-                this.markDirty();
-                this.updateRelMeta();
-                this.updateAll();
-            };
-        });
-        rs.forEach(s => {
-            s.onchange = () => {
-                const i = +s.dataset.idx;
-                this.state.rels[i].r = s.value;
-                this.markDirty();
-                this.updateRelMeta();
-                this.updateAll();
-            };
-        });
-        document.querySelectorAll('[data-swap]').forEach(btn => {
-            btn.onclick = () => this.swapRel(+btn.dataset.swap);
-        });
-        document.querySelectorAll('[data-del]').forEach(btn => {
-            btn.onclick = () => this.delRel(+btn.dataset.del);
+        const left = opts($('jeLeftTable').value);
+        const right = opts($('jeRightTable').value);
+        const box = $('jeRelContainer');
+        $('jeRelHint').textContent = this.state.rels.length > 1 ? '同时满足以下条件' : '';
+        box.innerHTML = this.state.rels.map((rel, i) => `
+            <div class="join-rel-card" data-idx="${i}">
+                <div class="je-row">
+                    <label><select class="je-rel-l" aria-label="条件 ${i+1} 左表字段" aria-describedby="jeRelMetaL_${i}"><option value="">选择左表字段</option>${left}</select>
+                        <span class="rel-meta" id="jeRelMetaL_${i}"></span></label>
+                    <span class="rel-equals" aria-hidden="true">=</span>
+                    <label><select class="je-rel-r" aria-label="条件 ${i+1} 右表字段" aria-describedby="jeRelMetaR_${i}"><option value="">选择右表字段</option>${right}</select>
+                        <span class="rel-meta" id="jeRelMetaR_${i}"></span></label>
+                    <button class="icon-btn sm" data-swap title="交换左右字段" aria-label="交换条件 ${i+1} 的左右字段">⇄</button>
+                    <button class="icon-btn sm" data-del title="删除条件" aria-label="删除条件 ${i+1}">×</button>
+                </div>
+            </div>`).join('');
+        box.querySelectorAll('.join-rel-card').forEach((card, i) => {
+            const relation = this.state.rels[i];
+            for(const side of ['l','r']) {
+                const select = card.querySelector(`.je-rel-${side}`);
+                select.value = relation[side];
+                select.onchange = () => {
+                    relation[side] = select.value;
+                    this.markDirty();
+                    this.updateRelMeta();
+                    this.updateAll();
+                };
+            }
+            card.querySelector('[data-swap]').onclick = () => this.swapRel(i);
+            card.querySelector('[data-del]').onclick = () => this.delRel(i);
         });
         this.updateRelMeta();
     },
 
-    addRel() { this.state.rels.push({l:'', r:''}); this.markDirty(); this.renderRels(); this.updateAll(); },
+    focusRel(index) {
+        $('jeRelContainer').querySelectorAll('.je-rel-l')[index]?.focus();
+    },
+    addRel() {
+        this.state.rels.push({l:'', r:''});
+        this.markDirty();
+        this.renderRels();
+        this.updateAll();
+        this.focusRel(this.state.rels.length - 1);
+    },
     delRel(i) {
         this.state.rels.splice(i, 1);
         if(this.state.rels.length === 0) this.state.rels.push({l:'', r:''});
         this.markDirty();
         this.renderRels();
         this.updateAll();
+        this.focusRel(Math.min(i, this.state.rels.length - 1));
     },
     swapRel(i) {
         const r = this.state.rels[i];
@@ -497,6 +476,7 @@ const JoinEditor = {
         this.markDirty();
         this.renderRels();
         this.updateAll();
+        this.focusRel(i);
     },
     autoMatchRels() {
         const lName = $('jeLeftTable').value;
@@ -547,21 +527,18 @@ const JoinEditor = {
     },
 
     updateRelMeta() {
-        const lName = $('jeLeftTable').value;
-        const rName = $('jeRightTable').value;
-        this.state.rels.forEach((r, i) => {
-            const l = this.getColMeta(lName, r.l);
-            const rmeta = this.getColMeta(rName, r.r);
-            const lEl = $(`jeRelMetaL_${i}`);
-            const rEl = $(`jeRelMetaR_${i}`);
-            if(lEl) {
-                lEl.textContent = `左: ${l.type==='numeric'?'#':l.type==='date'?'D':l.type==='text'?'T':'-'} ${l.sample}`;
-                lEl.className = `rel-meta type-${l.type}`;
+        const left = $('jeLeftTable').value;
+        const right = $('jeRightTable').value;
+        const leftCols = TableRegistry.getCols(left);
+        const rightCols = TableRegistry.getCols(right);
+        this.state.rels.forEach((rel, i) => {
+            for(const [side, table] of [['l', left], ['r', right]]) {
+                const el = $(`jeRelMeta${side.toUpperCase()}_${i}`);
+                const meta = this.getColMeta(table, rel[side]);
+                el.textContent = rel[side] && meta.type !== 'empty' && meta.sample !== '-' ? `示例 · ${meta.sample}` : '';
             }
-            if(rEl) {
-                rEl.textContent = `右: ${rmeta.type==='numeric'?'#':rmeta.type==='date'?'D':rmeta.type==='text'?'T':'-'} ${rmeta.sample}`;
-                rEl.className = `rel-meta type-${rmeta.type}`;
-            }
+            const swap = $('jeRelContainer').children[i].querySelector('[data-swap]');
+            swap.disabled = !rel.l || !rel.r || rel.l === rel.r || !leftCols.includes(rel.r) || !rightCols.includes(rel.l);
         });
     },
 
@@ -595,10 +572,10 @@ const JoinEditor = {
         const leftVal = $('jeLeftTable').value;
         const rightVal = $('jeRightTable').value;
 
-        if(!name) errors.push('❌ 请填写视图名称');
-        if(['__proto__','prototype','constructor'].includes(name)) errors.push('❌ 该视图名称不可使用');
-        if(name && this.isNameConflict(name, this.state.editIdx)) errors.push('❌ 视图名称与已有表/视图冲突');
-        if(!leftVal || !rightVal) errors.push('❌ 请选择左右表');
+        if(!name) errors.push('请填写视图名称');
+        if(['__proto__','prototype','constructor'].includes(name)) errors.push('该视图名称不可使用');
+        if(name && this.isNameConflict(name, this.state.editIdx)) errors.push('视图名称与已有表/视图冲突');
+        if(!leftVal || !rightVal) errors.unshift('请先解析数据，再选择左右表');
 
         // Validate rels with specific indices
         const incompleteIdxs = [];
@@ -607,9 +584,8 @@ const JoinEditor = {
             if(r.l && r.r) validRels.push(i);
             else if(r.l || r.r) incompleteIdxs.push(i + 1);
         });
-        if(incompleteIdxs.length) errors.push(`❌ 关联条件 #${incompleteIdxs.join(', #')} 字段不完整`);
-        if(validRels.length === 0 && this.state.rels.some(r => r.l || r.r)) errors.push(`❌ 关联条件不完整：${incompleteIdxs.length}个条件缺少字段`);
-        else if(this.state.rels.length === 0 || (this.state.rels.length === 1 && !this.state.rels[0].l && !this.state.rels[0].r)) errors.push('❌ 至少配置一个关联条件（点击 添加条件 按钮）');
+        if(incompleteIdxs.length) errors.push(`关联条件 #${incompleteIdxs.join(', #')} 字段不完整`);
+        if(!validRels.length && !incompleteIdxs.length) errors.push('请选择至少一对匹配字段');
 
         const leftCols = TableRegistry.getCols(leftVal);
         const rightCols = TableRegistry.getCols(rightVal);
@@ -618,13 +594,13 @@ const JoinEditor = {
             if(r.l && !leftCols.includes(r.l)) staleRels.push(`#${i+1} 左:${r.l}`);
             if(r.r && !rightCols.includes(r.r)) staleRels.push(`#${i+1} 右:${r.r}`);
         });
-        if(staleRels.length) errors.push(`❌ 关联字段不存在: ${staleRels.join(', ')}`);
+        if(staleRels.length) errors.push(`关联字段不存在: ${staleRels.join(', ')}`);
 
-        if(this.state.order.length === 0) errors.push('❌ 至少选择一个输出列');
+        if(this.state.order.length === 0) errors.push('至少选择一个输出列');
 
         const cfg = this.getCurrentConfig();
         if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.getViews(), TableRegistry.getAvailableRawTables().map(t => t.name))) {
-            errors.push('❌ 视图依赖会形成循环引用');
+            errors.push('视图依赖会形成循环引用');
         }
 
         // Dedup warnings
@@ -637,60 +613,57 @@ const JoinEditor = {
         });
         if(dupes.length) {
             const uniqueDupes = Array.from(new Set(dupes));
-            warnings.push(`⚠ 输出列将自动去重: ${uniqueDupes.join(', ')}`);
+            warnings.push(`输出列将自动去重: ${uniqueDupes.join(', ')}`);
         }
 
         return { ok: errors.length === 0, errors, warnings };
     },
 
     updateSaveState() {
-        const { ok, errors, warnings } = this.validate();
+        const {ok, errors, warnings} = this.validate();
         const warn = $('jeWarn');
-        if(errors.length) {
-            // Show first error as summary, full list on hover
-            warn.textContent = `⚠ ${errors[0].replace('❌ ','')}${errors.length > 1 ? ` ...共${errors.length}个问题` : ''}`;
-            warn.title = errors.join('\n');
-            warn.className = 'join-warn error';
-        } else if(warnings.length) {
-            warn.textContent = `⚠ ${warnings[0].replace('⚠ ','')}`;
-            warn.title = warnings.join('\n');
-            warn.className = 'join-warn';
-        } else {
-            warn.textContent = '✓ 可以保存';
-            warn.title = '';
-            warn.className = 'join-warn ok';
-        }
-        ['jeSave', 'jeSaveFooter'].forEach(id => { if($(id)) $(id).disabled = !ok; });
+        warn.textContent = errors[0] || warnings[0] || '可以保存';
+        warn.title = [...errors, ...warnings].join('\n');
+        warn.className = ok ? (warnings.length ? 'warning' : 'ok') : '';
+        $('jeSave').disabled = !ok;
     },
     updateStatus() {
-        const total = this.state.lSel.length + this.state.rSel.length;
-        const el = $('jeStatus');
-        if(el) el.textContent = `已选输出列: ${total} (左 ${this.state.lSel.length} · 右 ${this.state.rSel.length})`;
+        $('jeStatus').textContent = `${this.state.order.length} 列`;
+        $('jeJoinShape').dataset.mode = $('jeType').value;
+        $('jeTypeHint').textContent = {
+            inner:'仅输出两侧匹配的行', left:'保留左表全部行', right:'保留右表全部行',
+            full:'保留两侧全部行', semi:'每条匹配的左表行只输出一次', anti:'仅输出未匹配的左表行'
+        }[$('jeType').value] || '';
     },
-    updatePreview() {
-        const cfg = this.getCurrentConfig();
-        const hasRel = this.state.rels.some(r => r.l && r.r);
+    async updatePreview() {
         const el = $('jePreview');
-        if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
-        // Cache stats by config fingerprint to avoid redundant recalc
-        const doc=Store.getDocument();
-        if(!doc) { el.textContent = '预览: 当前工程没有卡片'; return; }
-        const cacheKey=JSON.stringify([doc.id,doc.sourceRevision,doc.ui.cellEdits,Store.getViews(),cfg]);
-        if (!this._statsCache) this._statsCache = { key: null, value: null };
-        if (this._statsCache.key !== cacheKey) {
-            this._statsCache.key = cacheKey;
-            if(TableRegistry.isBackground()) {
-                this._statsCache.value=null;this._statsCache.pending=true;
-                TableRegistry.getJoinStats(cfg).then(stats=>{
-                    if(this._statsCache?.key!==cacheKey)return;
-                    this._statsCache.value=stats;this._statsCache.pending=false;this.updatePreview();
-                }).catch(error=>{if(this._statsCache?.key===cacheKey){this._statsCache.pending=false;el.textContent=`预览失败：${error.message}`;}});
-            } else this._statsCache.value = Joiner.stats(TableRegistry.getRaw(), cfg, Store.getViews());
+        const cfg = this.getCurrentConfig();
+        if(!cfg.left || !cfg.right || !cfg.on || this.state.rels.some(r => !!r.l !== !!r.r)) {
+            this._statsRequest = null;
+            el.textContent = cfg.left && cfg.right ? '选好两侧的匹配字段后，将显示输出行数。' : '请先解析数据，再选择参与关联的表。';
+            return;
         }
-        if(this._statsCache.pending){el.textContent='预览: 正在后台计算…';return;}
-        const stats = this._statsCache.value;
-        if(!stats) { el.textContent = '预览: —'; return; }
-        el.textContent = `预览: 输出 ${stats.outRows.toLocaleString()} 行 · 匹配 ${stats.matched.toLocaleString()} · 左未匹配 ${stats.leftOnly.toLocaleString()} · 右未匹配 ${stats.rightOnly.toLocaleString()}`;
+        // Projection, aliases and the draft name do not affect row counts.
+        const key = JSON.stringify([Store.revision, TableRegistry.isBackground(), cfg.left, cfg.right, cfg.on, cfg.type]);
+        if(this._statsRequest?.key === key) return;
+        const request = {key};
+        this._statsRequest = request;
+        try {
+            let stats;
+            if(TableRegistry.isBackground()) {
+                el.textContent = '正在计算匹配行数…';
+                stats = await TableRegistry.getJoinStats(cfg);
+            } else {
+                stats = Joiner.stats(TableRegistry.getRaw(), cfg, Store.getViews());
+            }
+            if(this._statsRequest !== request) return;
+            if(!stats) { el.textContent = '无法预览，请检查来源表与关联条件。'; return; }
+            const metrics = [['输出行数', stats.outRows], ['匹配对数', stats.matched], ['左表未匹配', stats.leftOnly], ['右表未匹配', stats.rightOnly]];
+            el.innerHTML = `<dl class="join-metrics">${metrics.map(([label, value]) =>
+                `<div><dt>${label}</dt><dd>${value.toLocaleString()}</dd></div>`).join('')}</dl>`;
+        } catch(error) {
+            if(this._statsRequest === request) el.textContent = `预览失败：${error.message}`;
+        }
     },
     updateDependencyInfo() {
         const lName = $('jeLeftTable').value;
@@ -731,10 +704,9 @@ const JoinEditor = {
         this.updateStatus();
         this.updateSaveState();
         this.updatePreview();
-        this.updateDependencyInfo();
     },
 
-    /* ── Table change handling (inline confirm, not modal-on-modal) ── */
+    /* ── Table changes ── */
     handleTableChange(side) {
         const sel = side === 'l' ? $('jeLeftTable') : $('jeRightTable');
         const next = sel.value;
@@ -769,10 +741,9 @@ const JoinEditor = {
     /* ── Dirty tracking ── */
     setDirty(flag) {
         this.state.dirty = flag;
-        const title = this.state.titleBase || '全局视图';
-        $('jeTitle').textContent = flag ? `${title} *` : title;
+        $('jeDirty').hidden = !flag;
     },
-    markDirty() { this._statsCache = null; this.setDirty(true); },
+    markDirty() { this.setDirty(true); },
 
     /* ── Column refresh ── */
     refreshColumns() {
@@ -787,13 +758,15 @@ const JoinEditor = {
             if(r.l && !lCols.includes(r.l)) r.l = '';
             if(r.r && !rCols.includes(r.r)) r.r = '';
         });
-        this.syncOrderFromSelections(lCols, rCols);
+        this.syncOrderFromSelections();
 
+        $('jeLSourceName').textContent = lName;
+        $('jeRSourceName').textContent = rName;
         this.renderColList('jeLList', lCols, this.state.lSel, 'l');
         this.renderColList('jeRList', rCols, this.state.rSel, 'r');
         this.renderSelectedOrder();
         this.renderRels();
-        this.updateRelMeta();
+        this.updateDependencyInfo();
         this.updateAll();
     },
 
@@ -815,17 +788,22 @@ const JoinEditor = {
     /* ── Open / Close / Save ── */
     open(editIdx = -1) {
         const p = $('joinModal'); p.classList.remove('hidden');
-        ModalController.activate(p);
+        ModalController.activate(p, $('jeName'));
+        this._statsRequest = null;
+        for(const el of p.querySelectorAll('details')) el.open = false;
+        for(const el of p.querySelectorAll('.join-body,.join-result,.join-setup')) el.scrollTop = 0;
+        $('jeLSearch').value = '';
+        $('jeRSearch').value = '';
         document.body.classList.add('modal-open');
         this.state.editIdx = editIdx;
         this.metaCache = {};
         this.state.selectedOrderIdx = -1;
         const v = editIdx > -1 ? Store.getViews()[editIdx] : { view:'', left:'', right:'', type:'inner', on:'', select:'' };
 
-        this.state.titleBase = editIdx > -1 ? '编辑全局视图' : '新增全局视图';
-        $('jeTitle').textContent = this.state.titleBase;
+        $('jeTitle').textContent = editIdx > -1 ? '编辑 JOIN 视图' : '新建 JOIN 视图';
         $('jeName').value = v.view;
         $('jeType').value = v.type;
+        $('jeEnabled').checked = editIdx < 0 || Store.getEnabledViews().includes(v.view);
 
         const availableTables = TableRegistry.getAvailableTables();
         ['jeLeftTable','jeRightTable'].forEach(id => {
@@ -844,11 +822,11 @@ const JoinEditor = {
             return !val;
         };
         const leftOk = setTableValue('jeLeftTable', v.left);
-        const rightOk = setTableValue('jeRightTable', v.right);
+        const rightOk = setTableValue('jeRightTable', editIdx < 0 ? availableTables[1] : v.right);
         if (!leftOk && v.left) Toast.show(`左表"${v.left}"已不存在，关联条件和输出列可能失效`, true);
         if (!rightOk && v.right) Toast.show(`右表"${v.right}"已不存在，关联条件和输出列可能失效`, true);
 
-        this.state.rels = v.on ? v.on.split(',').map(s => { const p=s.split('='); return {l:p[0].trim(), r:p[1].trim()}; }) : [];
+        this.state.rels = v.on ? v.on.split(',').map(s => { const p=s.split('='); return {l:p[0].trim(), r:(p[1] || '').trim()}; }) : [];
         if(this.state.rels.length === 0) this.state.rels.push({l:'', r:''});
 
         this.state.lSel = []; this.state.rSel = []; this.state.order = [];
@@ -874,56 +852,46 @@ const JoinEditor = {
         this.state.prevLeft = $('jeLeftTable').value;
         this.state.prevRight = $('jeRightTable').value;
 
-        this.refreshColumns();
-        this.renderRels();
-        this.renderSelectedOrder();
-        this.updateAll();
         this.setDirty(false);
+        this.refreshColumns();
     },
 
     close(force=false) {
         if(!force && this.state.dirty) {
             if(!confirm('有未保存修改，确定关闭？')) return;
         }
+        this._statsRequest = null;
         $('joinModal').classList.add('hidden');
         ModalController.deactivate($('joinModal'));
         document.body.classList.remove('modal-open');
     },
 
     save() {
-        // Ensure rels state is synced from DOM
-        document.querySelectorAll('.je-rel-l').forEach((s,i) => { if(this.state.rels[i]) this.state.rels[i].l = s.value; });
-        document.querySelectorAll('.je-rel-r').forEach((s,i) => { if(this.state.rels[i]) this.state.rels[i].r = s.value; });
-
         const check = this.validate();
         if(!check.ok) {
-            const msg = check.errors.map(e => e.replace('❌ ','• ')).join('\n');
+            const msg = check.errors.join('\n');
             return alert(`无法保存，请修正以下问题:\n\n${msg}`);
         }
 
-        const name = $('jeName').value.trim();
-        const onStr = this.buildOnString(this.state.rels);
-        const selStr = this.buildSelectString();
-
         const base = this.state.editIdx > -1 ? Store.getViews()[this.state.editIdx] : {};
         const nv = {
-            view: name,
-            left: $('jeLeftTable').value,
-            right: $('jeRightTable').value,
-            type: $('jeType').value,
-            on: onStr,
-            select: selStr,
+            ...this.getCurrentConfig(),
             createdAt: base.createdAt || Date.now(),
             updatedAt: Date.now()
         };
 
+        const enabled = Store.getEnabledViews();
+        const nextEnabled = enabled.filter(view => view !== base.view || $('jeEnabled').checked)
+            .map(view => view === base.view ? nv.view : view);
+        if($('jeEnabled').checked && !nextEnabled.includes(nv.view)) nextEnabled.push(nv.view);
         dispatch('view:upsert', { index:this.state.editIdx > -1 ? this.state.editIdx : undefined, view:nv });
+        if(enabled.length !== nextEnabled.length || enabled.some((v, i) => v !== nextEnabled[i])) {
+            dispatch('view:setEnabled', {enabledViews:nextEnabled});
+        }
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
         this.setDirty(false);
-        $('joinModal').classList.add('hidden');
-        ModalController.deactivate($('joinModal'));
-        document.body.classList.remove('modal-open');
+        this.close(true);
         Toast.show(this.state.editIdx > -1 ? '视图已更新' : '视图已创建');
     },
 

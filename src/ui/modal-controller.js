@@ -28,8 +28,8 @@ const ModalController = {
                 const root = ModalController.activeContainer;
                 let focusable = [];
                 try {
-                    focusable = Array.from(root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
-                        .filter(el => !el.disabled && el.getAttribute('aria-hidden') !== 'true');
+                    focusable = Array.from(root.querySelectorAll('summary, button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+                        .filter(el => !el.disabled && el.getAttribute('aria-hidden') !== 'true' && el.getClientRects().length);
                 } catch(e) { return; }
                 if(!focusable.length) return;
                 const first = focusable[0];
@@ -47,7 +47,7 @@ const ModalController = {
 
     activate(container, initialFocus=null) {
         if(!container) return;
-        ModalController.returnFocus = document.activeElement;
+        if(ModalController.activeContainer !== container) ModalController.returnFocus = document.activeElement;
         ModalController.activeContainer = container;
         const target = initialFocus || (() => {
             try { return container.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])'); } catch(e) { return null; }
@@ -80,7 +80,6 @@ const ModalController = {
      * Open a modal with the given title and HTML body.
      */
     show(title, html) {
-        ModalController.returnFocus = document.activeElement;
         const content = $('modalContent');
         if (!content) return;
         content.innerHTML = `<div class="panel-header" style="border-radius:8px 8px 0 0;"><span id="modalTitle">${escapeHtml(title)}</span><button class="icon-btn" id="modalCloseBtn" type="button" aria-label="关闭">&times;</button></div><div class="modal-body">${html}</div>`;
@@ -106,7 +105,7 @@ const ModalController = {
         }).join('');
         ModalController.show('选择显示表', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         ModalController._bindSaveBtn(() => {
-            const v = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
+            const v = Array.from($('modalContent').querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
             const next = (v.length === tableNames.length && tableNames.length > 0) ? null : v;
             dispatch('ui:set', { key:'displayTables', value:next });
             ModalController.close();
@@ -133,7 +132,7 @@ const ModalController = {
         }).join('');
         ModalController.show('启用视图', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         ModalController._bindSaveBtn(() => {
-            const sel = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
+            const sel = Array.from($('modalContent').querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
             dispatch('view:setEnabled', { enabledViews:sel });
             ModalController.close();
             dispatch('preview:renderRequested', {});

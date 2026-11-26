@@ -313,31 +313,139 @@
         .modal { background: var(--bg-card); width: 520px; max-height: 82vh; border-radius: 14px; border: 1px solid var(--border); box-shadow: var(--shadow-md); display: flex; flex-direction: column; overflow: hidden; }
 
         .fullscreen-modal { position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55); backdrop-filter: blur(6px); z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; padding: 24px; }
-        .join-shell { width: min(1200px, 94vw); height: 88vh; background: var(--bg-card); border-radius: 16px; box-shadow: var(--shadow-md); display: flex; flex-direction: column; border: 1px solid var(--border); overflow: hidden; }
-        .join-head { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; background: var(--bg-elevated); gap: 12px; }
-        .join-head-left { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-        .join-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-        .join-body { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .join-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 14px 18px 4px 18px; }
-        .join-grid { flex: 1; display: grid; grid-template-columns: 1fr 1.3fr 1fr; gap: 14px; padding: 8px 18px 12px 18px; overflow: hidden; }
-        .join-col, .join-map { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; display: flex; flex-direction: column; overflow: hidden; box-shadow: var(--shadow-xs); }
-        .join-col-head { padding: 12px; font-weight: 700; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
-        .join-col-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-        .join-col-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .join-search { height: 30px; font-size: 12px; min-width: 120px; flex: 1; }
-        .join-list { flex: 1; overflow-y: auto; padding: 8px 10px; }
-        .join-map-head { padding: 12px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; font-weight: 700; }
-        .join-map-body { flex: 1; padding: 12px; overflow-y: auto; display: grid; grid-template-rows: auto 1fr auto; gap: 10px; }
-        .join-rel-card { background: var(--bg-card); border: 1px dashed var(--border-strong); border-radius: 10px; padding: 10px; margin-bottom: 10px; display: flex; flex-direction: column; gap: 6px; }
-        .join-order { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 10px; min-height: 72px; display: flex; flex-direction: column; gap: 6px; align-content: flex-start; }
-        .join-chip { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: var(--primary-soft); border: 1px solid color-mix(in srgb, var(--primary) 20%, var(--border)); border-radius: 10px; cursor: grab; user-select: none; width: 100%; }
-        .join-chip-main { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-        .join-chip-label { font-weight: 500; font-size: 11px; color: var(--text-mid); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-        .join-chip-actions { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
-        .join-chip.dragging { opacity: 0.55; cursor: grabbing; }
-        .join-chip.drop-before { border-top: 2px solid var(--primary); }
-        .join-chip.drop-after { border-bottom: 2px solid var(--primary); }
-        .join-chip.selected { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
+        /* JOIN workspace */
+        .join-entry, .join-heading, .join-section-head, .join-list-tools, .join-field-heading,
+        .join-head, .join-foot, .join-save-actions, .view-toolbar, .view-batch, .view-actions { display:flex; align-items:center; gap:10px; }
+        .join-entry { margin-bottom:6px; font-weight:650; }
+        .join-entry > span { margin-right:auto; }
+        .join-entry > span, .join-section-head > :first-child, .join-field-heading strong { margin-right:auto; }
+        #viewsTrigger { width:100%; height:auto; justify-content:flex-start; text-align:left; }
+        #joinModal { padding:clamp(8px, 2vw, 28px); }
+        .join-shell { width:min(1180px, 100%); height:min(840px, 94dvh); display:flex; flex-direction:column; overflow:hidden; border:1px solid var(--border); border-radius:16px; background:var(--bg-card); box-shadow:var(--shadow-md); }
+        .join-shell h2, .join-shell h3, .join-shell h4, .join-shell label { margin:0; }
+        .join-shell h2 { font-size:20px; letter-spacing:-.03em; }
+        .join-shell h3 { font-size:16px; line-height:1.4; }
+        .join-shell h4 { font-size:13px; }
+        .join-shell input[type=search], .view-toolbar input { min-width:0; width:100%; height:32px; border:1px solid var(--border); border-radius:7px; padding:0 10px; font:inherit; font-size:13px; color:var(--text-strong); background:var(--bg-card); }
+        .join-head, .join-foot { padding:14px 22px; justify-content:space-between; flex:none; }
+        .join-head { border-bottom:1px solid var(--border); }
+        .join-symbol { position:relative; width:37px; height:37px; flex:none; border-radius:10px; background:#153f3b; }
+        .join-symbol::before, .join-symbol::after { content:""; position:absolute; top:11px; width:13px; height:13px; border-radius:50%; border:2px solid #ace2d8; }
+        .join-symbol::before { left:6px; }
+        .join-symbol::after { left:15px; border-color:white; }
+        #jeDirty { font-size:11px; color:var(--text-mid); }
+        .join-name { display:flex; align-items:center; gap:10px; white-space:nowrap; }
+        .join-name input { max-width:210px; }
+        .join-body { min-height:0; flex:1; display:grid; grid-template-columns:minmax(0, 1.38fr) minmax(340px, 1fr); background:var(--bg-elevated); }
+        .join-setup, .join-result { min-width:0; min-height:0; overflow:auto; scrollbar-width:thin; padding:20px; }
+        .join-setup { display:flex; flex-direction:column; gap:14px; }
+        .join-section, .join-output { border:1px solid var(--border); border-radius:11px; background:var(--bg-card); padding:16px; }
+        .join-result { display:flex; flex-direction:column; gap:14px; border-left:1px solid var(--border); background:var(--bg-card); }
+        .join-table-pair, .join-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:14px; }
+        .join-source-l { --side:var(--success); }
+        .join-source-r { --side:var(--primary); }
+        .join-table-pair label { min-width:0; color:var(--text-mid); }
+        .join-table-pair label::before, .join-field-heading strong::before { content:""; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; background:var(--side); }
+        .join-table-pair select { margin-top:5px; }
+        .join-type-row { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:14px 0 8px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+        .join-type-row select { width:auto; height:32px; }
+        #jeTypeHint, #jeStatus, .join-field-heading span, .join-details, .join-empty, .rel-meta { font-size:12px; color:var(--text-mid); }
+        .join-rel-card { margin:8px 0; }
+        .je-row { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr) auto auto; align-items:start; gap:6px; }
+        .je-row label { min-width:0; }
+        .je-row select { height:32px; font-weight:normal; }
+        .rel-equals { align-self:start; line-height:32px; color:var(--text-mid); }
+        .rel-meta { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; margin:3px 0 0; font-weight:normal; }
+        .join-source { min-width:0; border:1px solid var(--border); border-radius:8px; padding:10px; }
+        .join-field-heading { margin-bottom:8px; }
+        .join-field-heading strong { display:block; min-width:0; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+        .join-field-heading small, #jeRelHint { color:var(--text-mid); font-size:11px; font-weight:400; }
+        .join-list-tools { justify-content:space-between; margin:4px 0; }
+        .join-toggle { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:500; color:var(--text-mid); }
+        .join-toggle input { width:15px; height:15px; margin:0; accent-color:var(--primary); }
+        .join-list { max-height:260px; min-height:66px; overflow:auto; scrollbar-width:thin; }
+        .join-list .checkbox-row { padding:6px; gap:6px; border-radius:5px; font-weight:500; }
+        .join-list .checkbox-row:has(:checked) { background:color-mix(in srgb, var(--side) 9%, var(--bg-card)); }
+        .join-list .checkbox-row input { margin:0; flex:none; accent-color:var(--side); }
+        .join-list .checkbox-row span:last-child { min-width:0; overflow-wrap:anywhere; }
+        .col-type-icon { font:600 10px/17px var(--font-mono); width:17px; text-align:center; flex:none; color:var(--text-mid); background:var(--bg-elevated); border:1px solid var(--border); border-radius:4px; }
+        .join-details summary, .view-import summary { cursor:pointer; font-weight:600; color:var(--text-mid); padding:4px 0; }
+        #jeDependency { margin:8px 0; line-height:1.6; overflow-wrap:anywhere; }
+        .join-stats { border-radius:11px; padding:16px 18px; background:#183e3b; color:#fff; }
+        .join-stats h3 { color:#fff; }
+        .join-stats-head { display:flex; align-items:center; justify-content:space-between; }
+        .join-shape { position:relative; width:45px; height:28px; --ink:#b0e6d7; }
+        .join-shape::before, .join-shape::after, .join-shape i { content:""; box-sizing:border-box; width:28px; height:28px; border:1.5px solid var(--ink); border-radius:50%; position:absolute; inset:0 auto auto 0; }
+        .join-shape::after { left:17px; }
+        .join-shape i { background:var(--ink); clip-path:circle(14px at 31px 14px); }
+        .join-shape:is([data-mode=left],[data-mode=full],[data-mode=anti])::before,
+        .join-shape:is([data-mode=right],[data-mode=full])::after { background:var(--ink); }
+        .join-shape[data-mode=anti] i { background:#183e3b; }
+        .join-shape[data-mode=semi]::before { border-width:3px; }
+        #jePreview { font-size:12px; color:#c2dad5; margin-top:10px; }
+        .join-metrics { margin:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+        .join-metrics > div:first-child { grid-column:1 / -1; display:flex; align-items:baseline; gap:10px; border-bottom:1px solid #46635f; padding-bottom:8px; }
+        .join-metrics dt { font-size:12px; }
+        .join-metrics dd { margin:0; color:white; font-size:18px; font-weight:600; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+        .join-metrics > div:first-child dd { order:-1; font-size:30px; }
+        .join-output { padding:14px; }
+        .join-order { display:grid; margin:8px 0; }
+        .join-chip { display:flex; align-items:center; gap:8px; min-width:0; padding:8px 2px; border-top:1px solid var(--border); cursor:grab; }
+        .join-chip.selected { background:var(--bg-elevated); }
+        .join-chip.dragging { opacity:.5; }
+        .join-chip.drop-before { box-shadow:0 -2px var(--primary); }
+        .join-chip.drop-after { box-shadow:0 2px var(--primary); }
+        .join-chip-main { flex:1; min-width:0; display:grid; grid-template-columns:minmax(0,1.2fr) minmax(55px,.8fr); align-items:center; gap:8px; }
+        .join-chip-label, .join-chip-label small { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .join-chip-label { color:var(--text-strong); font-weight:650; font-size:13px; }
+        .join-chip-label small { color:var(--text-mid); font-weight:400; font-size:11px; }
+        .join-alias { width:100%; min-width:0; height:29px; border-radius:5px; border:1px solid var(--border); color:var(--text-strong); background:var(--bg-card); padding:0 6px; }
+        .join-chip-actions { display:flex; gap:1px; }
+        .join-shell .icon-btn.sm { width:26px; height:30px; padding:0; border-color:transparent; box-shadow:none; }
+        .join-order-tools { display:flex; flex-wrap:wrap; gap:8px; padding-top:8px; }
+        .join-empty { background:var(--bg-elevated); border-radius:6px; padding:16px 10px; line-height:1.6; }
+        .join-foot { border-top:1px solid var(--border); }
+        #jeWarn { font-size:12px; color:var(--text-mid); overflow-wrap:anywhere; }
+        #jeWarn.ok { color:var(--success); }
+        #jeWarn.warning { color:var(--warning); }
+        .join-save-actions { flex-shrink:0; }
+        .join-save-actions .join-toggle { margin-right:8px; }
+        .join-foot .primary { background:#196458; border-color:#196458; color:#fff; }
+
+        /* JOIN view library */
+        .modal:has(.view-library) { width:min(690px, 100%); }
+        .view-library { display:grid; gap:14px; }
+        .view-toolbar { flex-wrap:wrap; }
+        .view-toolbar input { flex:1 1 160px; }
+        .view-toolbar select { width:auto; height:32px; }
+        .view-batch { gap:6px; }
+        .view-batch label { margin:0 auto 0 0; }
+        .view-library #viewList { max-height:42vh; overflow:auto; }
+        .view-item { display:flex; align-items:center; flex-wrap:wrap; gap:10px; padding:12px 2px; border-bottom:1px solid var(--border); }
+        .view-item-info { flex:1 1 170px; min-width:0; overflow-wrap:anywhere; }
+        .view-item-info strong { font-size:14px; }
+        .view-item-info small { display:block; color:var(--text-mid); font-size:12px; margin-top:3px; }
+        .view-item-type { display:inline-block; margin-left:8px; font:600 10px var(--font-mono); color:var(--success); }
+        .view-actions { gap:4px; flex-wrap:wrap; }
+        .view-actions[hidden], .view-batch[hidden] { display:none; }
+        .view-import { border-top:1px solid var(--border); padding-top:8px; }
+        .view-import textarea { margin:8px 0; height:80px; }
+
+        @media (max-width:840px) {
+            .join-body { display:block; overflow:auto; }
+            .join-setup, .join-result { overflow:visible; padding:12px; }
+            .join-result { border:0; background:var(--bg-elevated); padding-top:0; }
+        }
+        @media (max-width:560px) {
+            #joinModal { padding:0; }
+            .join-shell { height:100dvh; border:0; border-radius:0; }
+            .join-head, .join-foot { flex-wrap:wrap; padding:10px 12px; gap:8px; }
+            .join-name, .join-name input { width:100%; max-width:none; }
+            .join-fields { grid-template-columns:minmax(0,1fr); }
+            .join-section { padding:12px; }
+            .join-save-actions { width:100%; }
+            .join-save-actions .join-toggle { margin-right:auto; }
+        }
 
         /* ── Column Sort Modal (drag-to-reorder list) ── */
         .col-sort-row { display: flex; align-items: center; gap: 6px; padding: 5px 6px; border-radius: 6px; transition: background 0.1s, box-shadow 0.15s; border: 2px solid transparent; border-bottom: 1px solid var(--border-light); user-select: none; }
@@ -353,44 +461,6 @@
         .col-sort-row.col-sort-dragging { opacity: 0.35; background: var(--primary-soft); }
         .col-sort-row.col-sort-drop-before { border-top: 2px solid var(--primary); border-radius: 0; }
         .col-sort-row.col-sort-drop-after { border-bottom: 2px solid var(--primary); border-radius: 0; }
-        .join-alias { height: 22px; font-size: 11px; width: 120px; padding: 0 6px; border-radius: 4px; border: 1px solid var(--border-light); background: var(--bg-card); box-shadow: none; }
-        .join-alias:focus { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-soft); }
-        .je-row { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
-        .je-rel-l, .je-rel-r { flex: 1 1 auto; min-width: 140px; width: auto; height: 30px; font-size: 12px; }
-        .join-foot { padding: 12px 18px; border-top: 1px solid var(--border); background: var(--bg-elevated); display: flex; align-items: center; justify-content: space-between; }
-        .join-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-weak); font-weight: 600; }
-        .join-toggle input { width: 14px; height: 14px; accent-color: var(--primary); }
-        .join-order-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
-        .join-order-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-        .rel-meta-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 10px; line-height: 1.2; color: var(--text-weak); padding: 0; }
-        .rel-meta { display: inline-flex; gap: 4px; align-items: center; }
-        .rel-meta.type-numeric { color: #2563eb; }
-        .rel-meta.type-text { color: var(--text-weak); }
-        .rel-meta.type-date { color: #7c3aed; }
-        .rel-meta.type-empty { color: var(--text-tertiary); }
-        .join-warn { font-size: 12px; color: #f59e0b; padding: 0; max-width: 420px; line-height: 1.4; }
-        .join-warn.error { color: #ef4444; }
-        .join-warn.ok { color: #10b981; }
-        .join-warn-list { font-size: 11px; line-height: 1.5; }
-        .join-warn-list li { margin-bottom: 2px; }
-        .join-foot-left { display: flex; flex-direction: column; gap: 4px; }
-        .join-preview { font-size: 12px; color: var(--text-weak); }
-        .join-hints { font-size: 11px; color: var(--text-weak); }
-        .join-dependency { font-size: 11px; color: var(--text-weak); padding: 4px 0; max-height: 64px; overflow-y: auto; }
-        .join-dependency .dep-chain { font-family: var(--font-mono); font-size: 10px; padding-left: 12px; border-left: 2px solid var(--border); margin: 3px 0; }
-        .col-type-icon { display: inline-block; width: 16px; height: 16px; border-radius: 4px; font-size: 9px; line-height: 16px; text-align: center; margin-right: 6px; flex-shrink: 0; font-weight: 700; }
-        .col-type-icon.col-num { background: #dbeafe; color: #2563eb; }
-        .col-type-icon.col-txt { background: #f3f4f6; color: #6b7280; }
-        .col-type-icon.col-date { background: #ede9fe; color: #7c3aed; }
-        .col-type-icon.col-empty { background: #fef3c7; color: #d97706; }
-        .col-count-badge { font-size: 10px; color: var(--text-weak); font-weight: 500; white-space: nowrap; }
-        .join-rel-card.incomplete { border-color: #f59e0b; background: #fffbeb; }
-        .join-rel-card.valid { border-color: #10b981; border-style: solid; }
-        [data-theme="dark"] .join-rel-card.incomplete { background: #2d2410; }
-        [data-theme="dark"] .col-type-icon.col-num { background: #1e3a5f; color: #60a5fa; }
-        [data-theme="dark"] .col-type-icon.col-txt { background: #374151; color: #9ca3af; }
-        [data-theme="dark"] .col-type-icon.col-date { background: #3b2573; color: #a78bfa; }
-        [data-theme="dark"] .col-type-icon.col-empty { background: #543f0b; color: #fbbf24; }
 
         /* Empty State */
         .empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-weak); margin: auto; min-height: 320px; text-align: center; padding: 32px; }
@@ -607,10 +677,6 @@
             .sidebar { width: 330px; min-width: 300px; }
             .workspace-actions .optional-action { display: none; }
             .copy-format-select { min-width: 96px; }
-            .join-grid { grid-template-columns: 1fr; overflow-y: auto; }
-            .join-col, .join-map { min-height: 280px; }
-            .join-shell { height: 94vh; }
-            .je-rel-l, .je-rel-r { min-width: 110px; }
         }
         @media (max-width: 760px) {
             .sidebar { position: fixed; inset: 0 auto 0 0; width: min(360px, 92vw); min-width: 0; z-index: 80; transform: translateX(0); transition: transform .18s ease; }
@@ -636,7 +702,6 @@
             .table-meta { top: auto; }
             .statusbar { padding: 4px 9px; }
             .statusbar .status-secondary { display: none; }
-            .join-meta { grid-template-columns: 1fr; overflow-y: auto; }
         }
         @media (prefers-reduced-motion: reduce) {
             *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
@@ -897,11 +962,12 @@
                                 <div class="multi-select" id="tablesTrigger"><span class="placeholder">加载中...</span></div>
                             </div>
                             <div class="control-block" style="margin-bottom:10px;">
-                                <label class="flex justify-between">
+                                <div class="join-entry">
                                     <span>启用 JOIN 视图</span>
                                     <button class="sm text-button" type="button" id="manageViewsBtn">管理</button>
-                                </label>
-                                <div class="multi-select" id="viewsTrigger"><span class="placeholder">未启用</span></div>
+                                    <button class="sm tonal" type="button" id="newJoinBtn" aria-label="新建 JOIN 视图">＋ 新建</button>
+                                </div>
+                                <button type="button" class="multi-select" id="viewsTrigger" aria-label="选择启用的 JOIN 视图"><span class="placeholder">未启用</span></button>
                             </div>
                         </div>
                     </div>
@@ -1151,118 +1217,96 @@
     </div>
 </div>
 
-<!-- Fullscreen Join Designer -->
+<!-- JOIN designer -->
 <div id="joinModal" class="fullscreen-modal hidden" role="dialog" aria-modal="true" aria-labelledby="jeTitle">
     <div class="join-shell">
-        <div class="join-head">
-            <div class="join-head-left">
-                <div class="eyebrow">Join Designer</div>
-                <div class="join-title-row">
-                    <div style="font-weight:800; font-size:16px;" id="jeTitle">配置 JOIN 视图</div>
-                    <div class="join-warn" id="jeWarn"></div>
-                </div>
-            </div>
-            <div class="toolbar">
-                <button class="sm" id="jeCancel">取消</button>
-                <button class="primary sm" id="jeSave">保存视图</button>
-            </div>
-        </div>
+        <header class="join-head">
+            <div class="join-heading"><span class="join-symbol" aria-hidden="true"></span><h2 id="jeTitle">新建 JOIN 视图</h2><span id="jeDirty" hidden>未保存</span></div>
+            <label class="join-name" for="jeName">视图名称 <input type="text" id="jeName" placeholder="例如：订单明细" autocomplete="off"></label>
+        </header>
         <div class="join-body">
-            <div class="join-meta">
-                <div>
-                    <label>视图名称</label>
-                    <input type="text" id="jeName" placeholder="e.g. StockReport">
-                </div>
-                <div>
-                    <label>左表 (Source A)</label>
-                    <select id="jeLeftTable"></select>
-                </div>
-                <div>
-                    <label>右表 (Source B)</label>
-                    <select id="jeRightTable"></select>
-                </div>
-            </div>
-            <div class="join-grid">
-                <div class="join-col">
-                    <div class="join-col-head">
-                        <div class="join-col-title">
-                            <span>左表字段 <span class="col-count-badge" id="jeLCount">0/0</span></span>
-                            <label class="join-toggle"><input type="checkbox" id="jeLOnlySel">仅看已选</label>
-                        </div>
-                        <div class="join-col-tools">
-                            <input id="jeLSearch" class="join-search" placeholder="搜索...">
-                            <button class="sm" id="jeLAllFiltered" title="全选搜索结果">全选结果</button>
-                            <button class="icon-btn sm" id="jeLAll" title="全选/反选">✓</button>
-                        </div>
+            <div class="join-setup">
+                <section class="join-section">
+                    <h3>表与关联条件</h3>
+                    <div class="join-table-pair">
+                        <div class="join-source-l"><label for="jeLeftTable">左表</label><select id="jeLeftTable"></select></div>
+                        <div class="join-source-r"><label for="jeRightTable">右表</label><select id="jeRightTable"></select></div>
                     </div>
-                    <div class="join-list" id="jeLList"></div>
-                </div>
-
-                <div class="join-map">
-                    <div class="join-map-head">
-                        <span>关联条件 (ON)</span>
-                        <div class="flex gap-2">
-                            <select id="jeType" class="sm" style="height:32px;">
-                                <option value="inner">INNER · 仅匹配</option>
-                                <option value="left">LEFT · 保留左</option>
-                                <option value="right">RIGHT · 保留右</option>
-                                <option value="full">FULL · 全保留</option>
-                                <option value="semi">SEMI · 左匹配</option>
-                                <option value="anti">ANTI · 左排除</option>
-                            </select>
-                            <button class="sm" id="jeAutoRel">自动匹配</button>
-                            <button class="sm" id="jeAddRel">添加条件</button>
-                        </div>
+                    <div class="join-type-row">
+                        <label for="jeType">连接方式</label>
+                        <select id="jeType" aria-describedby="jeTypeHint">
+                            <option value="inner">内连接 · INNER</option>
+                            <option value="left">左连接 · LEFT</option>
+                            <option value="right">右连接 · RIGHT</option>
+                            <option value="full">全连接 · FULL</option>
+                            <option value="semi">半连接 · SEMI</option>
+                            <option value="anti">反连接 · ANTI</option>
+                        </select>
+                        <span id="jeTypeHint"></span>
                     </div>
-                    <div class="join-map-body">
-                        <div id="jeRelContainer"></div>
-                        <div>
-                            <div class="join-order-head">
-                                <div class="eyebrow">输出顺序</div>
-                                <div class="join-order-tools">
-                                    <button class="sm" id="jeOrderRebuild" title="按左→右重建顺序">重建</button>
-                                    <button class="sm" id="jeOrderClear" title="清空全部输出列">清空</button>
-                                    <button class="sm" id="jeOrderLeftOnly" title="仅保留左表列">只保留左</button>
-                                    <button class="sm" id="jeOrderRightOnly" title="仅保留右表列">只保留右</button>
-                                    <label class="join-toggle"><input type="checkbox" id="jeOrderShowL" checked>左</label>
-                                    <label class="join-toggle"><input type="checkbox" id="jeOrderShowR" checked>右</label>
-                                    <button class="icon-btn sm" id="jeOrderMoveTop" title="选中列移到最前" style="font-size:10px;">⏫</button>
-                                    <button class="icon-btn sm" id="jeOrderMoveBottom" title="选中列移到最后" style="font-size:10px;">⏬</button>
-                                </div>
+                    <div class="join-section-head">
+                        <h4>匹配字段 <small id="jeRelHint"></small></h4>
+                        <button class="sm text-button" id="jeAutoRel">匹配同名字段</button>
+                    </div>
+                    <div id="jeRelContainer"></div>
+                    <button class="sm" id="jeAddRel">添加条件</button>
+                </section>
+                <section class="join-section">
+                    <h3>选择输出字段</h3>
+                    <div class="join-fields">
+                        <div class="join-source join-source-l">
+                            <div class="join-field-heading"><strong>左表字段 <small id="jeLSourceName"></small></strong><span id="jeLCount"></span></div>
+                            <input type="search" id="jeLSearch" aria-label="搜索左表字段" placeholder="搜索字段">
+                            <div class="join-list-tools">
+                                <label class="join-toggle"><input type="checkbox" id="jeLOnlySel">仅看已选</label>
+                                <button class="sm text-button" id="jeLAll" type="button">全选</button>
                             </div>
-                            <div id="jeOrderList" class="join-order"></div>
+                            <div class="join-list" id="jeLList"></div>
+                        </div>
+                        <div class="join-source join-source-r">
+                            <div class="join-field-heading"><strong>右表字段 <small id="jeRSourceName"></small></strong><span id="jeRCount"></span></div>
+                            <input type="search" id="jeRSearch" aria-label="搜索右表字段" placeholder="搜索字段">
+                            <div class="join-list-tools">
+                                <label class="join-toggle"><input type="checkbox" id="jeROnlySel">仅看已选</label>
+                                <button class="sm text-button" id="jeRAll" type="button">全选</button>
+                            </div>
+                            <div class="join-list" id="jeRList"></div>
                         </div>
                     </div>
-                </div>
-
-                <div class="join-col">
-                    <div class="join-col-head">
-                        <div class="join-col-title">
-                            <span>右表字段 <span class="col-count-badge" id="jeRCount">0/0</span></span>
-                            <label class="join-toggle"><input type="checkbox" id="jeROnlySel">仅看已选</label>
+                </section>
+                <details class="join-details"><summary>查看来源依赖</summary><div id="jeDependency"></div></details>
+            </div>
+            <aside class="join-result" aria-label="JOIN 结果">
+                <section class="join-stats">
+                    <div class="join-stats-head"><h3>匹配预览</h3><span class="join-shape" id="jeJoinShape" aria-hidden="true"><i></i></span></div>
+                    <div id="jePreview" role="status" aria-live="polite"></div>
+                </section>
+                <section class="join-output">
+                    <div class="join-section-head"><h3>输出列</h3><span id="jeStatus" role="status"></span></div>
+                    <div id="jeOrderList" class="join-order"></div>
+                    <details class="join-details"><summary>排序与批量操作</summary>
+                        <div class="join-order-tools">
+                            <label class="join-toggle"><input type="checkbox" id="jeOrderShowL" checked>显示左表列</label>
+                            <label class="join-toggle"><input type="checkbox" id="jeOrderShowR" checked>显示右表列</label>
+                            <button class="sm" id="jeOrderMoveTop">移到最前</button>
+                            <button class="sm" id="jeOrderMoveBottom">移到最后</button>
+                            <button class="sm" id="jeOrderRebuild">按左右表重排</button>
+                            <button class="sm" id="jeOrderLeftOnly">仅保留左表</button>
+                            <button class="sm" id="jeOrderRightOnly">仅保留右表</button>
+                            <button class="sm danger" id="jeOrderClear">清空输出列</button>
                         </div>
-                        <div class="join-col-tools">
-                            <input id="jeRSearch" class="join-search" placeholder="搜索...">
-                            <button class="sm" id="jeRAllFiltered" title="全选搜索结果">全选结果</button>
-                            <button class="icon-btn sm" id="jeRAll" title="全选/反选">✓</button>
-                        </div>
-                    </div>
-                    <div class="join-list" id="jeRList"></div>
-                </div>
-            </div>
+                    </details>
+                </section>
+            </aside>
         </div>
-        <div class="join-foot">
-            <div class="join-foot-left">
-                <div class="muted" id="jeStatus">已选输出列: 0</div>
-                <div class="join-preview" id="jePreview">预览: -</div>
-                <div class="join-dependency" id="jeDependency"></div>
-                <div class="join-hints">快捷键: Enter 保存 · Esc 关闭 · / 搜索 · Alt+↑↓ 移动列</div>
+        <footer class="join-foot">
+            <div id="jeWarn" role="status"></div>
+            <div class="join-save-actions">
+                <label class="join-toggle"><input type="checkbox" id="jeEnabled">在当前工程启用</label>
+                <button id="jeCancel">取消</button>
+                <button class="primary" id="jeSave" title="保存视图（Ctrl / ⌘ + Enter）">保存视图</button>
             </div>
-            <div class="toolbar">
-                <button class="sm" id="jeCancelFooter">取消</button>
-                <button class="primary sm" id="jeSaveFooter">保存视图</button>
-            </div>
-        </div>
+        </footer>
     </div>
 </div>
 
@@ -8254,8 +8298,8 @@ const ModalController = {
                 const root = ModalController.activeContainer;
                 let focusable = [];
                 try {
-                    focusable = Array.from(root.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
-                        .filter(el => !el.disabled && el.getAttribute('aria-hidden') !== 'true');
+                    focusable = Array.from(root.querySelectorAll('summary, button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'))
+                        .filter(el => !el.disabled && el.getAttribute('aria-hidden') !== 'true' && el.getClientRects().length);
                 } catch(e) { return; }
                 if(!focusable.length) return;
                 const first = focusable[0];
@@ -8273,7 +8317,7 @@ const ModalController = {
 
     activate(container, initialFocus=null) {
         if(!container) return;
-        ModalController.returnFocus = document.activeElement;
+        if(ModalController.activeContainer !== container) ModalController.returnFocus = document.activeElement;
         ModalController.activeContainer = container;
         const target = initialFocus || (() => {
             try { return container.querySelector('button, input, select, textarea, [tabindex]:not([tabindex="-1"])'); } catch(e) { return null; }
@@ -8306,7 +8350,6 @@ const ModalController = {
      * Open a modal with the given title and HTML body.
      */
     show(title, html) {
-        ModalController.returnFocus = document.activeElement;
         const content = $('modalContent');
         if (!content) return;
         content.innerHTML = `<div class="panel-header" style="border-radius:8px 8px 0 0;"><span id="modalTitle">${escapeHtml(title)}</span><button class="icon-btn" id="modalCloseBtn" type="button" aria-label="关闭">&times;</button></div><div class="modal-body">${html}</div>`;
@@ -8332,7 +8375,7 @@ const ModalController = {
         }).join('');
         ModalController.show('选择显示表', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         ModalController._bindSaveBtn(() => {
-            const v = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
+            const v = Array.from($('modalContent').querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
             const next = (v.length === tableNames.length && tableNames.length > 0) ? null : v;
             dispatch('ui:set', { key:'displayTables', value:next });
             ModalController.close();
@@ -8359,7 +8402,7 @@ const ModalController = {
         }).join('');
         ModalController.show('启用视图', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
         ModalController._bindSaveBtn(() => {
-            const sel = Array.from(document.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
+            const sel = Array.from($('modalContent').querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
             dispatch('view:setEnabled', { enabledViews:sel });
             ModalController.close();
             dispatch('preview:renderRequested', {});
@@ -8763,71 +8806,56 @@ const ViewManager = {
 
             if (filtered.length === 0) {
                 return filterText
-                    ? '<div style="padding:20px; color:#999; text-align:center;">无匹配视图</div>'
-                    : '<div style="padding:20px; color:#999; text-align:center;">暂无视图</div>';
+                    ? '<div class="join-empty">没有找到匹配的视图</div>'
+                    : '<div class="join-empty">当前工程还没有 JOIN 视图。新建视图后，可在这里编辑或复用配置。</div>';
             }
 
             return filtered.map((v) => {
                 const i = v.originalIndex;
                 const stamp = self._formatTime(v.updatedAt || v.createdAt);
                 const fieldCount = getFieldCount(v.select);
-                const joinLabel = joinTypeLabel[v.type] || 'Inner';
-                const meta = `${joinLabel} · ${v.left} ⟕ ${v.right} · ${fieldCount}列${stamp ? ' · ' + stamp : ''}`;
-
+                const joinLabel = Object.hasOwn(joinTypeLabel, v.type) ? joinTypeLabel[v.type] : 'Inner';
                 return `
-                <div class="view-item" data-index="${i}" style="display:flex; justify-content:space-between; align-items:center; padding:10px; border:1px solid var(--border-light); margin-bottom:8px; border-radius:6px; background:var(--bg-card);">
-                    <div style="display:flex; align-items:center; gap:8px; flex:1; min-width:0;">
-                        <input type="checkbox" class="view-checkbox" data-index="${i}" style="flex-shrink:0;">
-                        <div style="min-width:0; flex:1;">
-                            <div style="font-weight:600; color:var(--primary); margin-bottom:2px;">${escapeHtml(v.view)}</div>
-                            <div style="font-size:11px; color:var(--text-secondary); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${escapeHtml(meta)}">${escapeHtml(meta)}</div>
-                        </div>
+                <div class="view-item" data-index="${i}">
+                    <input type="checkbox" class="view-checkbox" data-index="${i}" aria-label="选择 ${escapeHtml(v.view)}">
+                    <div class="view-item-info">
+                        <strong>${escapeHtml(v.view)}</strong><span class="view-item-type">${joinLabel.toUpperCase()}</span>
+                        <small>${escapeHtml(v.left)} × ${escapeHtml(v.right)} · ${fieldCount} 列</small>
+                        <small>${escapeHtml(v.on || '')}${stamp ? ' · ' + stamp : ''}</small>
                     </div>
-                    <div style="display:flex; gap:4px; flex-shrink:0; align-items:center;">
-                        <span id="jeActions_${i}" style="display:flex; gap:4px;">
-                            <button class="sm" id="jeEdit_${i}" title="编辑">✎</button>
-                            <button class="sm" id="jeCopy_${i}" title="复制">❐</button>
-                            <button class="sm" id="jeExport_${i}" title="导出">⬇</button>
-                            <button class="sm danger" id="jeDel_${i}" title="删除">×</button>
-                        </span>
-                        <span id="jeConfirm_${i}" style="display:none; gap:4px; align-items:center; white-space:nowrap;">
-                            <span style="font-size:11px; color:var(--danger);">确认删除?</span>
-                            <button class="sm" id="jeDelCancel_${i}">取消</button>
-                            <button class="sm danger" id="jeDelOk_${i}">删除</button>
-                        </span>
+                    <div class="view-actions" id="jeActions_${i}">
+                        <button class="sm" id="jeEdit_${i}">编辑</button>
+                        <button class="sm text-button" id="jeCopy_${i}">复制</button>
+                        <button class="sm text-button" id="jeExport_${i}">导出</button>
+                        <button class="sm text-button" id="jeDel_${i}">删除</button>
+                    </div>
+                    <div class="view-actions" id="jeConfirm_${i}" hidden>
+                        <span>确认删除？</span>
+                        <button class="sm" id="jeDelCancel_${i}">取消</button>
+                        <button class="sm danger" id="jeDelOk_${i}">删除</button>
                     </div>
                 </div>`;
             }).join('');
         };
 
-        ModalController.show('管理全局视图', `
-            <div style="margin-bottom:10px; display:flex; gap:8px;">
-                <input type="text" id="jeViewSearch" placeholder="🔍 搜索视图..." style="flex:1; padding:8px; border:1px solid var(--border); border-radius:6px; font-size:13px;">
-                <select id="jeViewSort" style="width:100px; height:36px; font-size:12px;">
-                    <option value="name">按名称</option>
-                    <option value="time">按时间</option>
-                </select>
-            </div>
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <label class="flex items-center gap-2" style="font-size:12px; cursor:pointer;">
-                    <input type="checkbox" id="jeViewSelectAll" style="cursor:pointer;">
-                    <span>全选</span>
-                </label>
-                <div class="flex gap-2">
-                    <button class="sm" id="jeBatchExport" disabled>⬇ 批量导出</button>
-                    <button class="sm danger" id="jeBatchDelete" disabled>× 批量删除</button>
+        ModalController.show('管理 JOIN 视图', `
+            <div class="view-library">
+                <div class="view-toolbar">
+                    <input type="search" id="jeViewSearch" aria-label="搜索视图" placeholder="搜索名称、来源表或匹配字段">
+                    <select id="jeViewSort" aria-label="排列视图"><option value="name">按名称</option><option value="time">最近修改</option></select>
+                    <button class="primary" id="jeAddNew">新建视图</button>
                 </div>
-            </div>
-            <div id="viewList" style="max-height:340px; overflow-y:auto; margin-bottom:10px;">
-                ${renderList()}
-            </div>
-            <div style="margin-bottom:10px;">
-                <label>粘贴配置 (JSON)</label>
-                <textarea id="jePaste" style="height:80px; font-size:12px;" placeholder='{"view":"MyView","left":"A","right":"B","on":"ID=ID","select":"left.ID,right.Name"}'></textarea>
-                <div class="flex gap-2" style="margin-top:8px;">
-                    <button class="sm" id="jePasteBtn">导入</button>
-                    <button class="primary w-full" id="jeAddNew">＋ 新增视图</button>
+                <div class="view-batch" ${vs.length ? '' : 'hidden'}>
+                    <label class="join-toggle"><input type="checkbox" id="jeViewSelectAll">全选当前列表</label>
+                    <button class="sm" id="jeBatchExport" disabled>导出所选</button>
+                    <button class="sm danger" id="jeBatchDelete" disabled>删除所选</button>
                 </div>
+                <div id="viewList">${renderList()}</div>
+                <details class="view-import">
+                    <summary>从 JSON 导入视图</summary>
+                    <textarea id="jePaste" aria-label="视图 JSON 配置" placeholder="粘贴视图配置"></textarea>
+                    <button class="sm" id="jePasteBtn">导入配置</button>
+                </details>
             </div>
         `);
 
@@ -8887,10 +8915,11 @@ const ViewManager = {
         }
 
         this._bindActions(vs);
+        this._updateBatchButtons();
 
         const addNewBtn = $('jeAddNew');
         if (addNewBtn) addNewBtn.onclick = () => {
-            $('modalOverlay').classList.add('hidden');
+            ModalController.close();
             if (typeof self._onEdit === 'function') self._onEdit(-1);
         };
 
@@ -8902,6 +8931,11 @@ const ViewManager = {
 
     _updateBatchButtons() {
         const selectedCount = document.querySelectorAll('.view-checkbox:checked').length;
+        const total = document.querySelectorAll('.view-checkbox').length;
+        const selectAll = $('jeViewSelectAll');
+        selectAll.checked = total > 0 && total === selectedCount;
+        selectAll.indeterminate = selectedCount > 0 && selectedCount < total;
+        selectAll.disabled = total === 0;
         const batchDeleteBtn = $('jeBatchDelete');
         const batchExportBtn = $('jeBatchExport');
         if (batchDeleteBtn) batchDeleteBtn.disabled = selectedCount === 0;
@@ -8920,7 +8954,7 @@ const ViewManager = {
             const checkbox = document.querySelector(`.view-checkbox[data-index="${i}"]`);
 
             if (editBtn) editBtn.onclick = () => {
-                $('modalOverlay').classList.add('hidden');
+                ModalController.close();
                 if (typeof self._onEdit === 'function') self._onEdit(i);
             };
             if (copyBtn) copyBtn.onclick = () => {
@@ -8932,12 +8966,14 @@ const ViewManager = {
             };
             if (exportBtn) exportBtn.onclick = () => Exporter.toJson({ kind: 'join-view', view: v }, `join_${v.view}`);
             if (delBtn) delBtn.onclick = () => {
-                $(`jeActions_${i}`).style.display = 'none';
-                $(`jeConfirm_${i}`).style.display = 'inline-flex';
+                $(`jeActions_${i}`).hidden = true;
+                $(`jeConfirm_${i}`).hidden = false;
+                delCancelBtn.focus();
             };
             if (delCancelBtn) delCancelBtn.onclick = () => {
-                $(`jeActions_${i}`).style.display = 'inline-flex';
-                $(`jeConfirm_${i}`).style.display = 'none';
+                $(`jeActions_${i}`).hidden = false;
+                $(`jeConfirm_${i}`).hidden = true;
+                delBtn.focus();
             };
             if (delOkBtn) delOkBtn.onclick = () => {
                 dispatch('view:removeMany', { indexes:[i] });
@@ -8954,18 +8990,74 @@ const ViewManager = {
 
 /* @module ui/join-editor.js: JOIN editor UI */
 OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager","dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}, {dispatch}) => {
-/* Join Editor - v2: improved UX */
+/* Project-scoped JOIN designer. */
 const JoinEditor = {
-    state: { editIdx: -1, left: null, right: null, rels: [], lSel: [], rSel: [], order: [], dirty: false, initial: null, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, titleBase: '', selectedOrderIdx: -1 },
+    state: { editIdx: -1, rels: [], lSel: [], rSel: [], order: [], dirty: false, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, selectedOrderIdx: -1 },
     metaCache: {},
     dragIdx: null,
-    _shiftSelecting: false,
     escapeHtml,
     formatBytes,
 
-    // Register ViewManager edit callback (called once during bootstrap)
-    _initViewManager() {
-        ViewManager.setEditCallback((idx) => this.open(idx));
+    init() {
+        ViewManager.setEditCallback(idx => this.open(idx));
+        $('jeCancel').onclick = () => this.close();
+        $('jeSave').onclick = () => this.save();
+        $('jeEnabled').onchange = () => this.markDirty();
+        $('jeAddRel').onclick = () => this.addRel();
+        $('jeAutoRel').onclick = () => this.autoMatchRels();
+        $('jeOrderRebuild').onclick = () => this.rebuildOrder();
+        $('jeOrderClear').onclick = () => this.clearOrder();
+        $('jeOrderLeftOnly').onclick = () => this.keepOnly('l');
+        $('jeOrderRightOnly').onclick = () => this.keepOnly('r');
+        $('jeOrderMoveTop').onclick = () => this.moveOrderToEdge('top');
+        $('jeOrderMoveBottom').onclick = () => this.moveOrderToEdge('bottom');
+        $('jeLeftTable').onchange = () => this.handleTableChange('l');
+        $('jeRightTable').onchange = () => this.handleTableChange('r');
+        $('jeType').onchange = () => { this.markDirty(); this.updateAll(); };
+        $('jeName').oninput = () => { this.markDirty(); this.updateSaveState(); };
+        for(const side of ['l','r']) {
+            const letter = side.toUpperCase();
+            $(`je${letter}Search`).oninput = () => this.renderSide(side);
+            $(`je${letter}All`).onclick = () => this.toggleAll(side);
+            $(`je${letter}OnlySel`).onchange = e => {
+                this.state[`${side}OnlySel`] = e.target.checked;
+                this.renderSide(side);
+            };
+            $(`jeOrderShow${letter}`).onchange = e => {
+                this.state[`show${letter}`] = e.target.checked;
+                this.renderSelectedOrder();
+            };
+        }
+        $('joinModal').addEventListener('click', e => { if(e.target === $('joinModal')) this.close(); });
+    },
+
+    handleKeydown(e) {
+        if(e.isComposing || e.keyCode === 229) return;
+        const target = e.target;
+        const typing = target.matches('input,textarea,select');
+        if(e.key === 'Escape') {
+            e.preventDefault();
+            this.close();
+        } else if(e.key === 'Enter' && ((e.ctrlKey || e.metaKey) || (!e.shiftKey && !target.closest('button,summary,input,textarea,select')))) {
+            e.preventDefault();
+            if(!$('jeSave').disabled) this.save();
+        } else if(e.key === '/' && !typing) {
+            e.preventDefault();
+            $('jeLSearch').focus();
+        } else if(e.altKey && !typing && ['ArrowUp','ArrowDown'].includes(e.key)) {
+            e.preventDefault();
+            const row = target.closest('.join-chip');
+            const idx = row ? Number(row.dataset.idx) : this.state.selectedOrderIdx;
+            if(idx >= 0) this.moveOrder(idx, e.key === 'ArrowUp' ? -1 : 1);
+        } else if(e.key === ' ' && target.matches('.join-chip')) {
+            e.preventDefault();
+            target.click();
+        }
+    },
+
+    renderSide(side) {
+        const cols = TableRegistry.getCols($(side === 'l' ? 'jeLeftTable' : 'jeRightTable').value);
+        this.renderColList(`je${side.toUpperCase()}List`, cols, this.state[`${side}Sel`], side);
     },
 
     formatTime(ts) {
@@ -8989,7 +9081,7 @@ const JoinEditor = {
     typeIcon(type) {
         const map = { numeric: ['#','col-num'], text: ['T','col-txt'], date: ['D','col-date'], empty: ['-','col-empty'] };
         const [letter, cls] = map[type] || ['?','col-txt'];
-        return `<span class="col-type-icon ${cls}">${letter}</span>`;
+        return `<span aria-hidden="true" class="col-type-icon ${cls}">${letter}</span>`;
     },
     getColMeta(tableName, col) {
         if(!tableName || !col) return { type: 'empty', sample: '-' };
@@ -8999,9 +9091,9 @@ const JoinEditor = {
         if(!table) return { type: 'empty', sample: '-' };
         const idx = table.headers.indexOf(col);
         if(idx === -1) return { type: 'empty', sample: '-' };
-        let sample = table.columnSamples?.[idx]?.value || '';
-        for(const row of table.rows.slice(0,1000)) {
-            const v = row[idx];
+        let sample = table.columnSamples?.[idx]?.value ?? '';
+        for(let i = 0; i < Math.min(table.rows.length, 1000); i++) {
+            const v = table.rows[i][idx];
             if(v !== undefined && v !== null && String(v).trim() !== '') { sample = v; break; }
         }
         const type = table.columnSamples?.[idx]?.truncated || (sample==='' && (table.isView || table.remote || table.rows.length>1000))?'unknown':this.inferType(sample);
@@ -9034,142 +9126,80 @@ const JoinEditor = {
         return list;
     },
     renderColList(id, cols, selected, side) {
-        const tableName = side === 'l' ? ($('jeLeftTable') && $('jeLeftTable').value) : ($('jeRightTable') && $('jeRightTable').value);
+        const tableName = $(side === 'l' ? 'jeLeftTable' : 'jeRightTable').value;
         const list = this.getFilteredCols(side, cols);
-        const allCols = cols || [];
-        const total = allCols.length;
-        const selCount = selected.length;
-
-        // Update count badge
-        const badgeId = side === 'l' ? 'jeLCount' : 'jeRCount';
-        const badge = $(badgeId);
-        if(badge) {
-            badge.textContent = `${selCount}/${total}`;
-            badge.title = `已选 ${selCount} / 共 ${total} 列`;
-        }
-
+        const letter = side.toUpperCase();
+        const bulk = $(`je${letter}All`);
+        bulk.disabled = !list.length;
+        const refreshCounts = () => {
+            $(`je${letter}Count`).textContent = `${selected.length}/${cols.length}`;
+            bulk.textContent = list.length && list.every(c => selected.includes(c)) ? '取消全选' : '全选';
+        };
+        refreshCounts();
+        bulk.title = '作用于当前显示的字段';
+        const box = $(id);
+        const focused = box.contains(document.activeElement) ? document.activeElement.value : null;
+        let anchor = null;
         if(!list.length) {
-            $(id).innerHTML = '<div style="padding:8px; color:#999;">无匹配字段</div>';
+            box.innerHTML = '<div class="join-empty">没有符合条件的字段</div>';
+            if(focused !== null) $(`je${letter}Search`).focus();
             return;
         }
-
-        const html = list.map((c, fi) => {
-            const meta = this.getColMeta(tableName, c);
-            const icon = this.typeIcon(meta.type);
-            const checked = selected.includes(c);
-            return `
-            <label class="checkbox-row" data-col="${this.escapeHtml(c)}" data-idx="${fi}">
-                <input type="checkbox" data-side="${side}" value="${this.escapeHtml(c)}" ${checked?'checked':''}>
-                ${icon}<span>${this.escapeHtml(c)}</span>
-            </label>`;
+        box.innerHTML = list.map(col => {
+            const {type} = this.getColMeta(tableName, col);
+            const safe = escapeHtml(col);
+            return `<label class="checkbox-row"><input type="checkbox" value="${safe}" ${selected.includes(col) ? 'checked' : ''}>
+                ${this.typeIcon(type)}<span>${safe}</span></label>`;
         }).join('');
-        $(id).innerHTML = html;
-
-        // Bind checkbox events with shift-click support
-        const checkboxes = $(id).querySelectorAll('input[type="checkbox"]');
-        checkboxes.forEach((chk, idx) => {
-            chk.onchange = () => {
-                if(this._shiftSelecting) return;
-                this.setSelection(side, chk.value, chk.checked);
-            };
-            chk.onclick = (e) => {
-                if(e.shiftKey && this._lastCheckIdx && this._lastCheckIdx.side === side) {
-                    e.preventDefault();
-                    this._shiftSelecting = true;
-                    const prevIdx = this._lastCheckIdx.idx;
-                    const start = Math.min(prevIdx, idx);
-                    const end = Math.max(prevIdx, idx);
-                    const willCheck = !chk.checked;
-                    for(let i = start; i <= end; i++) {
-                        if(checkboxes[i]) {
-                            checkboxes[i].checked = willCheck;
-                            this.setSelection(side, checkboxes[i].value, willCheck, false);
-                        }
-                    }
-                    this._shiftSelecting = false;
-                    this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
-                    this.renderSelectedOrder();
-                    this.updateAll();
-                    this.markDirty();
+        const checks = Array.from(box.querySelectorAll('input'));
+        if(focused !== null) (checks.find(input => input.value === focused) || checks[0]).focus();
+        checks.forEach((input, index) => {
+            input.onclick = event => {
+                const range = event.shiftKey && anchor !== null
+                    ? list.slice(Math.min(anchor, index), Math.max(anchor, index) + 1)
+                    : [input.value];
+                anchor = index;
+                this.selectColumns(side, range, input.checked);
+                if(this.state[`${side}OnlySel`] && !input.checked) {
+                    this.renderSide(side);
+                } else {
+                    if(range.length > 1) checks.forEach(check => { check.checked = selected.includes(check.value); });
+                    refreshCounts();
                 }
-                this._lastCheckIdx = { side, idx };
             };
         });
     },
 
-    /* ── Selection management ── */
-    setSelection(side, col, checked, appendToEnd=true) {
-        const arr = side === 'l' ? this.state.lSel : this.state.rSel;
-        const idx = arr.indexOf(col);
-        if(checked) {
-            if(idx === -1) arr.push(col);
-        } else {
-            if(idx > -1) arr.splice(idx,1);
+    selectColumns(side, cols, checked) {
+        const selected = this.state[`${side}Sel`];
+        for(const col of cols) {
+            const idx = selected.indexOf(col);
+            if(checked && idx < 0) selected.push(col);
+            if(!checked && idx >= 0) selected.splice(idx, 1);
         }
-        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value), appendToEnd ? {side, col, checked} : null);
+        this.syncOrderFromSelections();
         this.renderSelectedOrder();
         this.updateAll();
         this.markDirty();
     },
-
     toggleAll(side) {
-        const cols = this.getFilteredCols(side, TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
-        if(!cols.length) return;
-        const selected = side === 'l' ? this.state.lSel : this.state.rSel;
-        const allChecked = cols.every(c => selected.includes(c));
-        // Batch update: modify array directly, then sync once
-        const arr = side === 'l' ? this.state.lSel : this.state.rSel;
-        cols.forEach(c => {
-            const idx = arr.indexOf(c);
-            if(!allChecked && idx === -1) arr.push(c);
-            else if(allChecked && idx > -1) arr.splice(idx, 1);
-        });
-        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
-        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
-        this.renderSelectedOrder();
-        this.updateAll();
-        this.markDirty();
-    },
-    selectFiltered(side) {
-        const cols = this.getFilteredCols(side, TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value));
-        if(!cols.length) return;
-        // Batch: add all missing at once
-        const arr = side === 'l' ? this.state.lSel : this.state.rSel;
-        cols.forEach(c => { if(!arr.includes(c)) arr.push(c); });
-        this.syncOrderFromSelections(TableRegistry.getCols($('jeLeftTable').value), TableRegistry.getCols($('jeRightTable').value));
-        this.renderColList(side === 'l' ? 'jeLList' : 'jeRList', TableRegistry.getCols(side === 'l' ? $('jeLeftTable').value : $('jeRightTable').value), side === 'l' ? this.state.lSel : this.state.rSel, side);
-        this.renderSelectedOrder();
-        this.updateAll();
-        this.markDirty();
+        const table = $(side === 'l' ? 'jeLeftTable' : 'jeRightTable').value;
+        const cols = this.getFilteredCols(side, TableRegistry.getCols(table));
+        this.selectColumns(side, cols, !cols.every(col => this.state[`${side}Sel`].includes(col)));
+        this.renderSide(side);
     },
 
     /* ── Order sync ── */
-    syncOrderFromSelections(lCols, rCols, lastChange=null) {
-        this.state.order = this.state.order.filter(o => {
-            const list = o.side === 'l' ? this.state.lSel : this.state.rSel;
-            return list.includes(o.col);
-        });
+    syncOrderFromSelections() {
+        const current = this.state.order[this.state.selectedOrderIdx];
+        this.state.order = this.state.order.filter(o => this.state[`${o.side}Sel`].includes(o.col));
         const seen = new Set(this.state.order.map(o => `${o.side}:${o.col}`));
-
-        if(lastChange && lastChange.checked) {
-            const key = `${lastChange.side}:${lastChange.col}`;
-            if(!seen.has(key)) {
-                this.state.order.push({ side:lastChange.side, col:lastChange.col, alias:'' });
-                seen.add(key);
+        for(const side of ['l','r']) {
+            for(const col of this.state[`${side}Sel`]) {
+                if(!seen.has(`${side}:${col}`)) this.state.order.push({side, col, alias:''});
             }
         }
-
-        const appendMissing = (side, arr, cols=[]) => {
-            arr.forEach(c => {
-                const key = `${side}:${c}`;
-                if(!seen.has(key) && (!cols.length || cols.includes(c))) {
-                    this.state.order.push({ side, col:c, alias:'' });
-                    seen.add(key);
-                }
-            });
-        };
-        appendMissing('l', this.state.lSel, lCols || []);
-        appendMissing('r', this.state.rSel, rCols || []);
+        this.state.selectedOrderIdx = this.state.order.indexOf(current);
     },
 
     /* ── Order rendering ── */
@@ -9177,7 +9207,7 @@ const JoinEditor = {
         const box = $('jeOrderList'); if(!box) return;
         const visible = this.state.order.filter(o => (o.side === 'l' ? this.state.showL : this.state.showR));
         if(!visible.length) {
-            box.innerHTML = '<div style="font-size:11px; color:var(--text-tertiary);">未选择输出列 — 勾选左侧字段列表</div>';
+            box.innerHTML = this.state.order.length ? '<div class="join-empty">当前筛选下没有输出列</div>' : '<div class="join-empty">勾选来源字段后，可在此调整顺序与列名。</div>';
             return;
         }
         const leftSel = $('jeLeftTable');
@@ -9194,13 +9224,13 @@ const JoinEditor = {
             return `
             <div class="join-chip${selectedClass}" data-idx="${idx}" draggable="true" tabindex="0">
                 <div class="join-chip-main">
-                    <span class="join-chip-label" title="${label}">${label}</span>
-                    <input class="join-alias" data-idx="${idx}" placeholder="别名" value="${alias}">
+                    <span class="join-chip-label" title="${label}">${this.escapeHtml(o.col)}<small>${o.side === 'l' ? '左表' : '右表'} · ${this.escapeHtml(tableName)}</small></span>
+                    <input class="join-alias" data-idx="${idx}" aria-label="${label} 的输出别名" placeholder="别名" value="${alias}">
                 </div>
                 <div class="join-chip-actions">
-                    <button class="icon-btn sm" data-move="-1" title="上移 (Alt+↑)" style="width:22px; height:22px;">↑</button>
-                    <button class="icon-btn sm" data-move="1" title="下移 (Alt+↓)" style="width:22px; height:22px;">↓</button>
-                    <button class="icon-btn sm danger" data-remove="1" title="移除" style="width:22px; height:22px;">×</button>
+                    <button class="icon-btn sm" data-move="-1" aria-label="上移 ${label}" title="上移 (Alt+↑)" ${idx === 0 ? 'disabled' : ''}>↑</button>
+                    <button class="icon-btn sm" data-move="1" aria-label="下移 ${label}" title="下移 (Alt+↓)" ${idx === this.state.order.length - 1 ? 'disabled' : ''}>↓</button>
+                    <button class="icon-btn sm danger" data-remove="1" aria-label="移除 ${label}" title="移除">×</button>
                 </div>
             </div>`;
         }).join('');
@@ -9237,7 +9267,7 @@ const JoinEditor = {
             chip.onclick = () => {
                 const idx = +chip.dataset.idx;
                 this.state.selectedOrderIdx = (this.state.selectedOrderIdx === idx) ? -1 : idx;
-                this.renderSelectedOrder();
+                box.querySelectorAll('.join-chip').forEach(row => row.classList.toggle('selected', +row.dataset.idx === this.state.selectedOrderIdx));
             };
             // DnD
             chip.addEventListener('dragstart', e => {
@@ -9287,6 +9317,7 @@ const JoinEditor = {
         this.state.order.splice(target, 0, item);
         this.state.selectedOrderIdx = target;
         this.renderSelectedOrder();
+        $('jeOrderList').querySelector(`.join-chip[data-idx="${target}"]`)?.focus();
         this.updateAll();
         this.markDirty();
     },
@@ -9344,7 +9375,7 @@ const JoinEditor = {
     },
     clearOrder() {
         if(this.state.order.length === 0) return;
-        if(!confirm(`确定清空全部 ${this.state.order.length} 个输出列吗？此操作可撤销（重新勾选字段即可恢复）。`)) return;
+        if(!confirm(`清空全部 ${this.state.order.length} 个输出列及其别名？`)) return;
         this.state.lSel = [];
         this.state.rSel = [];
         this.state.order = [];
@@ -9373,77 +9404,61 @@ const JoinEditor = {
 
     /* ── ON conditions (rels) ── */
     renderRels() {
-        const lName = $('jeLeftTable').value;
-        const rName = $('jeRightTable').value;
-        const lCols = TableRegistry.getCols(lName);
-        const rCols = TableRegistry.getCols(rName);
-        const lOpts = lCols.map(c=>`<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
-        const rOpts = rCols.map(c=>`<option value="${this.escapeHtml(c)}">${this.escapeHtml(c)}</option>`).join('');
-
-        $('jeRelContainer').innerHTML = this.state.rels.map((r, i) => {
-            const valid = r.l && r.r;
-            const cardClass = valid ? 'valid' : (r.l || r.r ? 'incomplete' : '');
-            return `
-            <div class="join-rel-card ${cardClass}" data-idx="${i}">
-                <div class="je-row">
-                    <select class="je-rel-l" data-idx="${i}" title="左表: ${this.escapeHtml(lName || '?')}">${lOpts || '<option>无字段</option>'}</select>
-                    <span style="opacity:0.6; flex-shrink:0;">=</span>
-                    <select class="je-rel-r" data-idx="${i}" title="右表: ${this.escapeHtml(rName || '?')}">${rOpts || '<option>无字段</option>'}</select>
-                    <button class="icon-btn sm" data-swap="${i}" title="交换左右">⇄</button>
-                    <button class="icon-btn sm danger" data-del="${i}" title="删除此条件">×</button>
-                </div>
-                <div class="rel-meta-row">
-                    <span class="rel-meta" id="jeRelMetaL_${i}"></span>
-                    <span class="rel-meta" id="jeRelMetaR_${i}"></span>
-                </div>
-            </div>`;
+        const opts = name => TableRegistry.getCols(name).map(col => {
+            const safe = escapeHtml(col);
+            return `<option value="${safe}">${safe}</option>`;
         }).join('');
-
-        // Set values from state (DOM-to-state sync point)
-        const ls = document.querySelectorAll('.je-rel-l');
-        const rs = document.querySelectorAll('.je-rel-r');
-        this.state.rels.forEach((r, i) => {
-            if(ls[i] && r.l && lCols.includes(r.l)) ls[i].value = r.l;
-            else if(ls[i]) { ls[i].selectedIndex = 0; r.l = ''; }
-            if(rs[i] && r.r && rCols.includes(r.r)) rs[i].value = r.r;
-            else if(rs[i]) { rs[i].selectedIndex = 0; r.r = ''; }
-        });
-
-        // Bind events - sync DOM → state immediately
-        ls.forEach(s => {
-            s.onchange = () => {
-                const i = +s.dataset.idx;
-                this.state.rels[i].l = s.value;
-                this.markDirty();
-                this.updateRelMeta();
-                this.updateAll();
-            };
-        });
-        rs.forEach(s => {
-            s.onchange = () => {
-                const i = +s.dataset.idx;
-                this.state.rels[i].r = s.value;
-                this.markDirty();
-                this.updateRelMeta();
-                this.updateAll();
-            };
-        });
-        document.querySelectorAll('[data-swap]').forEach(btn => {
-            btn.onclick = () => this.swapRel(+btn.dataset.swap);
-        });
-        document.querySelectorAll('[data-del]').forEach(btn => {
-            btn.onclick = () => this.delRel(+btn.dataset.del);
+        const left = opts($('jeLeftTable').value);
+        const right = opts($('jeRightTable').value);
+        const box = $('jeRelContainer');
+        $('jeRelHint').textContent = this.state.rels.length > 1 ? '同时满足以下条件' : '';
+        box.innerHTML = this.state.rels.map((rel, i) => `
+            <div class="join-rel-card" data-idx="${i}">
+                <div class="je-row">
+                    <label><select class="je-rel-l" aria-label="条件 ${i+1} 左表字段" aria-describedby="jeRelMetaL_${i}"><option value="">选择左表字段</option>${left}</select>
+                        <span class="rel-meta" id="jeRelMetaL_${i}"></span></label>
+                    <span class="rel-equals" aria-hidden="true">=</span>
+                    <label><select class="je-rel-r" aria-label="条件 ${i+1} 右表字段" aria-describedby="jeRelMetaR_${i}"><option value="">选择右表字段</option>${right}</select>
+                        <span class="rel-meta" id="jeRelMetaR_${i}"></span></label>
+                    <button class="icon-btn sm" data-swap title="交换左右字段" aria-label="交换条件 ${i+1} 的左右字段">⇄</button>
+                    <button class="icon-btn sm" data-del title="删除条件" aria-label="删除条件 ${i+1}">×</button>
+                </div>
+            </div>`).join('');
+        box.querySelectorAll('.join-rel-card').forEach((card, i) => {
+            const relation = this.state.rels[i];
+            for(const side of ['l','r']) {
+                const select = card.querySelector(`.je-rel-${side}`);
+                select.value = relation[side];
+                select.onchange = () => {
+                    relation[side] = select.value;
+                    this.markDirty();
+                    this.updateRelMeta();
+                    this.updateAll();
+                };
+            }
+            card.querySelector('[data-swap]').onclick = () => this.swapRel(i);
+            card.querySelector('[data-del]').onclick = () => this.delRel(i);
         });
         this.updateRelMeta();
     },
 
-    addRel() { this.state.rels.push({l:'', r:''}); this.markDirty(); this.renderRels(); this.updateAll(); },
+    focusRel(index) {
+        $('jeRelContainer').querySelectorAll('.je-rel-l')[index]?.focus();
+    },
+    addRel() {
+        this.state.rels.push({l:'', r:''});
+        this.markDirty();
+        this.renderRels();
+        this.updateAll();
+        this.focusRel(this.state.rels.length - 1);
+    },
     delRel(i) {
         this.state.rels.splice(i, 1);
         if(this.state.rels.length === 0) this.state.rels.push({l:'', r:''});
         this.markDirty();
         this.renderRels();
         this.updateAll();
+        this.focusRel(Math.min(i, this.state.rels.length - 1));
     },
     swapRel(i) {
         const r = this.state.rels[i];
@@ -9452,6 +9467,7 @@ const JoinEditor = {
         this.markDirty();
         this.renderRels();
         this.updateAll();
+        this.focusRel(i);
     },
     autoMatchRels() {
         const lName = $('jeLeftTable').value;
@@ -9502,21 +9518,18 @@ const JoinEditor = {
     },
 
     updateRelMeta() {
-        const lName = $('jeLeftTable').value;
-        const rName = $('jeRightTable').value;
-        this.state.rels.forEach((r, i) => {
-            const l = this.getColMeta(lName, r.l);
-            const rmeta = this.getColMeta(rName, r.r);
-            const lEl = $(`jeRelMetaL_${i}`);
-            const rEl = $(`jeRelMetaR_${i}`);
-            if(lEl) {
-                lEl.textContent = `左: ${l.type==='numeric'?'#':l.type==='date'?'D':l.type==='text'?'T':'-'} ${l.sample}`;
-                lEl.className = `rel-meta type-${l.type}`;
+        const left = $('jeLeftTable').value;
+        const right = $('jeRightTable').value;
+        const leftCols = TableRegistry.getCols(left);
+        const rightCols = TableRegistry.getCols(right);
+        this.state.rels.forEach((rel, i) => {
+            for(const [side, table] of [['l', left], ['r', right]]) {
+                const el = $(`jeRelMeta${side.toUpperCase()}_${i}`);
+                const meta = this.getColMeta(table, rel[side]);
+                el.textContent = rel[side] && meta.type !== 'empty' && meta.sample !== '-' ? `示例 · ${meta.sample}` : '';
             }
-            if(rEl) {
-                rEl.textContent = `右: ${rmeta.type==='numeric'?'#':rmeta.type==='date'?'D':rmeta.type==='text'?'T':'-'} ${rmeta.sample}`;
-                rEl.className = `rel-meta type-${rmeta.type}`;
-            }
+            const swap = $('jeRelContainer').children[i].querySelector('[data-swap]');
+            swap.disabled = !rel.l || !rel.r || rel.l === rel.r || !leftCols.includes(rel.r) || !rightCols.includes(rel.l);
         });
     },
 
@@ -9550,10 +9563,10 @@ const JoinEditor = {
         const leftVal = $('jeLeftTable').value;
         const rightVal = $('jeRightTable').value;
 
-        if(!name) errors.push('❌ 请填写视图名称');
-        if(['__proto__','prototype','constructor'].includes(name)) errors.push('❌ 该视图名称不可使用');
-        if(name && this.isNameConflict(name, this.state.editIdx)) errors.push('❌ 视图名称与已有表/视图冲突');
-        if(!leftVal || !rightVal) errors.push('❌ 请选择左右表');
+        if(!name) errors.push('请填写视图名称');
+        if(['__proto__','prototype','constructor'].includes(name)) errors.push('该视图名称不可使用');
+        if(name && this.isNameConflict(name, this.state.editIdx)) errors.push('视图名称与已有表/视图冲突');
+        if(!leftVal || !rightVal) errors.unshift('请先解析数据，再选择左右表');
 
         // Validate rels with specific indices
         const incompleteIdxs = [];
@@ -9562,9 +9575,8 @@ const JoinEditor = {
             if(r.l && r.r) validRels.push(i);
             else if(r.l || r.r) incompleteIdxs.push(i + 1);
         });
-        if(incompleteIdxs.length) errors.push(`❌ 关联条件 #${incompleteIdxs.join(', #')} 字段不完整`);
-        if(validRels.length === 0 && this.state.rels.some(r => r.l || r.r)) errors.push(`❌ 关联条件不完整：${incompleteIdxs.length}个条件缺少字段`);
-        else if(this.state.rels.length === 0 || (this.state.rels.length === 1 && !this.state.rels[0].l && !this.state.rels[0].r)) errors.push('❌ 至少配置一个关联条件（点击 添加条件 按钮）');
+        if(incompleteIdxs.length) errors.push(`关联条件 #${incompleteIdxs.join(', #')} 字段不完整`);
+        if(!validRels.length && !incompleteIdxs.length) errors.push('请选择至少一对匹配字段');
 
         const leftCols = TableRegistry.getCols(leftVal);
         const rightCols = TableRegistry.getCols(rightVal);
@@ -9573,13 +9585,13 @@ const JoinEditor = {
             if(r.l && !leftCols.includes(r.l)) staleRels.push(`#${i+1} 左:${r.l}`);
             if(r.r && !rightCols.includes(r.r)) staleRels.push(`#${i+1} 右:${r.r}`);
         });
-        if(staleRels.length) errors.push(`❌ 关联字段不存在: ${staleRels.join(', ')}`);
+        if(staleRels.length) errors.push(`关联字段不存在: ${staleRels.join(', ')}`);
 
-        if(this.state.order.length === 0) errors.push('❌ 至少选择一个输出列');
+        if(this.state.order.length === 0) errors.push('至少选择一个输出列');
 
         const cfg = this.getCurrentConfig();
         if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.getViews(), TableRegistry.getAvailableRawTables().map(t => t.name))) {
-            errors.push('❌ 视图依赖会形成循环引用');
+            errors.push('视图依赖会形成循环引用');
         }
 
         // Dedup warnings
@@ -9592,60 +9604,57 @@ const JoinEditor = {
         });
         if(dupes.length) {
             const uniqueDupes = Array.from(new Set(dupes));
-            warnings.push(`⚠ 输出列将自动去重: ${uniqueDupes.join(', ')}`);
+            warnings.push(`输出列将自动去重: ${uniqueDupes.join(', ')}`);
         }
 
         return { ok: errors.length === 0, errors, warnings };
     },
 
     updateSaveState() {
-        const { ok, errors, warnings } = this.validate();
+        const {ok, errors, warnings} = this.validate();
         const warn = $('jeWarn');
-        if(errors.length) {
-            // Show first error as summary, full list on hover
-            warn.textContent = `⚠ ${errors[0].replace('❌ ','')}${errors.length > 1 ? ` ...共${errors.length}个问题` : ''}`;
-            warn.title = errors.join('\n');
-            warn.className = 'join-warn error';
-        } else if(warnings.length) {
-            warn.textContent = `⚠ ${warnings[0].replace('⚠ ','')}`;
-            warn.title = warnings.join('\n');
-            warn.className = 'join-warn';
-        } else {
-            warn.textContent = '✓ 可以保存';
-            warn.title = '';
-            warn.className = 'join-warn ok';
-        }
-        ['jeSave', 'jeSaveFooter'].forEach(id => { if($(id)) $(id).disabled = !ok; });
+        warn.textContent = errors[0] || warnings[0] || '可以保存';
+        warn.title = [...errors, ...warnings].join('\n');
+        warn.className = ok ? (warnings.length ? 'warning' : 'ok') : '';
+        $('jeSave').disabled = !ok;
     },
     updateStatus() {
-        const total = this.state.lSel.length + this.state.rSel.length;
-        const el = $('jeStatus');
-        if(el) el.textContent = `已选输出列: ${total} (左 ${this.state.lSel.length} · 右 ${this.state.rSel.length})`;
+        $('jeStatus').textContent = `${this.state.order.length} 列`;
+        $('jeJoinShape').dataset.mode = $('jeType').value;
+        $('jeTypeHint').textContent = {
+            inner:'仅输出两侧匹配的行', left:'保留左表全部行', right:'保留右表全部行',
+            full:'保留两侧全部行', semi:'每条匹配的左表行只输出一次', anti:'仅输出未匹配的左表行'
+        }[$('jeType').value] || '';
     },
-    updatePreview() {
-        const cfg = this.getCurrentConfig();
-        const hasRel = this.state.rels.some(r => r.l && r.r);
+    async updatePreview() {
         const el = $('jePreview');
-        if(!cfg.left || !cfg.right || !hasRel) { el.textContent = '预览: —'; return; }
-        // Cache stats by config fingerprint to avoid redundant recalc
-        const doc=Store.getDocument();
-        if(!doc) { el.textContent = '预览: 当前工程没有卡片'; return; }
-        const cacheKey=JSON.stringify([doc.id,doc.sourceRevision,doc.ui.cellEdits,Store.getViews(),cfg]);
-        if (!this._statsCache) this._statsCache = { key: null, value: null };
-        if (this._statsCache.key !== cacheKey) {
-            this._statsCache.key = cacheKey;
-            if(TableRegistry.isBackground()) {
-                this._statsCache.value=null;this._statsCache.pending=true;
-                TableRegistry.getJoinStats(cfg).then(stats=>{
-                    if(this._statsCache?.key!==cacheKey)return;
-                    this._statsCache.value=stats;this._statsCache.pending=false;this.updatePreview();
-                }).catch(error=>{if(this._statsCache?.key===cacheKey){this._statsCache.pending=false;el.textContent=`预览失败：${error.message}`;}});
-            } else this._statsCache.value = Joiner.stats(TableRegistry.getRaw(), cfg, Store.getViews());
+        const cfg = this.getCurrentConfig();
+        if(!cfg.left || !cfg.right || !cfg.on || this.state.rels.some(r => !!r.l !== !!r.r)) {
+            this._statsRequest = null;
+            el.textContent = cfg.left && cfg.right ? '选好两侧的匹配字段后，将显示输出行数。' : '请先解析数据，再选择参与关联的表。';
+            return;
         }
-        if(this._statsCache.pending){el.textContent='预览: 正在后台计算…';return;}
-        const stats = this._statsCache.value;
-        if(!stats) { el.textContent = '预览: —'; return; }
-        el.textContent = `预览: 输出 ${stats.outRows.toLocaleString()} 行 · 匹配 ${stats.matched.toLocaleString()} · 左未匹配 ${stats.leftOnly.toLocaleString()} · 右未匹配 ${stats.rightOnly.toLocaleString()}`;
+        // Projection, aliases and the draft name do not affect row counts.
+        const key = JSON.stringify([Store.revision, TableRegistry.isBackground(), cfg.left, cfg.right, cfg.on, cfg.type]);
+        if(this._statsRequest?.key === key) return;
+        const request = {key};
+        this._statsRequest = request;
+        try {
+            let stats;
+            if(TableRegistry.isBackground()) {
+                el.textContent = '正在计算匹配行数…';
+                stats = await TableRegistry.getJoinStats(cfg);
+            } else {
+                stats = Joiner.stats(TableRegistry.getRaw(), cfg, Store.getViews());
+            }
+            if(this._statsRequest !== request) return;
+            if(!stats) { el.textContent = '无法预览，请检查来源表与关联条件。'; return; }
+            const metrics = [['输出行数', stats.outRows], ['匹配对数', stats.matched], ['左表未匹配', stats.leftOnly], ['右表未匹配', stats.rightOnly]];
+            el.innerHTML = `<dl class="join-metrics">${metrics.map(([label, value]) =>
+                `<div><dt>${label}</dt><dd>${value.toLocaleString()}</dd></div>`).join('')}</dl>`;
+        } catch(error) {
+            if(this._statsRequest === request) el.textContent = `预览失败：${error.message}`;
+        }
     },
     updateDependencyInfo() {
         const lName = $('jeLeftTable').value;
@@ -9686,10 +9695,9 @@ const JoinEditor = {
         this.updateStatus();
         this.updateSaveState();
         this.updatePreview();
-        this.updateDependencyInfo();
     },
 
-    /* ── Table change handling (inline confirm, not modal-on-modal) ── */
+    /* ── Table changes ── */
     handleTableChange(side) {
         const sel = side === 'l' ? $('jeLeftTable') : $('jeRightTable');
         const next = sel.value;
@@ -9724,10 +9732,9 @@ const JoinEditor = {
     /* ── Dirty tracking ── */
     setDirty(flag) {
         this.state.dirty = flag;
-        const title = this.state.titleBase || '全局视图';
-        $('jeTitle').textContent = flag ? `${title} *` : title;
+        $('jeDirty').hidden = !flag;
     },
-    markDirty() { this._statsCache = null; this.setDirty(true); },
+    markDirty() { this.setDirty(true); },
 
     /* ── Column refresh ── */
     refreshColumns() {
@@ -9742,13 +9749,15 @@ const JoinEditor = {
             if(r.l && !lCols.includes(r.l)) r.l = '';
             if(r.r && !rCols.includes(r.r)) r.r = '';
         });
-        this.syncOrderFromSelections(lCols, rCols);
+        this.syncOrderFromSelections();
 
+        $('jeLSourceName').textContent = lName;
+        $('jeRSourceName').textContent = rName;
         this.renderColList('jeLList', lCols, this.state.lSel, 'l');
         this.renderColList('jeRList', rCols, this.state.rSel, 'r');
         this.renderSelectedOrder();
         this.renderRels();
-        this.updateRelMeta();
+        this.updateDependencyInfo();
         this.updateAll();
     },
 
@@ -9770,17 +9779,22 @@ const JoinEditor = {
     /* ── Open / Close / Save ── */
     open(editIdx = -1) {
         const p = $('joinModal'); p.classList.remove('hidden');
-        ModalController.activate(p);
+        ModalController.activate(p, $('jeName'));
+        this._statsRequest = null;
+        for(const el of p.querySelectorAll('details')) el.open = false;
+        for(const el of p.querySelectorAll('.join-body,.join-result,.join-setup')) el.scrollTop = 0;
+        $('jeLSearch').value = '';
+        $('jeRSearch').value = '';
         document.body.classList.add('modal-open');
         this.state.editIdx = editIdx;
         this.metaCache = {};
         this.state.selectedOrderIdx = -1;
         const v = editIdx > -1 ? Store.getViews()[editIdx] : { view:'', left:'', right:'', type:'inner', on:'', select:'' };
 
-        this.state.titleBase = editIdx > -1 ? '编辑全局视图' : '新增全局视图';
-        $('jeTitle').textContent = this.state.titleBase;
+        $('jeTitle').textContent = editIdx > -1 ? '编辑 JOIN 视图' : '新建 JOIN 视图';
         $('jeName').value = v.view;
         $('jeType').value = v.type;
+        $('jeEnabled').checked = editIdx < 0 || Store.getEnabledViews().includes(v.view);
 
         const availableTables = TableRegistry.getAvailableTables();
         ['jeLeftTable','jeRightTable'].forEach(id => {
@@ -9799,11 +9813,11 @@ const JoinEditor = {
             return !val;
         };
         const leftOk = setTableValue('jeLeftTable', v.left);
-        const rightOk = setTableValue('jeRightTable', v.right);
+        const rightOk = setTableValue('jeRightTable', editIdx < 0 ? availableTables[1] : v.right);
         if (!leftOk && v.left) Toast.show(`左表"${v.left}"已不存在，关联条件和输出列可能失效`, true);
         if (!rightOk && v.right) Toast.show(`右表"${v.right}"已不存在，关联条件和输出列可能失效`, true);
 
-        this.state.rels = v.on ? v.on.split(',').map(s => { const p=s.split('='); return {l:p[0].trim(), r:p[1].trim()}; }) : [];
+        this.state.rels = v.on ? v.on.split(',').map(s => { const p=s.split('='); return {l:p[0].trim(), r:(p[1] || '').trim()}; }) : [];
         if(this.state.rels.length === 0) this.state.rels.push({l:'', r:''});
 
         this.state.lSel = []; this.state.rSel = []; this.state.order = [];
@@ -9829,56 +9843,46 @@ const JoinEditor = {
         this.state.prevLeft = $('jeLeftTable').value;
         this.state.prevRight = $('jeRightTable').value;
 
-        this.refreshColumns();
-        this.renderRels();
-        this.renderSelectedOrder();
-        this.updateAll();
         this.setDirty(false);
+        this.refreshColumns();
     },
 
     close(force=false) {
         if(!force && this.state.dirty) {
             if(!confirm('有未保存修改，确定关闭？')) return;
         }
+        this._statsRequest = null;
         $('joinModal').classList.add('hidden');
         ModalController.deactivate($('joinModal'));
         document.body.classList.remove('modal-open');
     },
 
     save() {
-        // Ensure rels state is synced from DOM
-        document.querySelectorAll('.je-rel-l').forEach((s,i) => { if(this.state.rels[i]) this.state.rels[i].l = s.value; });
-        document.querySelectorAll('.je-rel-r').forEach((s,i) => { if(this.state.rels[i]) this.state.rels[i].r = s.value; });
-
         const check = this.validate();
         if(!check.ok) {
-            const msg = check.errors.map(e => e.replace('❌ ','• ')).join('\n');
+            const msg = check.errors.join('\n');
             return alert(`无法保存，请修正以下问题:\n\n${msg}`);
         }
 
-        const name = $('jeName').value.trim();
-        const onStr = this.buildOnString(this.state.rels);
-        const selStr = this.buildSelectString();
-
         const base = this.state.editIdx > -1 ? Store.getViews()[this.state.editIdx] : {};
         const nv = {
-            view: name,
-            left: $('jeLeftTable').value,
-            right: $('jeRightTable').value,
-            type: $('jeType').value,
-            on: onStr,
-            select: selStr,
+            ...this.getCurrentConfig(),
             createdAt: base.createdAt || Date.now(),
             updatedAt: Date.now()
         };
 
+        const enabled = Store.getEnabledViews();
+        const nextEnabled = enabled.filter(view => view !== base.view || $('jeEnabled').checked)
+            .map(view => view === base.view ? nv.view : view);
+        if($('jeEnabled').checked && !nextEnabled.includes(nv.view)) nextEnabled.push(nv.view);
         dispatch('view:upsert', { index:this.state.editIdx > -1 ? this.state.editIdx : undefined, view:nv });
+        if(enabled.length !== nextEnabled.length || enabled.some((v, i) => v !== nextEnabled[i])) {
+            dispatch('view:setEnabled', {enabledViews:nextEnabled});
+        }
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
         this.setDirty(false);
-        $('joinModal').classList.add('hidden');
-        ModalController.deactivate($('joinModal'));
-        document.body.classList.remove('modal-open');
+        this.close(true);
         Toast.show(this.state.editIdx > -1 ? '视图已更新' : '视图已创建');
     },
 
@@ -12497,6 +12501,12 @@ const KeyboardController = {
             return;
         }
 
+        const editor = $('joinModal');
+        if(editor && !editor.classList.contains('hidden')) {
+            JoinEditor.handleKeydown(e);
+            return;
+        }
+
         const mod = e.ctrlKey || e.metaKey;
         const tag = document.activeElement && document.activeElement.tagName || '';
         const typing = /INPUT|TEXTAREA|SELECT/.test(tag);
@@ -12518,20 +12528,6 @@ const KeyboardController = {
         if (e.key === 'F2' && !typing) { e.preventDefault(); TabController.startRename(Store.state.activeProjectId); return; }
         if (e.key === '?' && !typing)  { e.preventDefault(); app.showHelp(); return; }
 
-        // ── JOIN editor shortcuts (only when JOIN modal is open) ──
-        const joinModal = $('joinModal');
-        if (!joinModal || joinModal.classList.contains('hidden')) return;
-        if (modalOverlay && !modalOverlay.classList.contains('hidden')) return;
-
-        if (e.key === 'Escape') { e.preventDefault(); JoinEditor.close(); return; }
-        if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
-            e.preventDefault();
-            const idx = JoinEditor.state.selectedOrderIdx;
-            if (idx >= 0) JoinEditor.moveOrder(idx, e.key === 'ArrowUp' ? -1 : 1);
-            return;
-        }
-        if (e.key === '/' && !typing) { e.preventDefault(); $('jeLSearch').focus(); return; }
-        if (e.key === 'Enter' && !e.shiftKey && !typing) { e.preventDefault(); JoinEditor.save(); return; }
     }
 };
 
@@ -13736,8 +13732,8 @@ validflag Time      Level   Message                 Code
 
         $('tablesTrigger').onclick = () => this.modTables();
         $('viewsTrigger').onclick = () => this.modViews();
-        // FIX: Correctly call JoinEditor.modManageViews
-        $('manageViewsBtn').onclick = e => { e.stopPropagation(); JoinEditor.modManageViews(); };
+        $('newJoinBtn').onclick = () => JoinEditor.open();
+        $('manageViewsBtn').onclick = () => ViewManager.modManageViews();
         $('selectColsBtn').onclick = () => this.modCols();
         $('themeBtn').onclick = () => dispatch('ui:theme');
         if($('helpBtn')) $('helpBtn').onclick = () => this.showHelp();
@@ -13772,49 +13768,7 @@ validflag Time      Level   Message                 Code
         // Export/copy/workspace/config handled by ExportController.init()
 
         
-        // Editor Bindings
-        const closeJoin = () => JoinEditor.close();
-        $('jeCancel').onclick = closeJoin;
-        $('jeCancelFooter').onclick = closeJoin;
-        $('jeSave').onclick = () => JoinEditor.save();
-        $('jeSaveFooter').onclick = () => JoinEditor.save();
-        $('jeAddRel').onclick = () => JoinEditor.addRel();
-        $('jeAutoRel').onclick = () => JoinEditor.autoMatchRels();
-        $('jeOrderRebuild').onclick = () => JoinEditor.rebuildOrder();
-        $('jeOrderClear').onclick = () => JoinEditor.clearOrder();
-        $('jeOrderLeftOnly').onclick = () => JoinEditor.keepOnly('l');
-        $('jeOrderRightOnly').onclick = () => JoinEditor.keepOnly('r');
-        $('jeOrderShowL').onchange = e => { JoinEditor.state.showL = e.target.checked; JoinEditor.renderSelectedOrder(); };
-        $('jeOrderShowR').onchange = e => { JoinEditor.state.showR = e.target.checked; JoinEditor.renderSelectedOrder(); };
-        if($('jeOrderMoveTop')) $('jeOrderMoveTop').onclick = () => JoinEditor.moveOrderToEdge('top');
-        if($('jeOrderMoveBottom')) $('jeOrderMoveBottom').onclick = () => JoinEditor.moveOrderToEdge('bottom');
-
-        $('jeLeftTable').onchange = () => JoinEditor.handleTableChange('l');
-        $('jeRightTable').onchange = () => JoinEditor.handleTableChange('r');
-        $('jeType').onchange = () => { JoinEditor.markDirty(); JoinEditor.updateAll(); };
-        $('jeName').oninput = () => { JoinEditor.markDirty(); JoinEditor.updateSaveState(); };
-
-        $('jeLSearch').oninput = () => {
-            clearTimeout(JoinEditor._searchTimerL);
-            JoinEditor._searchTimerL = setTimeout(() => JoinEditor.renderColList('jeLList', App.getCols($('jeLeftTable').value), JoinEditor.state.lSel, 'l'), 200);
-        };
-        $('jeRSearch').oninput = () => {
-            clearTimeout(JoinEditor._searchTimerR);
-            JoinEditor._searchTimerR = setTimeout(() => JoinEditor.renderColList('jeRList', App.getCols($('jeRightTable').value), JoinEditor.state.rSel, 'r'), 200);
-        };
-        $('jeLAll').onclick = () => JoinEditor.toggleAll('l');
-        $('jeRAll').onclick = () => JoinEditor.toggleAll('r');
-        $('jeLAllFiltered').onclick = () => JoinEditor.selectFiltered('l');
-        $('jeRAllFiltered').onclick = () => JoinEditor.selectFiltered('r');
-        $('jeLOnlySel').onchange = e => { JoinEditor.state.lOnlySel = e.target.checked; JoinEditor.renderColList('jeLList', App.getCols($('jeLeftTable').value), JoinEditor.state.lSel, 'l'); };
-        $('jeROnlySel').onchange = e => { JoinEditor.state.rOnlySel = e.target.checked; JoinEditor.renderColList('jeRList', App.getCols($('jeRightTable').value), JoinEditor.state.rSel, 'r'); };
-        const helpToggle = $('jeHelpToggle');
-        const helpBody = $('jeHelpBody');
-        if(helpToggle && helpBody) {
-            helpToggle.onclick = () => helpBody.classList.toggle('show');
-        }
-        const jm = $('joinModal');
-        if(jm) jm.addEventListener('click', e => { if(e.target === jm) closeJoin(); });
+        JoinEditor.init();
 
         // Keyboard shortcuts — delegated to KeyboardController
         KeyboardController.init(this);
@@ -13823,9 +13777,6 @@ validflag Time      Level   Message                 Code
                 event.preventDefault();event.returnValue='';
             }
         });
-
-        // Register ViewManager edit callback (ViewManager → JoinEditor)
-        ViewManager.setEditCallback((idx) => JoinEditor.open(idx));
 
     },
 
@@ -14081,7 +14032,7 @@ validflag Time      Level   Message                 Code
             if (status.invalidRelation) warnings.add(status.error);
             const label = status.error ? ' · 不可用' : '';
             return `<span class="chip${status.error ? ' view-unavailable' : ''}" title="${reason}">${this.escapeHtml(n)}${label}</span>`;
-        }).join('') : `<span class="placeholder">未启用</span>`;
+        }).join('') : `<span class="placeholder">${viewNames.length ? '选择要启用的视图' : '创建第一个 JOIN 视图'}</span>`;
         const notice = $('joinWarning');
         if (notice) {
             const message = warnings.size ? [...warnings, '请恢复关联列，或在分析规则中修改或停用视图。'].join('\n') : '';
@@ -14409,7 +14360,11 @@ validflag Time      Level   Message                 Code
     modal(title, html) { ModalController.show(title, html); },
 
     modTables() { ModalController.showTableSelector(TableRegistry.getRaw().map(t => t.name), Store.getActiveUI().displayTables); },
-    modViews() { ModalController.showViewSelector(Store.getViews(), Store.getEnabledViews()); },
+    modViews() {
+        const views = Store.getViews();
+        if(views.length) ModalController.showViewSelector(views, Store.getEnabledViews());
+        else JoinEditor.open();
+    },
     
     modCols() {
         const tName = $('targetTableSelect').value;
