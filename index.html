@@ -225,11 +225,15 @@
         .column-probe { position:absolute; inset:0; overflow:hidden; opacity:0; }
         .column-marks { position:absolute; inset:0; pointer-events:none; }
         .column-mark { position:absolute; background:color-mix(in srgb, var(--primary) 30%, transparent); }
-        .column-mark.caret { background:var(--text-strong); }
+        .column-caret { position:absolute; background:var(--text-strong); }
+        @keyframes column-caret-blink { 50% { opacity:0; } }
+        @media (prefers-reduced-motion:no-preference) {
+            .column-caret { animation:column-caret-blink 1s step-end infinite; }
+        }
         textarea.column-editing { caret-color:transparent; }
         @media (forced-colors:active) {
             .column-mark { forced-color-adjust:none; background:Highlight; opacity:.5; }
-            .column-mark.caret { background:CanvasText; opacity:1; }
+            .column-caret { forced-color-adjust:none; background:CanvasText; }
         }
         .source-editor-foot { min-height:54px; padding:8px 14px; border-top:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
         .source-editor-foot .muted { font-size: 12px; }
@@ -9995,23 +9999,28 @@ function createLayout(input) {
         const box = range.getBoundingClientRect(), origin = page.getBoundingClientRect();
         return {x:box.left - origin.left, row:Math.floor((box.top + box.height / 2 - origin.top) / height)};
     }
-    function paint(ranges) {
+    function paint(ranges, backwards) {
         const fragment = document.createDocumentFragment();
+        const origin = page.getBoundingClientRect();
+        function mark(rect, className, width) {
+            const el = document.createElement('div');
+            el.className = className;
+            const row = Math.floor((rect.top + rect.height / 2 - origin.top) / height);
+            Object.assign(el.style, {left:(rect.left - origin.left + padX - input.scrollLeft) + 'px',
+                top:(row * height + padY - input.scrollTop) + 'px', width:width + 'px', height:height + 'px'});
+            fragment.appendChild(el);
+        }
         for (const {start, end} of ranges) {
             const block = blockAt(start, el => Number(el.dataset.start));
             const last = blockAt(end, el => Number(el.dataset.start));
             const range = document.createRange();
             range.setStart(block.firstChild, start - Number(block.dataset.start));
             range.setEnd(last.firstChild, end - Number(last.dataset.start));
-            const origin = page.getBoundingClientRect();
-            for (const rect of range.getClientRects()) {
-                const mark = document.createElement('div');
-                mark.className = start === end ? 'column-mark caret' : 'column-mark';
-                const row = Math.floor((rect.top + rect.height / 2 - origin.top) / height);
-                Object.assign(mark.style, {left:(rect.left - origin.left + padX - input.scrollLeft) + 'px',
-                    top:(row * height + padY - input.scrollTop) + 'px', width:Math.max(rect.width, 1.5) + 'px', height:height + 'px'});
-                fragment.appendChild(mark);
+            if (start !== end) {
+                for (const rect of range.getClientRects()) mark(rect, 'column-mark', Math.max(rect.width, 1.5));
+                range.collapse(backwards);
             }
+            mark(range.getBoundingClientRect(), 'column-caret', 1.5);
         }
         marks.replaceChildren(fragment);
     }
@@ -10019,6 +10028,12 @@ function createLayout(input) {
     return {
         sync, point, offset, location, paint, lastRow, status,
         remove() { overlay.remove(); status.remove(); },
+        reveal(at) {
+            const {x, row} = location(at);
+            const left = padX + x, top = padY + row * height;
+            input.scrollTo(clamp(input.scrollLeft, left + 2 - input.clientWidth, left),
+                clamp(input.scrollTop, top + height - input.clientHeight, top));
+        },
         visible() {
             const first = Math.floor((input.scrollTop - padY) / height);
             const last = Math.floor((input.scrollTop + input.clientHeight - padY) / height);
@@ -10030,6 +10045,8 @@ function createLayout(input) {
 function bindColumnEditor(input, maxBytes) {
     let layout, anchor, end, selection, edited, pointer, frame, lastPointer;
     let composition, writing = false, publishedText, publication;
+    const history = [];
+    let historyIndex = 0;
     function release() {
         if (pointer != null && input.hasPointerCapture(pointer)) input.releasePointerCapture(pointer);
         pointer = null;
@@ -10041,6 +10058,7 @@ function bindColumnEditor(input, maxBytes) {
         release();
         layout.remove();
         layout = selection = composition = publishedText = null;
+        history.length = historyIndex = 0;
         edited = false;
         input.classList.remove('column-editing');
     }
@@ -10061,7 +10079,7 @@ function bindColumnEditor(input, maxBytes) {
     function draw() {
         if (!layout || composition) return;
         layout.sync();
-        layout.paint(ranges(...layout.visible()));
+        layout.paint(ranges(...layout.visible()), end.x < anchor.x);
     }
     function finishSelection() {
         // Keep the chosen text even if the viewport subsequently rewraps.
@@ -10128,6 +10146,65 @@ function bindColumnEditor(input, maxBytes) {
         const part = segmenter.segment(line).containing(index - start);
         return start + part.index + (back ? 0 : part.segment.length);
     }
+    function setRanges(selected, afterEdit) {
+        selection = selected;
+        edited = afterEdit;
+        const lead = end.row < anchor.row ? selected[0] : selected.at(-1);
+        const at = end.x < anchor.x ? lead.start : lead.end;
+        input.setSelectionRange(at, at);
+    }
+    function moveCarets(back) {
+        const selected = ranges(), text = input.value;
+        if (!selected.length) return;
+        const collapse = selected.some(r => r.start !== r.end);
+        const next = [];
+        for (const {start, end} of selected) {
+            const at = collapse ? (back ? start : end) : adjacent(text, start, back);
+            if (at !== next.at(-1)?.start) next.push({start:at, end:at});
+        }
+        setRanges(next, true);
+        layout.reveal(input.selectionEnd);
+        draw();
+    }
+    function publish() {
+        publishedText = input.value;
+        publication = new Event('input', {bubbles:true});
+        input.dispatchEvent(publication);
+        publication = null;
+    }
+    // The textarea owns text undo. Pair its transactions with the per-row
+    // ranges that its single native selection cannot represent.
+    function remember(entry) {
+        // Keep the latest step even for a very large block. Budget older
+        // range objects conservatively, plus any non-native replacement text.
+        const {before, after, fallback} = entry;
+        entry.bytes = 64 * (before.length + after.length);
+        if (fallback) entry.bytes += 2 * (fallback.removed.length + fallback.inserted.length);
+        history.splice(historyIndex, history.length - historyIndex, entry);
+        let bytes = history.reduce((sum, step) => sum + step.bytes, 0);
+        while (history.length > 1 && (bytes > 8 * 1024 * 1024 || history.length > 100)) {
+            bytes -= history.shift().bytes;
+        }
+        historyIndex = history.length;
+    }
+    function historyEntry(redo) { return history[redo ? historyIndex : historyIndex - 1]; }
+    function restoreRanges(entry, redo) {
+        historyIndex += redo ? 1 : -1;
+        anchor = entry.anchor;
+        end = entry.end;
+        layout.sync(true);
+        setRanges(redo ? entry.after : entry.before, redo || entry.edited);
+        draw();
+    }
+    function fallbackHistory(event, redo) {
+        const entry = historyEntry(redo);
+        if (!entry?.fallback) return;
+        event.preventDefault();
+        const {first, removed, inserted} = entry.fallback;
+        input.setRangeText(redo ? inserted : removed, first, first + (redo ? removed : inserted).length, 'end');
+        restoreRanges(entry, redo);
+        publish();
+    }
     function edit(values, deletion) {
         const selected = ranges();
         if (!selected.length) return;
@@ -10165,27 +10242,25 @@ function bindColumnEditor(input, maxBytes) {
         const replacement = pieces.join('');
         const top = input.scrollTop, left = input.scrollLeft;
         if (text.slice(first, previous) !== replacement) {
+            let fallback;
             writing = true;
             try {
                 // One native edit keeps the complete rectangle in textarea undo history.
                 input.setSelectionRange(first, previous);
                 if (!document.execCommand(replacement ? 'insertText' : 'delete', false, replacement)) {
+                    fallback = {first, removed:text.slice(first, previous), inserted:replacement};
                     input.setRangeText(replacement, first, previous, 'end');
                 }
             } finally { writing = false; }
             // Engines may deliver several input events for one multiline
             // command, including after beforeinput returns. Publish once.
-            publishedText = input.value;
-            publication = new Event('input', {bubbles:true});
-            input.dispatchEvent(publication);
-            publication = null;
+            remember({anchor, end, edited, before:selected, after:next, beforeLength:text.length,
+                afterLength:text.length + delta, fallback});
+            publish();
         }
         if (!layout) return; // The inline editor may have become a read-only large-source preview.
-        selection = next;
-        edited = true;
         layout.sync(true);
-        const lead = end.row < anchor.row ? next[0] : next[next.length - 1];
-        input.setSelectionRange(lead.end, lead.end);
+        setRanges(next, true);
         input.scrollTo(left, top);
         draw();
     }
@@ -10211,17 +10286,31 @@ function bindColumnEditor(input, maxBytes) {
         }
         if (!layout) return;
         if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); clear(); return; }
+        if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && ['ArrowLeft','ArrowRight'].includes(e.key)) {
+            e.preventDefault();
+            moveCarets(e.key === 'ArrowLeft');
+            return;
+        }
         if (!e.ctrlKey && !e.metaKey && !e.altKey && ['Delete','Backspace'].includes(e.key)) {
             e.preventDefault();
             edit([''], e.key === 'Backspace' ? 'back' : 'forward');
             return;
         }
         if (e.ctrlKey || e.metaKey) {
-            if (!['control','meta','shift','c','x','v'].includes(e.key.toLowerCase())) clear();
+            const key = e.key.toLowerCase();
+            if (!e.altKey && (key === 'z' || key === 'y')) {
+                fallbackHistory(e, key === 'y' || e.shiftKey);
+                return;
+            }
+            if (!['control','meta','shift','c','x','v'].includes(key)) clear();
         } else if (/^(Arrow|Home$|End$|Page|Tab$)/.test(e.key)) clear();
     });
     input.addEventListener('beforeinput', e => {
         if (!layout || writing || e.isComposing || composition) return;
+        if (e.inputType === 'historyUndo' || e.inputType === 'historyRedo') {
+            fallbackHistory(e, e.inputType === 'historyRedo');
+            return;
+        }
         if (e.inputType === 'insertText' || e.inputType === 'insertLineBreak') {
             e.preventDefault();
             edit([e.inputType === 'insertLineBreak' ? '\n' : e.data || '']);
@@ -10251,7 +10340,16 @@ function bindColumnEditor(input, maxBytes) {
     });
     input.addEventListener('input', e => {
         if (e === publication) return;
-        if (composition || writing || (layout && publishedText === input.value)) e.stopImmediatePropagation();
+        if (composition || writing) { e.stopImmediatePropagation(); return; }
+        if (layout && (e.inputType === 'historyUndo' || e.inputType === 'historyRedo')) {
+            const redo = e.inputType === 'historyRedo', entry = historyEntry(redo);
+            if (entry && input.value.length === (redo ? entry.afterLength : entry.beforeLength)) {
+                restoreRanges(entry, redo);
+                publishedText = input.value;
+            } else clear();
+            return;
+        }
+        if (layout && publishedText === input.value) e.stopImmediatePropagation();
         else clear();
     }, true);
     input.addEventListener('compositionend', e => {

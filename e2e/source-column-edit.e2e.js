@@ -126,10 +126,97 @@ test('block deletion skips short and empty lines and the highlights follow tab s
   const input = page.locator('#rawInput');
   await input.fill('first123Z\nb\n\n\t4Q');
   await dragColumns(page, input, [8,3], [5,0]);
-  await expect(page.locator('.column-mark')).toHaveCount(4);
+  await expect(page.locator('.column-mark')).toHaveCount(1);
+  await expect(page.locator('.column-caret')).toHaveCount(4);
   await page.keyboard.press('Backspace');
   // The tab ends at column eight. Nothing to its right is in the rectangle.
   await expect(input).toHaveValue('firstZ\nb\n\n\t4Q');
+});
+
+test('Alt selection shows a blinking caret on each row, including selected text', async ({page}) => {
+  const input = page.locator('#rawInput');
+  await input.fill('abc\ndef\nghi');
+  await dragColumns(page, input, [2,2], [1,0]);
+  const carets = page.locator('.column-caret');
+  await expect(carets).toHaveCount(3);
+  // Sample both phases of the actual CSS animation without a wall-clock delay.
+  expect(await carets.evaluateAll(nodes => nodes.map(node => {
+    const [blink] = node.getAnimations();
+    if (!blink) return [];
+    blink.pause();
+    const duration = blink.effect.getTiming().duration;
+    return [.1, .8].map(fraction => {
+      blink.currentTime = duration * fraction;
+      return getComputedStyle(node).opacity;
+    });
+  }))).toEqual(Array(3).fill(['1','0']));
+  await page.emulateMedia({reducedMotion:'reduce'});
+  await expect(carets.first()).toHaveCSS('opacity', '1');
+});
+
+for (const key of ['ArrowLeft', 'ArrowRight']) {
+  test(`${key} collapses each row then moves all carets by one grapheme`, async ({page}) => {
+    const input = page.locator('#rawInput');
+    const rows = ['a12😀z','b34e\u0301y','c56👩‍💻x'];
+    await input.fill(rows.join('\n'));
+    await dragColumns(page, input, [3,2], [1,0]);
+    await input.press(key);
+    await input.press(key);
+    await page.keyboard.insertText('!');
+    await expect(input).toHaveValue(key === 'ArrowLeft' ? rows.map(s => '!' + s).join('\n') : 'a12😀!z\nb34e\u0301!y\nc56👩‍💻!x');
+  });
+}
+
+test('undo and redo of a block deletion restore the rectangle and its carets', async ({page}) => {
+  const input = page.locator('#rawInput');
+  const original = 'a12z\nb34y\nc56x';
+  await input.fill(original);
+  await dragColumns(page, input, [3,2], [1,0]);
+  await input.press('Delete');
+  await expect(input).toHaveValue('az\nby\ncx');
+  await input.press('Control+z');
+  await expect(input).toHaveValue(original);
+  await input.press('Control+y');
+  await expect(input).toHaveValue('az\nby\ncx');
+  await page.keyboard.insertText('!');
+  await expect(input).toHaveValue('a!z\nb!y\nc!x');
+  await input.press('Control+z');
+  await input.press('Control+z');
+  await page.keyboard.insertText('?');
+  await expect(input).toHaveValue('a?z\nb?y\nc?x');
+  expect(await page.evaluate(() => OTA.require('store').Store.getDocument().raw)).toBe(await input.inputValue());
+});
+
+test('vertical carets stay on short lines and scroll into view on long lines', async ({page}) => {
+  const input = page.locator('#rawInput'), long = 'x'.repeat(100);
+  await input.fill([long,'', 'y'].join('\n'));
+  await dragColumns(page, input, [0,2], [0,0]);
+  await input.press('ArrowLeft');
+  for (let i = 0; i < 60; i++) await input.press('ArrowRight');
+  expect(await input.evaluate(el => el.scrollLeft)).toBeGreaterThan(0);
+  await page.keyboard.insertText('!');
+  await expect(input).toHaveValue(long.slice(0,60) + '!' + long.slice(60) + '\n!\ny!');
+});
+
+test('full-source draft can undo a whole rectangle when the native edit command is unavailable', async ({page}) => {
+  const input = page.locator('#rawInput'), draft = page.locator('#fullSourceInput');
+  const original = 'aa\nbb\ncc';
+  await input.fill(original);
+  await page.locator('#editFullSourceBtn').click();
+  await page.evaluate(() => { document.execCommand = () => false; });
+  await dragColumns(page, draft, [0,0], [2,2]);
+  await draft.press('Backspace');
+  await expect(draft).toHaveValue('\n\n');
+  await draft.press('Control+z');
+  await expect(draft).toHaveValue(original);
+  await draft.press('Control+y');
+  await expect(draft).toHaveValue('\n\n');
+  await draft.press('Control+z');
+  await page.keyboard.insertText('中');
+  await expect(draft).toHaveValue('中\n中\n中');
+  await expect(input).toHaveValue(original);
+  await page.locator('#sourceEditorSaveBtn').click();
+  await expect(input).toHaveValue('中\n中\n中');
 });
 
 test('a block edit that crosses the inline preview limit retains the complete source', async ({page}) => {

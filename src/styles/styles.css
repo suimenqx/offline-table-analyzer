@@ -216,11 +216,15 @@
         .column-probe { position:absolute; inset:0; overflow:hidden; opacity:0; }
         .column-marks { position:absolute; inset:0; pointer-events:none; }
         .column-mark { position:absolute; background:color-mix(in srgb, var(--primary) 30%, transparent); }
-        .column-mark.caret { background:var(--text-strong); }
+        .column-caret { position:absolute; background:var(--text-strong); }
+        @keyframes column-caret-blink { 50% { opacity:0; } }
+        @media (prefers-reduced-motion:no-preference) {
+            .column-caret { animation:column-caret-blink 1s step-end infinite; }
+        }
         textarea.column-editing { caret-color:transparent; }
         @media (forced-colors:active) {
             .column-mark { forced-color-adjust:none; background:Highlight; opacity:.5; }
-            .column-mark.caret { background:CanvasText; opacity:1; }
+            .column-caret { forced-color-adjust:none; background:CanvasText; }
         }
         .source-editor-foot { min-height:54px; padding:8px 14px; border-top:1px solid var(--border); background:var(--bg-elevated); display:flex; align-items:center; justify-content:space-between; gap:12px; }
         .source-editor-foot .muted { font-size: 12px; }
