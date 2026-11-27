@@ -59,14 +59,12 @@ Additional import capabilities:
 
 ### JOIN views
 
-- Six join types: **Inner**, **Left**, **Right**, **Full**, **Semi**, and **Anti**.
-- **Multiple equality conditions** per view.
-- Either side can be a raw parsed table or an existing view (chained JOINs).
-- **Column search**, **aliases** (`col AS alias` or `col: alias`), and **drag-to-reorder** output columns.
-- **Auto-match** same-name columns across left and right sources.
-- **Dependency cycle detection** prevents circular view references.
-- Real-time **match/unmatched row estimates** during design.
-- **Collision-safe compound keys** and correct preservation of `0` and `false` values.
+After parsing your data, open **分析规则 → 视图设置 → ＋ 新建**. Join two tables from visible cards or use a saved project view as either source. Choose Inner, Left, Right, Full, Semi or Anti.
+
+- **Choose keys.** Pick one or more equality conditions, match same-name fields, or apply a suggested pair after checking its shared-value and duplicate counts in the sample. Compound keys preserve value types, including `0` and `false`.
+- **Choose the output.** Search, alias and reorder columns, or apply **左表全部＋右表补充**. With Right and Full joins this preset retains the right-side keys so you can identify unmatched right rows. Check the match counts and up to five actual output rows before saving.
+- **Enable when ready.** The designer shows the output size. Activation checks the 1,000,000-row limit per JOIN and the 8,000,000-cell total for displayed source tables and enabled views. Clear **在当前工程启用** to save a definition for later.
+- **Maintain a chain.** The designer checks for circular references before saving. Renaming a view updates its references across the project. Before deletion you can see which downstream views will be disabled and kept for repair. [Worked JOIN example](docs/guides/user-guide.md#85-find-customers-without-orders)
 
 ### Copy, export, and recovery
 

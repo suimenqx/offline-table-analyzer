@@ -136,6 +136,7 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - Duplicate output headers are normalized via `TableUtils.ensureUniqueHeaders`.
 - Dependency cycles are detected via DFS graph traversal before save.
 - All six JOIN types implemented: Inner, Left, Right, Full, Semi, Anti.
+- Key suggestions use field names and sampled values. Applying a suggestion preserves existing complete conditions. The designer reports full match counts and projects up to five actual output rows using the selected fields, order and aliases.
 - The enrichment preset keeps every right-side key for Right and Full JOINs so right-only records retain their identifiers. Manually chosen fields and order take precedence.
 - A project view rename updates source references, enabled names and per-card JOIN settings atomically. Single and batch deletion disclose transitive dependents and retain their definitions disabled.
 

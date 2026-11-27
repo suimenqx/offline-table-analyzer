@@ -4,6 +4,12 @@ All notable changes are documented here. The project follows semantic versioning
 
 ## Unreleased
 
+### JOIN 视图设计与管理
+
+- Create a view from **分析规则 → 视图设置 → ＋ 新建**. The designer suggests keys using field names and sampled values, offers output presets, and shows up to five actual rows with the selected aliases and column order. The enrichment preset retains right-side keys for Right and Full joins.
+- Check expected rows and cells before activation in the designer or the saved-view selector. Oversized definitions can be saved disabled and edited later.
+- Preview which views a rename or deletion affects. Renaming updates project references and per-card settings. Single and batch deletion retain affected downstream definitions disabled. The designer waits for the local write before reporting a successful save.
+
 ### 解析确认体验
 
 - Show the strongest usable parse by default; block only close or weak format candidates that produce materially different normalized tables, and show bounded candidate samples with direct choices beside the preview.

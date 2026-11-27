@@ -133,7 +133,7 @@ Click the sidebar toggle (the OTA logo button) to collapse the sidebar into a na
 
 ### 3.2 Accordions in Config
 
-The Config tab uses collapsible accordion sections for **View settings**, **Rule engine**, and **Export options**. Click a section heading to expand or collapse it.
+The **分析规则** tab groups controls under **视图设置** (view settings), **筛选与高亮** (filters and highlights), and **导出选项** (export options). Click a section heading to expand or collapse it.
 
 ---
 
@@ -154,7 +154,7 @@ Each analysis **tab** is a project that can contain multiple source cards. A car
 
 ## 5. Filter and highlight syntax
 
-Filters and highlight rules share the same expression language. Enter rules in the **Rule engine** accordion (Config tab).
+Filters and highlight rules share the same expression language. Enter rules under **分析规则 → 筛选与高亮**.
 
 ### 5.1 Operators
 
@@ -284,7 +284,7 @@ Collapsed tables show only the header bar; the data body is hidden. The collapse
 
 ## 8. Build a JOIN view
 
-Click **New** (＋ 新建) beside **Enable JOIN views** in the configuration sidebar. **Manage** opens the saved views for this project, with search, edit, copy, export, delete and JSON import.
+After parsing the sources, open **分析规则 → 视图设置** in the sidebar. Click **＋ 新建** beside **启用 JOIN 视图** to start a view. Click **管理** to search, edit, copy, export, delete or import saved definitions in this project.
 
 ### 8.1 Sources and match conditions
 
@@ -321,7 +321,9 @@ The footer identifies the next item needed to save, including incomplete conditi
 
 The footer shows the expected rows, selected columns and cells for the current data. A JOIN can produce up to 1,000,000 rows. Displayed source tables and enabled JOIN results share an 8,000,000-cell preview budget before filtering. Both the designer and the enable dialog check the proposed selection before applying it. If the result exceeds a limit, narrow the match, reduce the columns, or save the definition with **Enable in this project** cleared. A disabled definition can still supply another view. When a source definition itself is too large or unavailable, the footer identifies enabled dependents that will also be turned off when you save it disabled.
 
-When renaming a view, the designer lists the affected downstream views. Saving updates their source references, the enabled selection and per-card filters and preview settings together. Single and batch deletion show all surviving views that depend on the selected definitions. Confirming deletes only the selected definitions and disables the affected dependents, which remain in **Manage** for repair.
+When renaming a view, the designer lists the affected downstream views. Saving updates their source references, the enabled selection and per-card filters and preview settings together. Wait for the save confirmation before reloading. If local storage fails, the app reports the error and keeps the change in the current session so you can back up the workspace.
+
+For single and batch deletion, **管理** lists the surviving views that depend on the selection, including indirect references. Confirming deletes the selected definitions and disables their dependents. To repair a chain, edit the view that used the deleted source, select its replacement and check the match fields and output columns. Then use **启用 JOIN 视图** to re-enable the results you want to display.
 
 ### 8.4 Keyboard shortcuts
 
@@ -331,6 +333,28 @@ When renaming a view, the designer lists the affected downstream views. Saving u
 | `Alt+↑` / `Alt+↓` | Move the focused or selected output column |
 | `Ctrl/Cmd+Enter` | Save a valid view, including from a text input |
 | `Escape` | Close the designer |
+
+### 8.5 Find customers without orders
+
+Paste this JSON into the source editor and parse it.
+
+```json
+{
+  "Orders": [
+    {"order_id": "O1", "customer_id": "C1"},
+    {"order_id": "O2", "customer_id": "C2"}
+  ],
+  "Customers": [
+    {"customer_id": "C1", "name": "Lin"},
+    {"customer_id": "C42", "name": "Chen"}
+  ]
+}
+```
+
+1. Create a view named `OrderCustomers`. Choose `Orders` on the left, `Customers` on the right, and **全连接 · FULL**.
+2. Match `customer_id` on both sides and click **左表全部＋右表补充**. In **输出列**, give the right-side `customer_id` the alias `customer_ref`.
+3. **匹配预览** shows three output rows and one matching pair. In **结果样例**, order `O2` is marked **仅左表**. Customer `C42` is marked **仅右表**, with an empty `order_id` and `C42` under `customer_ref`.
+4. Leave **在当前工程启用** checked and click **保存视图**. The preview now includes the three rows under `JOIN:OrderCustomers`.
 
 ---
 
@@ -562,6 +586,7 @@ All processing (parsing, filtering, JOIN execution, Excel generation) runs in th
 | Action | Shortcut |
 | --- | --- |
 | Focus left column search | `/` (when no input is focused) |
+| Move a focused output column | `Alt+↑` / `Alt+↓` |
 | Save view | `Ctrl/Cmd+Enter` |
 | Close designer | `Escape` |
 
