@@ -646,23 +646,26 @@ const App = {
 
     /** Resolve the current parse and return a validator for the eventual download. */
     async prepareExport() {
-        if(!Store.getDocument()) { Toast.show('请先新增卡片并导入数据', true); return null; }
-        const requestedId=Store.getDocument().id;
-        // An empty or excluded editor must not block other participating sources.
-        const canUseOtherSources=()=>TableRegistry.isBackground()
-            && (!Store.getDocument()?.raw || Store.getDocument()?.visible === false)
-            && TableRegistry.getBackgroundInput().cards.some(card=>card.id!==requestedId);
+        const doc=Store.getDocument();
+        if(!doc) { Toast.show('请先新增卡片并导入数据', true); return null; }
         const extraction=await this._extractSource({reuse:true});
         if(!extraction) return null;
         extraction.validate();
-        if(!extraction.ok && !(extraction.failed && canUseOtherSources())) return null;
-        const noVisibleTables = TableRegistry.isBackground() ? !TableRegistry.getBackgroundInput().cards.length : !TableRegistry.getQueryTables().length;
-        if(noVisibleTables || (!TableRegistry.getRaw().length && !canUseOtherSources())){
-            if(TableRegistry.getFormat()==='ambiguous')Toast.show('请先在预览区选择解析格式',true);
+        const scope=TableRegistry.getProjectSources();
+        const pooled=TableRegistry.isBackground();
+        const otherSources=pooled && (!doc.raw || doc.visible === false) && scope.visible.some(card=>card.id!==doc.id);
+        if(!extraction.ok && !(extraction.failed && otherSources)) return null;
+        const noVisibleTables=pooled ? !scope.visible.length : !TableRegistry.getQueryTables().length;
+        if(noVisibleTables || (!TableRegistry.getRaw().length && !otherSources)){
+            if(TableRegistry.getFormat()==='ambiguous')Toast.show(`请先确认卡片“${doc.title}”的解析格式，再导出 Excel`,true);
             else Toast.show('无数据可导出',true);
             return null;
         }
-        return {validate:extraction.validate}; // Rechecked immediately before download.
+        const sources=JSON.stringify(scope);
+        return {validate() {
+            extraction.validate();
+            if(JSON.stringify(TableRegistry.getProjectSources()) !== sources) throw new Error('参与导出的卡片或解析设置已变化，请重试');
+        }};
     },
 
     showPasteSource() {
@@ -1018,25 +1021,6 @@ validflag Time      Level   Message                 Code
         this.updateStorageStatus();
     },
 
-    applyStoredCellEdits() {
-        if(TableRegistry.isBackground())return;
-        const edits = Store.getActiveUI().cellEdits || {};
-        TableRegistry.getRaw().forEach(table => {
-            const tableEdits = edits[`$${table.name}`];
-            if(!tableEdits) return;
-            Object.entries(tableEdits).forEach(([rowKey, cols]) => {
-                const rowIdx = Number(rowKey);
-                if(!Number.isInteger(rowIdx) || !table.rows[rowIdx] || !cols || typeof cols !== 'object') return;
-                Object.entries(cols).forEach(([colKey, value]) => {
-                    const colIdx = Number(colKey);
-                    if(Number.isInteger(colIdx) && colIdx >= 0 && colIdx < table.headers.length) table.rows[rowIdx][colIdx] = String(value ?? '');
-                });
-            });
-        });
-    },
-
-
-
     async showCardDiagnostics(id) {
         const card = Store.getCard(id);
         if(!card || Store.getDocument()?.id !== id) return false;
@@ -1151,8 +1135,6 @@ validflag Time      Level   Message                 Code
             },
             onResult:({background,ok,error,render,elapsed})=>{
                 SourceController.renderCards();
-                if(!background) CellEditController.setRawTables(TableRegistry.getRaw());
-                if(ok) this.applyStoredCellEdits();
                 this.updateImportSummary();
                 if(ok) {
                     if(render) {
@@ -1265,9 +1247,10 @@ validflag Time      Level   Message                 Code
         const current = result.format === 'ambiguous';
         const diagnostics=result.diagnostics||[];
         const currentHasGuidance=!current && diagnostics.some(item=>['HEADER_AMBIGUOUS','ROW_WIDTH_MISMATCH','FORMAT_REVIEW','TABLE_REGION_BUDGET'].includes(item.code));
-        const unresolved = (Store.getActiveProject()?.cardIds || []).map(id => Store.getCard(id))
-            .filter(card => card && card.visible !== false && TableRegistry.getCardSummary(card.id)?.format === 'ambiguous');
-        const otherUnresolved=unresolved.find(item=>item.id!==active?.id);
+        const unresolved = TableRegistry.getProjectSources().visible.filter(source =>
+            TableRegistry.getCardSummary(source.id)?.format === 'ambiguous');
+        const otherSource = unresolved.find(source => source.id !== active?.id);
+        const otherUnresolved=otherSource && Store.getCard(otherSource.id);
         const card = current ? active : otherUnresolved || (currentHasGuidance ? active : null);
         if(!card) return null;
         const isCurrent=current || card.id===active?.id;
@@ -1452,6 +1435,10 @@ validflag Time      Level   Message                 Code
             meta.appendChild(nameSpan);
             if(t.isView) {
                 const badge = createEl('span', 'meta-tag'); badge.style.color='var(--primary)'; badge.style.background='var(--primary-soft)'; badge.textContent='VIEW'; meta.appendChild(badge);
+            } else if(t.editSource === null) {
+                const badge = createEl('span','meta-tag');
+                badge.textContent = '拼接 · 只读';
+                meta.appendChild(badge);
             }
             const rowTag = createEl('span', 'meta-tag'); rowTag.textContent = `Row: ${TableUtils.rowCount(t)}`; meta.appendChild(rowTag);
             const showTag = createEl('span', 'meta-tag'); showTag.textContent = `Show: ${res.totalRows ?? res.rows.length}`; meta.appendChild(showTag);

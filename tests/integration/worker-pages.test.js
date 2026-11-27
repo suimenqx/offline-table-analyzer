@@ -5,6 +5,24 @@ import {createLargeTableData} from '../helpers/large-data.mjs';
 import {readSheet} from 'read-excel-file/node';
 
 describe('Worker-owned tables and page transport',()=>{
+  it('blocks every workbook mode until participating cards with ambiguous formats are resolved or hidden',async()=>{
+    const {OTA}=loadModules(['worker-runtime']);
+    const session=OTA.require('worker-runtime').WorkerRuntime.createSession();
+    const visible=[{id:'a',name:'Orders'},{id:'b',name:'Rates'}];
+    const input={visible,ui:{},cardUis:{}};
+    session.parse({cardId:'a',text:'[{"id":"A"}]'});
+    const text='count,rate;note\n12,50;3\n9,90;4\n10,50;5';
+    assert.equal(session.parse({cardId:'b',text}).format,'ambiguous');
+    for(const mode of ['raw','full','preview']) {
+      assert.throws(()=>session.excel({...input,mode}),/Rates.*格式/);
+      assert.deepEqual(await readSheet(Buffer.from(session.excel({...input,visible:[visible[0]],mode})),1),[['id'],['A']]);
+    }
+    session.parse({cardId:'b',text,options:{format:'csv',headerMode:'first-row'}});
+    assert.equal((await readSheet(Buffer.from(session.excel({...input,mode:'full'})),2)).length,4);
+    assert.throws(()=>session.excel({...input,visible:[{...visible[1],version:'older'}]}),/Rates.*版本/);
+    session.removeCard({cardId:'b'});
+    assert.throws(()=>session.excel(input),/Rates.*版本/);
+  });
   it('publishes metadata only and returns source-indexed pages while exports retain every record',async()=>{
     const {OTA}=loadModules(['worker-runtime']);const {WorkerRuntime}=OTA.require('worker-runtime');
     const fixture=createLargeTableData({rows:1201});

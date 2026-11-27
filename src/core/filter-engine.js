@@ -185,7 +185,7 @@ const FilterEngine = {
                 for (let i = start; i < Math.min(end, totalRows); i++) {
                     const source = sourceIndex(i);
                     rows.push({d:project(source), _hl:!!highlighted?.[source], _sourceRow:source,
-                        _sourceCols:sourceCols, _readOnly:!!table.isView, _resultIndex:i});
+                        _sourceCols:sourceCols, _readOnly:!!table.isView || table.editSource === null, _resultIndex:i});
                 }
                 return rows;
             },

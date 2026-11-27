@@ -8,6 +8,19 @@ const { QueryService } = OTA.require('query-service');
 beforeEach(() => QueryService.clearCache());
 
 describe('QueryService — shared result contract', () => {
+  it('materializes only page rows on a new filter and keeps previously returned values stable', () => {
+    let copies=0;
+    class CountedRow extends Array {
+      static get [Symbol.species]() { return Array; }
+      slice(...args) { copies++; return super.slice(...args); }
+    }
+    const rawTables=[{name:'T',headers:['id'],rows:Array.from({length:1000},(_,i)=>CountedRow.of(String(i)))}];
+    const page=filter=>QueryService.getPagePreview({rawTables,ui:{pageSize:50,globalFilter:filter}}).tables[0].res;
+    const first=page('id>=10');
+    assert.equal(page('id>=20').totalRows,980);
+    assert.equal(first.rows[0].d[0],'10');
+    assert.ok(copies<=100,`two 50-row pages copied ${copies} rows`);
+  });
   it('checks exact JOIN rows and the combined preview cell budget before materialization', t => {
     const {Joiner} = OTA.require('joiner');
     t.mock.method(Joiner, 'run', () => assert.fail('counting a raw-to-raw JOIN must not expand its result'));

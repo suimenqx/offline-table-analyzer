@@ -10,6 +10,15 @@ const snapshot = context => context && {...context,
     options:{...context.options,regionSelection:context.options.regionSelection?JSON.parse(JSON.stringify(context.options.regionSelection)):null},
     config:{...context.config}};
 const aborted = () => Object.assign(new Error('操作已取消'),{name:'AbortError'});
+// Hand a DOM-parsed source to the shared pool once. A restarted Worker can
+// request the same source again without retaining its normalized rows in Window.
+function localDataset(context, initial) {
+    return () => {
+        const result = initial || Parser.parse(context.text, context.options);
+        initial = null;
+        return result;
+    };
+}
 
 const ExtractionSession = {
     create({readContext, onStart=()=>{}, onResult=()=>{}}) {
@@ -45,13 +54,14 @@ const ExtractionSession = {
             const dataset={datasetKey:`${context.docId}:${context.sourceRevision}:${JSON.stringify(context.options)}`,
                 parseOptions:context.options,sourceRevision:context.sourceRevision};
             const ok=!error;
+            const pooled = background || Store.getActiveProject()?.cardIds.length > 1;
             const published=error?{tables:[],format:'error',label:'解析失败',
-                ...(background?{...dataset,background:Store.getDocument()?.visible===false}:{}),
+                ...(pooled?{...dataset,background:Store.getDocument()?.visible===false}:{}),
                 diagnostics:[{severity:'error',code:'PARSE_ERROR',message:error.message || String(error)}],candidates:[]}
-                : background?{...result,...dataset,background:true}:result;
+                : pooled?{...result,...dataset,background:true}:result;
             job.receipt=receipt(job,ok,!ok);
             try {
-                TableRegistry.setResult(published);
+                TableRegistry.setResult(published, ok && pooled && !background ? localDataset(context,result) : null);
                 TableRegistry.recordParse(context,published);
                 const elapsed=Math.round(performance.now()-job.started);
                 onResult({context,background,ok,error,render:job.render,elapsed});
@@ -77,9 +87,13 @@ const ExtractionSession = {
                     return current.promise || current.receipt;
                 }
                 session.invalidate();
-                const background=(BackgroundService.isLarge(context.text) || (Store.getActiveProject()?.cardIds.length || 0)>1)
+                const multiCard=(Store.getActiveProject()?.cardIds.length || 0)>1;
+                const background=(BackgroundService.isLarge(context.text) || multiCard)
                     && !ImportEngine.requiresDOMParser(context.text,context.options);
-                if(!background) BackgroundService.cancel();
+                if(!background) {
+                    if(multiCard) BackgroundService.invalidateDataset(context.docId);
+                    else BackgroundService.cancel();
+                }
                 const job={context,background,render,started:performance.now()};
                 current=job;
                 job.cleanup=onStart({context,background});

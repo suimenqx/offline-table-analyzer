@@ -124,6 +124,22 @@ describe('CellEditController — inline editor', () => {
 
 // ---------------------------------------------------------------------------
 describe('CellEditController — apply', () => {
+  it('shares untouched rows and preserves prior table revisions through a correction and undo',()=>{
+    const parsed=TableRegistry.getTable('T1');
+    Store.transition('cell:edit',{table:'T1',row:0,col:1,value:'saved'});
+    TableRegistry.setResult({tables:[parsed]});
+    const restored=TableRegistry.getTable('T1');
+    assert.equal(parsed.rows[0][1],'1');
+    assert.equal(restored.rows[0][1],'saved');
+    assert.equal(restored.rows[1],parsed.rows[1]);
+    CellEditController.apply('T1',1,1,'next');
+    const edited=TableRegistry.getTable('T1');
+    assert.equal(edited.rows[0],restored.rows[0]);
+    assert.equal(restored.rows[1][1],'2');
+    CellEditController.undo();
+    assert.equal(edited.rows[1][1],'next');
+    assert.equal(TableRegistry.getTable('T1').rows[1][1],'2');
+  });
   it('applies a cell edit and records history', () => {
     const ok = CellEditController.apply('T1', 0, 0, 'modified');
     assert.equal(ok, true);
@@ -213,6 +229,42 @@ describe('CellEditController — undo / redo', () => {
 
 // ---------------------------------------------------------------------------
 describe('CellEditController — Worker page edits',()=>{
+  it('rejects concatenated cells and applies single-source edits and history to the owning card',()=>{
+    Store.transition('card:create',{title:'B'});
+    const b=Store.curr();
+    const session=OTA.require('worker-runtime').WorkerRuntime.createSession();
+    const options={format:'csv',headerMode:'first-row'};
+    const parse=(id,text)=>session.parse({cardId:id,text,options});
+    const sources=[{id:'a',name:'A'},{id:b.id,name:'B'}];
+    parse('a','id,label\n1,A');
+    const result=parse(b.id,'id,label\n2,B');
+    const describe=OTA.require('table-utils').TableUtils;
+    TableRegistry.setResult({...result,background:true,tables:result.tables.map(table=>describe.describeTable(table))});
+    const preview=()=>session.preview({sources,visible:sources,ui:{},cardUis:Object.fromEntries(
+      sources.map(({id})=>[id,Store.getCard(id).ui]))});
+    const joined=preview();
+    TableRegistry.setPreview(joined);
+    const name=joined[0].table.name;
+    assert.equal(CellEditController.apply(name,0,1,'wrong'),false);
+    assert.equal(Store.transition('cell:edit',{table:name,row:0,col:1,value:'wrong'}),false);
+    assert.ok(joined[0].res.rows.every(row=>row._readOnly));
+    assert.deepEqual(b.ui.cellEdits,{});
+    parse(b.id,'id,other\n2,B');
+    TableRegistry.setPreview(preview());
+    assert.equal(CellEditController.apply(name,0,1,'A!'),true);
+    assert.equal(CellEditController.apply(name+' (B)',0,1,'B!'),true);
+    assert.deepEqual(preview().map(item=>item.res.rows[0].d),[['1','A!'],['2','B!']]);
+    assert.equal(Store.getCard('a').ui.cellEdits['$'+name][0][1],'A!');
+    assert.deepEqual(Object.keys(b.ui.cellEdits),['$'+name]);
+    TableRegistry.setPreview([]);
+    CellEditController.undo();
+    CellEditController.undo();
+    assert.deepEqual(preview().map(item=>item.res.rows[0].d),[['1','A'],['2','B']]);
+    CellEditController.redo();
+    Store.transition('source:replace',{docId:'a',text:'replacement'});
+    CellEditController.undo();
+    assert.deepEqual(Store.getCard('a').ui.cellEdits,{});
+  });
   it('edits projected cells and undoes/redoes after their page has been released',()=>{
     TableRegistry.setResult({background:true,tables:[{name:'T1',headers:['A','B'],rows:[],rowCount:1000,remote:true}]});
     const record={d:['previous'],_sourceRow:100,_sourceCols:[1]};

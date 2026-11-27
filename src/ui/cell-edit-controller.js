@@ -1,4 +1,4 @@
-OTA.define('cell-edit-controller', ["runtime", "store", "dispatch", "table-registry"], ({$, Toast}, {Store}, {dispatch}, {TableRegistry}) => {
+OTA.define('cell-edit-controller', ["runtime", "dispatch", "table-registry"], ({$, Toast}, {dispatch}, {TableRegistry}) => {
 /* CellEditController — inline cell editing with undo/redo.
 
    Responsibilities:
@@ -6,9 +6,7 @@ OTA.define('cell-edit-controller', ["runtime", "store", "dispatch", "table-regis
    - Commit/cancel with Enter/Tab/Escape/blur
    - Non-destructive overlay in ui.cellEdits
    - 100-step undo/redo stacks
-   - Disabled for JOIN views (read-only)
-
-   App.setRawTablesForEditing(rawTables) must be called after each parse.
+   - Only a cell belonging to one identified source can be edited
 */
 
 const MAX_HISTORY = 100;
@@ -18,15 +16,8 @@ const CellEditController = {
     editHistory: [],
     editRedo: [],
 
-    /** @returns {Object[]} raw tables from the shared registry */
-    _getRawTables() {
-        return TableRegistry.getRaw();
-    },
-
-    /** Called by App after each successful parse (kept for backward compat). */
-    setRawTables(tables) {
-        // no-op: TableRegistry is now the single source of truth
-    },
+    /** Kept for callers that used to supply tables after parsing. TableRegistry now owns them. */
+    setRawTables() {},
 
     /**
      * Bind events on preview area. Called once from App.init().
@@ -56,8 +47,9 @@ const CellEditController = {
         const sourceRow = Number(td.dataset.sourceRow);
         const sourceCol = Number(td.dataset.sourceCol);
 
-        if (!tableName || !Number.isInteger(sourceRow) || !Number.isInteger(sourceCol)) {
-            Toast.show('JOIN 视图为只读，请编辑来源表', true);
+        const source = TableRegistry.cellSource(tableName,sourceRow,sourceCol);
+        if (!source) {
+            Toast.show('此单元格为只读，请编辑单一来源的原始表', true);
             return;
         }
 
@@ -92,13 +84,14 @@ const CellEditController = {
         const commit = () => {
             if (done) return;
             done = true;
-            const val = input.value;
+            const changed = CellEditController.apply(tableName, sourceRow, sourceCol, input.value, source);
+            if(!changed && input.value !== orig) Toast.show('预览或数据源已变化，请重新编辑此单元格',true);
+            const val = changed ? input.value : orig;
             if (input.parentNode === td) td.removeChild(input);
             td.textContent = val;
             td.classList.toggle('multiline-cell', String(val).includes('\n'));
             if (String(val).length > 18) td.dataset.full = val;
             else td.removeAttribute('data-full');
-            CellEditController.apply(tableName, sourceRow, sourceCol, val);
             td.style.height = '';
             td.style.minHeight = '';
             td.classList.remove('editing');
@@ -138,9 +131,9 @@ const CellEditController = {
     /**
      * Apply cell edit (persist overlay via dispatch + record history locally).
      */
-    apply(tableName, rowIdx, colIdx, value) {
-        const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
-        if (!TableRegistry.hasCell(tableName,rowIdx,colIdx)) return false;
+    apply(tableName, rowIdx, colIdx, value, openedSource) {
+        const source = TableRegistry.cellSource(tableName,rowIdx,colIdx);
+        if (!source || (openedSource && Object.keys(openedSource).some(key=>openedSource[key] !== source[key]))) return false;
 
         const current=TableRegistry.getCell(tableName,rowIdx,colIdx);
         if(current===undefined)return false;
@@ -148,12 +141,9 @@ const CellEditController = {
         const next = String(value ?? '');
         if (previous === next) return false;
 
-        // Persist via dispatch (single source of truth for Store writes)
-        dispatch('cell:edit', { table: tableName, row: rowIdx, col: colIdx, value: next });
-        // Apply to in-memory table immediately (synchronous with dispatch)
-        TableRegistry.updateCell(tableName,rowIdx,colIdx,next);
-
-        CellEditController.editHistory.push({ tableName, rowIdx, colIdx, previous, next });
+        const edit = {source, tableName, rowIdx, colIdx, previous, next};
+        if(!this._write(edit,next)) return false;
+        CellEditController.editHistory.push(edit);
         if (CellEditController.editHistory.length > MAX_HISTORY) CellEditController.editHistory.shift();
         CellEditController.editRedo = [];
 
@@ -164,8 +154,7 @@ const CellEditController = {
     undo() {
         const edit = CellEditController.editHistory.pop();
         if (!edit) return;
-        CellEditController._applySilent(edit.tableName, edit.rowIdx, edit.colIdx, edit.previous);
-        CellEditController.editRedo.push(edit);
+        if(this._write(edit,edit.previous)) CellEditController.editRedo.push(edit);
         CellEditController._updateButtons();
         dispatch('preview:renderRequested', {});
     },
@@ -173,18 +162,16 @@ const CellEditController = {
     redo() {
         const edit = CellEditController.editRedo.pop();
         if (!edit) return;
-        CellEditController._applySilent(edit.tableName, edit.rowIdx, edit.colIdx, edit.next);
-        CellEditController.editHistory.push(edit);
+        if(this._write(edit,edit.next)) CellEditController.editHistory.push(edit);
         CellEditController._updateButtons();
         dispatch('preview:renderRequested', {});
     },
 
     /** Apply edit without recording history. Uses dispatch for consistency. */
-    _applySilent(tableName, rowIdx, colIdx, value) {
-        const table = CellEditController._getRawTables().find(item => item.name === tableName && !item.isView);
-        if (!TableRegistry.hasCell(tableName,rowIdx,colIdx)) return;
-        dispatch('cell:edit', { table: tableName, row: rowIdx, col: colIdx, value });
-        TableRegistry.updateCell(tableName,rowIdx,colIdx,value);
+    _write({source,tableName,rowIdx,colIdx}, value) {
+        if(!dispatch('cell:edit', {...source, row:rowIdx, col:colIdx, value})) return false;
+        TableRegistry.updateCell(tableName,rowIdx,colIdx,value,source);
+        return true;
     },
 
     /** Clear all history when source changes. */

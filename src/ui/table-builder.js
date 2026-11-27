@@ -110,7 +110,7 @@ const TableBuilder = {
                 if (!r._readOnly) {
                     td.dataset.sourceRow = r._sourceRow;
                     td.dataset.sourceCol = r._sourceCols[cIdx];
-                    td.title = '双击编辑；修改会作为当前页签的修订保存';
+                    td.title = '双击编辑，修正保存在来源卡片';
                 }
                 tr.appendChild(td);
             });
@@ -194,7 +194,7 @@ const TableBuilder = {
                 if (!r._readOnly) {
                     td.dataset.sourceRow = r._sourceRow;
                     td.dataset.sourceCol = r._sourceCols[cIdx];
-                    td.title = '双击编辑；修改会作为当前页签的修订保存';
+                    td.title = '双击编辑，修正保存在来源卡片';
                 }
                 tr.appendChild(td);
             });

@@ -1311,13 +1311,18 @@ const Store = {
 
             // ── Cell editing ──
             case 'cell:edit': {
-                // Payload: { table, row, col, value }
+                // UI commands address a source revision. Legacy single-card callers omit it.
                 const tableName = payload && payload.table;
                 const rowIdx = payload && payload.row;
                 const colIdx = payload && payload.col;
-                if (!tableName || !Number.isInteger(rowIdx) || !Number.isInteger(colIdx)) return false;
-                const doc = this.curr();
+                if (!tableName || !Number.isInteger(rowIdx) || rowIdx < 0 || !Number.isInteger(colIdx) || colIdx < 0) return false;
+                if(!payload.docId && this.getActiveProject()?.cardIds.length > 1) return false;
+                const doc = this.getCard(payload.docId);
                 if(!doc) return false;
+                if(payload.docId && (!this.getActiveProject()?.cardIds.includes(doc.id) ||
+                    payload.sourceRevision !== doc.sourceRevision ||
+                    (payload.format && payload.format !== (doc.ui.importFormat || 'auto')) ||
+                    (payload.headerMode && payload.headerMode !== (doc.ui.importHeaderMode || 'auto')))) return false;
                 if (!doc.ui.cellEdits) doc.ui.cellEdits = {};
                 const tableKey = `$${tableName}`;
                 if (!doc.ui.cellEdits[tableKey]) doc.ui.cellEdits[tableKey] = {};
@@ -1325,7 +1330,7 @@ const Store = {
                 const value = payload.value !== undefined ? String(payload.value) : '';
                 doc.ui.cellEdits[tableKey][rowIdx][colIdx] = value;
                 this.save();
-                this._notify('cell:edited', { table: tableName, row: rowIdx, col: colIdx, value });
+                this._notify('cell:edited', { docId:doc.id, table: tableName, row: rowIdx, col: colIdx, value });
                 this._notify('state:changed', {});
                 return true;
             }

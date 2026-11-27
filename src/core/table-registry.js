@@ -70,15 +70,20 @@ const TableRegistry = {
      * Store the full parse result or Worker descriptors published by ExtractionSession.
      * @param {Object} result — ImportEngine.parse() return value
      */
-    setResult(result) {
+    setResult(result, readLocalDataset=null) {
         this._pageCells.clear();
+        this._previewScope=null;
         this._poolNames = [];
         this._previewSummary = null;
         this._diagnosticCount=result?.diagnosticCount ?? result?.diagnostics?.length ?? 0;
         this._background=!!result?.background;
+        this._readLocalDataset=readLocalDataset;
         this._datasetKey=result?.datasetKey;
         this._parseOptions=result?.parseOptions;
         this._sourceRevision=result?.sourceRevision;
+        const card = Store.getDocument();
+        this._localSource = card && {docId:card.id, sourceRevision:card.sourceRevision,
+            format:card.ui.importFormat || 'auto', headerMode:card.ui.importHeaderMode || 'auto'};
         if (!result) {
             this._raw = [];
             this._format = 'empty';
@@ -87,7 +92,10 @@ const TableRegistry = {
             this._candidates = [];
             return;
         }
-        this._raw = result.tables || [];
+        const edits = card?.ui.cellEdits;
+        const tables=result.tables || [];
+        if(readLocalDataset) this._raw = tables.map(table=>TableUtils.describeTable(table,{samples:true}));
+        else this._raw = this._background ? tables : tables.map(table=>TableUtils.withCellEdits(table, edits?.[`$${table.name}`]));
         this._format = result.format || 'empty';
         this._label = result.label || '';
         this._diagnostics = result.diagnostics || [];
@@ -115,42 +123,69 @@ const TableRegistry = {
         this._previewSummary = tables ? Object.freeze({tableCount:tables.length,
             rowCount:tables.reduce((sum, item) => sum + (item.res.totalRows ?? item.res.rows.length), 0)}) : null;
         this._pageCells.clear();
+        this._previewScope=this._background && tables?.length ? JSON.stringify(this.getProjectSources()) : null;
         if(!tables) return;
         for(const {table,res} of tables) {
-            if(table.isView || !table.remote)continue;
-            const cells=new Map();this._pageCells.set(table.name,cells);
+            if(!this._background || table.isView || !table.remote || table.editSource === null)continue;
+            const cells=new Map();this._pageCells.set(table.name,{table,cells});
             for(const record of res.rows)cells.set(record._sourceRow,{...record,d:record.d.slice()});
         }
     },
-    hasCell(name,row,col) {
-        const table=this.getTable(name);
-        return !!table && !table.isView && Number.isInteger(row) && row>=0 && row<(table.remote?table.rowCount:table.rows.length) && Number.isInteger(col) && col>=0 && col<table.headers.length;
+    cellSource(name,row,col) {
+        const table = this._background ? this._pageCells.get(name)?.table : this.getTable(name);
+        if(!table || table.isView || table.editSource === null || !Number.isInteger(row) || row<0 ||
+            row>=TableUtils.rowCount(table) || !Number.isInteger(col) || col<0 || col>=table.headers.length) return null;
+        if(this._background && this._previewScope !== JSON.stringify(this.getProjectSources())) return null;
+        const project = Store.getActiveProject();
+        if(this._background && !table.editSource && project?.cardIds.length !== 1) return null;
+        const source = table.editSource || (this._localSource && {...this._localSource,table:name});
+        const card = source && Store.getCard(source.docId);
+        if(!card || card.visible === false || !project?.cardIds.includes(card.id)) return null;
+        return { ...source, sourceRevision:source.sourceRevision ?? card.sourceRevision,
+            format:source.format ?? (card.ui.importFormat || 'auto'), headerMode:source.headerMode ?? (card.ui.importHeaderMode || 'auto') };
     },
+    hasCell(name,row,col) { return !!this.cellSource(name,row,col); },
     getCell(name,row,col) {
-        const table=this.getTable(name);if(!this.hasCell(name,row,col))return undefined;
-        if(!table.remote)return table.rows[row][col];
-        const record=this._pageCells.get(name)?.get(row),index=record?._sourceCols.indexOf(col);
+        if(!this.cellSource(name,row,col))return undefined;
+        if(!this._background)return this.getTable(name).rows[row][col];
+        const record=this._pageCells.get(name)?.cells.get(row),index=record?._sourceCols.indexOf(col);
         return index>=0?record.d[index]:undefined;
     },
-    updateCell(name,row,col,value) {
-        const table=this.getTable(name);if(!this.hasCell(name,row,col))return;
-        if(!table.remote){table.rows[row][col]=value;return;}
-        const record=this._pageCells.get(name)?.get(row),index=record?._sourceCols.indexOf(col);
+    updateCell(name,row,col,value,source) {
+        const current = this.cellSource(name,row,col);
+        if(!current || (source && (current.docId !== source.docId || current.table !== source.table))) return;
+        if(!this._background) {
+            const table=this.getTable(name);
+            const next=TableUtils.withCellEdits(table,{[row]:{[col]:value}});
+            this._raw=this._raw.map(item=>item===table ? next : item);
+            return;
+        }
+        const record=this._pageCells.get(name)?.cells.get(row),index=record?._sourceCols.indexOf(col);
         if(index>=0)record.d[index]=value;
+    },
+    getProjectSources() {
+        const project=Store.getActiveProject();
+        const cards=(project?.cardIds || []).map(id=>Store.getCard(id)).filter(Boolean);
+        const sources=cards.map(card=>({id:card.id, name:card.title || card.id}));
+        const visible=cards.flatMap((card,i)=>{
+            const activeHtml=this._localSource?.docId === card.id && this._localSource.sourceRevision === card.sourceRevision && this._parseOptions?.html;
+            if(card.visible === false || !(card.raw || activeHtml)) return [];
+            return [{...sources[i], sourceRevision:card.sourceRevision,
+                config:{format:card.ui.importFormat || 'auto', headerMode:card.ui.importHeaderMode || 'auto'}}];
+        });
+        return {sources,visible};
     },
     getBackgroundInput() {
         const doc=Store.getDocument();
         if(!doc || doc.sourceRevision!==this._sourceRevision)throw new Error('数据源已变化，请重新解析');
         const project=Store.getActiveProject() || {};
-        const sources=(project.cardIds || []).map(id => Store.getCard(id)).filter(Boolean)
-            .map(card => ({id:card.id, name:card.title || card.id}));
-        const visible=sources.filter(source => Store.getCard(source.id).visible !== false);
+        const {sources,visible}=this.getProjectSources();
         const cards=[];
         for(const v of visible) {
             const card=Store.getCard(v.id);
-            if(!card || !card.raw) continue;
-            const config={format:card.ui.importFormat || 'auto', headerMode:card.ui.importHeaderMode || 'auto'};
+            const config=v.config;
             cards.push({ id:card.id, sourceRevision:card.sourceRevision, raw:card.raw, config,
+                readLocalDataset:card.id === doc.id ? this._readLocalDataset : null,
                 options:card.id === doc.id && this._parseOptions ? this._parseOptions : {...config, html:''} });
         }
         const cardUis={};
@@ -236,8 +271,7 @@ const TableRegistry = {
 
     /** @deprecated Use setResult() instead */
     setRaw(tables) {
-        this._background=false;this._pageCells.clear();
-        this._raw = tables || [];
+        this.setResult({...this.getLastResult(),tables});
     },
 };
 

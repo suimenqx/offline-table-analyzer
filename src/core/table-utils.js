@@ -2,10 +2,34 @@ OTA.define('table-utils', [], () => {
 /* Table utilities — normalization, headers, cell types */
 const TableUtils = {
     MAX_CELLS:8000000,
+    /** A table revision shares all unmodified rows with its predecessor. */
+    withCellEdits(table, edits) {
+        if(!edits) return table;
+        let rows = table.rows;
+        for(const [rowKey, cells] of Object.entries(edits)) {
+            const index = Number(rowKey);
+            if(!Number.isInteger(index) || index < 0 || index >= rows.length || !cells || typeof cells !== 'object') continue;
+            const original = rows[index];
+            let row = original;
+            for(const [colKey, value] of Object.entries(cells)) {
+                const col = Number(colKey);
+                if(!Number.isInteger(col) || col < 0 || col >= table.headers.length) continue;
+                const next = String(value ?? '');
+                if(row[col] === next) continue;
+                if(row === original) row = original.slice();
+                row[col] = next;
+            }
+            if(row === original) continue;
+            if(rows === table.rows) rows = rows.slice();
+            rows[index] = row;
+        }
+        return rows === table.rows ? table : {...table, rows};
+    },
     rowCount(table) { return table.remote ? Math.max(0,Number(table.rowCount) || 0) : (table.rows || []).length; },
     describeTable(table,{samples=false}={}) {
         const descriptor={name:table.name,headers:table.headers,rows:[],rowCount:this.rowCount(table),remote:true,isView:!!table.isView,
             sourceType:table.sourceType,meta:table.meta,diagnostics:(table.diagnostics || []).slice(0,200)};
+        if('editSource' in table) descriptor.editSource = table.editSource;
         if(samples)descriptor.columnSamples=table.headers.map((_,col)=>{
             let sample='';
             for(let row=0;row<Math.min(1000,table.rows.length);row++){if(table.rows[row][col]?.trim()){sample=table.rows[row][col];break;}}

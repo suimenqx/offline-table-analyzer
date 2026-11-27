@@ -22,6 +22,19 @@ Termux 运行 `npm test` 与 release/architecture 校验；[本地 Firefox 检�
 
 ## 样本与正确性检查
 
+### 连续筛选的 Worker 开销（2026-11-27）
+
+在 Windows 桌面 Chromium 153.0.8010.12 中，对比 `f742afa` 与按行复制的实现。每版独立启动三个 Worker，用 `createLargeTableData()` 生成默认 10 万行 × 32 列样本。解析后通过 CDP 对 Worker 执行一次垃圾回收，然后依次调用 `WorkerRuntime.createSession()` 所建会话的 `preview`，筛选条件从 `ID>=7` 到 `ID>=12`，每次读取 Wide 表的 50 行。耗时取六次调用之和，堆用量取每次返回后通过 Worker 的 `Runtime.getHeapUsage` 读到的最大值。
+
+| 指标 | 原版三次结果 | 按行复制三次结果 |
+| --- | --- | --- |
+| 六次筛选累计耗时 | 204、200、201 ms | 69、77、71 ms |
+| 查询返回时采样的最大 Worker JS 堆 | 159、159、159 MiB | 82、82、82 MiB |
+
+采样覆盖六个查询返回点，查询执行期间的瞬时峰值和浏览器进程总内存另计。Node 回归同时限制新筛选物化的行数，并验证修正、撤销后已返回的表版本保留原值。
+
+### 大数据流程
+
 [生成器](../../tests/helpers/large-data.mjs)每次生成 10 万行 × 32 字段的 CLI table-data，加一张含重复关联键的 20 行 lookup 表。所有数据都是合成数据，巨大原文不提交仓库。
 
 - 短字段剪贴板输入重复三次，每次新浏览器 context。

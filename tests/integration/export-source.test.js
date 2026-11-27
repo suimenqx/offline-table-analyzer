@@ -426,6 +426,29 @@ describe('Excel export prepares the current source', () => {
     });
   }
 
+  for(const change of ['source','visibility','format']) {
+    it(`discards a completed workbook if a second participating card changes its ${change}`,async()=>{
+      const other=Store.curr();
+      replace('[{"id":"other"}]');
+      Store.transition('card:create',{});
+      await new Promise(resolve=>setTimeout(resolve,15));
+      replace('[{"id":"active"}]');
+      BackgroundService.parse=async payload=>Parser.parse(payload.text,payload.options);
+      await App.run(false);
+      const pending=deferred(),started=deferred();
+      BackgroundService.export=()=>{started.resolve();return pending.promise;};
+      const exporting=clickExport();
+      await started.promise;
+      if(change==='source') Store.transition('source:replace',{docId:other.id,text:'changed'});
+      if(change==='visibility') Store.transition('card:visible',{id:other.id,visible:false});
+      if(change==='format') Store.transition('import:setFormat',{docId:other.id,format:'csv'});
+      pending.resolve(new Blob(['stale workbook']));
+      await exporting;
+      assert.equal(downloads.length,0);
+      assert.ok(messages.some(message=>message.includes('参与导出的卡片')));
+    });
+  }
+
   it('shows parse failure and keeps the original instead of exporting old tables', async () => {
     replace(small); App.run(); replace('{broken JSON');
     Store.transition('import:setFormat', {format:'json'}); dom.getElementById('formatSelect').value = 'json';

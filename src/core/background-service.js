@@ -4,7 +4,8 @@ OTA.define('background-service', [], () => {
 const WORKER_SOURCE = '__OTA_WORKER_SOURCE__';
 const lanes=new Map();
 let nextId=0;
-const snapshotInput=input=>({...input,ui:JSON.parse(JSON.stringify(input.ui || {})),globalViews:JSON.parse(JSON.stringify(input.globalViews || []))});
+const snapshotInput=input=>({...input,ui:JSON.parse(JSON.stringify(input.ui || {})),
+    cardUis:JSON.parse(JSON.stringify(input.cardUis || {})),globalViews:JSON.parse(JSON.stringify(input.globalViews || []))});
 const abortError=()=>Object.assign(new Error('操作已取消，原文仍保留'),{name:'AbortError'});
 const cardVersion=card=>JSON.stringify([card.sourceRevision, (card.config || card.options)?.format || 'auto', (card.config || card.options)?.headerMode || 'auto']);
 const BackgroundService = {
@@ -63,13 +64,15 @@ const BackgroundService = {
             try {lane.worker.postMessage({id,kind,payload});} catch(error) {lane.jobs.delete(id);reject(error);}
         }));
     },
-    async parse({text,options={},key,sourceRevision,config}) {
+    async parse({text,options={},key,sourceRevision,config,readLocalDataset}) {
         let result;
-        await this.request('parse',{text,options,cardId:key},{
+        const version=cardVersion({sourceRevision,options,config});
+        const source=readLocalDataset ? {parsed:readLocalDataset()} : {text,options};
+        await this.request('parse',{...source,cardId:key,sourceRevision,config,version},{
             start:value=>{result=value;result.tables.forEach(table=>table.rows=[]);},
         });
         this.datasetKeys.add(key);
-        this._datasetVersions.set(key,cardVersion({sourceRevision,options,config}));
+        this._datasetVersions.set(key,version);
         return result;
     },
     async prepare(input) {
@@ -78,14 +81,17 @@ const BackgroundService = {
         for(const card of input.cards || []) {
             if(this.datasetKeys.has(card.id) && this._datasetVersions.get(card.id) === cardVersion(card)) continue;
             const result=await this.parse({text:card.raw || '', options:card.options || {}, key:card.id,
-                sourceRevision:card.sourceRevision, config:card.config});
+                sourceRevision:card.sourceRevision, config:card.config, readLocalDataset:card.readLocalDataset});
             parsed.push({context:{docId:card.id, sourceRevision:card.sourceRevision, options:card.options, config:card.config}, result});
         }
         return parsed;
     },
     async prepareMany(cards) { await this.prepare({cards}); },
-    removeCard(cardId) {
+    invalidateDataset(cardId) {
         this.datasetKeys.delete(cardId);this._datasetVersions.delete(cardId);
+    },
+    removeCard(cardId) {
+        this.invalidateDataset(cardId);
         const lane=lanes.get('compute');
         if(!lane) return Promise.resolve();
         return lane.ready.then(()=>this.request('removeCard',{cardId}));
@@ -98,7 +104,10 @@ const BackgroundService = {
     async export(input,mode) {
         input=snapshotInput(input);
         await this.prepare(input);
-        return this.request('excel',Object.assign(this.workerPayload(input),{mode}));
+        const payload=this.workerPayload(input);
+        const versions=new Map((input.cards || []).map(card=>[card.id,cardVersion(card)]));
+        const visible=payload.visible.map(card=>({...card,version:versions.get(card.id)}));
+        return this.request('excel',{...payload,visible,mode});
     },
     async joinRequest(kind,input,cfg,samples=false) {
         input=snapshotInput(input);

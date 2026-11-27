@@ -75,6 +75,65 @@ test('场景3：同名不同结构卡并列显示，互不合并',async({page,co
   await expect(page.locator('.table-title',{hasText:'CSV Table 1 (数据段 2)'})).toBeVisible();
 });
 
+test('拼接表只读，单来源编辑、撤销和重做写到该来源卡片',async({page})=>{
+  await page.goto('/index.html'); await prepare(page);
+  const input=page.locator('#rawInput');
+  await input.fill('id,label\n1,Apple'); await parse(page);
+  await page.locator('#addCardBtn').click();
+  await input.fill('id,label\n2,Berry'); await parse(page);
+  const tables=page.locator('#previewArea .table-container');
+  await expect(tables.first().locator('tbody tr')).toHaveCount(2);
+  await expect(tables.first()).toContainText('拼接 · 只读');
+  await tables.first().getByText('Apple',{exact:true}).dblclick();
+  await expect(page.locator('.cell-editor')).toHaveCount(0);
+  await expect(page.locator('#toast')).toContainText('只读');
+  await input.fill('id,other\n2,Berry'); await parse(page);
+  await expect(tables).toHaveCount(2);
+  const cell=tables.first().locator('tbody td').nth(1);
+  await cell.dblclick(); await cell.locator('textarea').fill('Edited Apple');
+  await cell.locator('textarea').press('Enter');
+  await expect(cell).toHaveText('Edited Apple');
+  await page.keyboard.press('Control+z'); await expect(cell).toHaveText('Apple');
+  await page.keyboard.press('Control+y'); await expect(cell).toHaveText('Edited Apple');
+  await cardList(page).first().locator('[data-card-act="visible"]').click();
+  await expect(tables).toHaveCount(1);
+  await expect(tables).toContainText('Berry');
+  await cardList(page).first().locator('[data-card-act="visible"]').click();
+  await expect(cell).toHaveText('Edited Apple');
+});
+
+test('HTML 卡参与同一表池，导出前确认其他可见卡的格式',async({page})=>{
+  await page.goto('/index.html'); await prepare(page);
+  const input=page.locator('#rawInput');
+  await input.fill('count,rate;note\n12,50;3\n9,90;4\n10,50;5');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#parseStatusText')).toContainText('请选择解析格式');
+  await page.locator('#addCardBtn').click();
+  await input.fill('<table><tr><th>ID</th><th>Name</th></tr><tr><td>001</td><td>Apple</td></tr></table>');
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#previewArea')).toContainText('Apple');
+  const cardName=await page.evaluate(()=>OTA.require('store').Store.getState().docs[0].title);
+  const downloads=[];
+  page.on('download',download=>downloads.push(download));
+  await page.locator('#exportFullBtn').click();
+  await expect(page.locator('#toast')).toContainText(cardName);
+  await expect(page.locator('#toast')).toContainText('解析格式');
+  expect(downloads).toHaveLength(0);
+  await cardList(page).first().locator('[data-card-act="visible"]').click();
+  const download = page.waitForEvent('download');
+  await page.locator('#exportFullBtn').click();
+  expect(await readSheet(await (await download).path(),1)).toEqual([['ID','Name'],['001','Apple']]);
+  await cardList(page).first().locator('[data-card-act="visible"]').click();
+  await cardList(page).first().click();
+  await parse(page);
+  await expect(page.locator('#previewArea .table-container')).toHaveCount(2);
+  const complete=page.waitForEvent('download');
+  await page.locator('#exportFullBtn').click();
+  const workbook=await (await complete).path();
+  expect(await readSheet(workbook,1)).toHaveLength(4);
+  expect(await readSheet(workbook,2)).toEqual([['ID','Name'],['001','Apple']]);
+});
+
 test('场景4：view 引用完整性——隐藏来源卡标记不可用、恢复自动复原',async({page,context})=>{
   test.setTimeout(120000);
   await grant(context);await page.goto('/index.html');await prepare(page);

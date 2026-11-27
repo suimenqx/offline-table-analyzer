@@ -48,6 +48,7 @@ function querySignature(ui, meta) {
 function cloneForResult(table) {
     return {
         name:table.name,
+        ...('editSource' in table ? {editSource:table.editSource && {...table.editSource}} : {}),
         headers:Array.isArray(table.headers) ? table.headers.slice() : [],
         rows:Array.isArray(table.rows) ? table.rows.map(row => row.slice()) : [],
         isView:!!table.isView,
@@ -63,10 +64,8 @@ const countCells = tables => tables.reduce((sum,table) => sum + table.rows.lengt
 function indexedQuery({rawTables=[], globalViews=[], ui={}, ...meta}={}) {
     const key = querySignature(ui, {...meta, globalViews, rawToken:objectIdentity(rawTables)});
     if (cache.has(key)) return cache.get(key);
-    const tables = QueryService.collectTables(rawTables, globalViews, ui).map((source, tIdx) => {
-        // Raw cells can be edited in place. Each query keeps one stable snapshot;
-        // JOIN output is already privately owned by this query.
-        const table = source.isView ? source : cloneForResult(source);
+    const tables = QueryService.collectTables(rawTables, globalViews, ui).map((table, tIdx) => {
+        // Both execution contexts publish a new table revision when a cell changes.
         const index = FilterEngine.indexTable(table, ui.rules?.[table.name] || {}, ui,
             ui.globalFilter, ui.enableHighlight, ui.onlyHighlighted);
         return {table, index, tIdx};
@@ -118,11 +117,11 @@ const QueryService = {
                 pool.push({ displayName:name, kind:'concat', sourceCardId:null, sourceCardIds:same.map(e => e.cardId),
                     columns:first.headers, rows:[].concat(...same.map(e => e.table.rows)) });
             } else if(same.length) {
-                pool.push({ displayName:name, kind:'single', sourceCardId:same[0].cardId, sourceCardIds:[same[0].cardId],
+                pool.push({ displayName:name, sourceName:name, kind:'single', sourceCardId:same[0].cardId, sourceCardIds:[same[0].cardId],
                     columns:same[0].table.headers, rows:same[0].table.rows });
             }
             for(const e of others) {
-                pool.push({ displayName:`${name} (${e.cardName})`, kind:'side', sourceCardId:e.cardId, sourceCardIds:[e.cardId],
+                pool.push({ displayName:`${name} (${e.cardName})`, sourceName:name, kind:'side', sourceCardId:e.cardId, sourceCardIds:[e.cardId],
                     columns:e.table.headers, rows:e.table.rows });
             }
         }
@@ -187,7 +186,7 @@ const QueryService = {
         const query = indexedQuery(input);
         if (!query.full) {
             const tables = query.tables.map(({table, index, tIdx}) => ({
-                table, res:{headers:index.headers, rows:index.readRows()}, tIdx
+                table:table.isView ? table : cloneForResult(table), res:{headers:index.headers, rows:index.readRows()}, tIdx
             }));
             query.full = Object.freeze({...query.meta, tables:Object.freeze(tables)});
         }
