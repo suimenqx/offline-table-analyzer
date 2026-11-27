@@ -90,10 +90,14 @@ test('场景4：view 引用完整性——隐藏来源卡标记不可用、恢�
   await page.locator('#jeName').fill('CrossCardView');
   await page.locator('#jeLeftTable').selectOption('CSV Table 1');
   await page.locator('#jeRightTable').selectOption('CSV Table 1 (数据段 2)');
+  await expect(page.getByRole('button',{name:'采用 id = id',exact:true})).toBeVisible();
   await page.locator('.je-rel-l').selectOption('id');
   await page.locator('.je-rel-r').selectOption('id');
   await page.locator('#jeLList input[value="name"]').check();
   await page.locator('#jeRList input[value="label"]').check();
+  const sample=page.getByRole('table',{name:'JOIN 结果样例'});
+  await expect(sample.locator('tbody tr')).toHaveCount(2);
+  await expect(sample.locator('tbody tr').first().locator('td')).toHaveText(['甲','标签一']);
   await page.locator('#jeSave').click();
   await expect(page.locator('#joinModal')).toHaveClass(/hidden/);
   await page.evaluate(()=>OTA.require('store').Store.transition('view:setEnabled',{enabledViews:['CrossCardView']}));

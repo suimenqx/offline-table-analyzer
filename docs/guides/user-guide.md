@@ -300,12 +300,16 @@ Click **New** (＋ 新建) beside **Enable JOIN views** in the configuration sid
    | Semi | One row per matched left row, using the first match for right-side fields |
    | Anti | Each unmatched left row |
 
-3. Pick one field from each source, or click **Match same-name fields** (匹配同名字段). Add a condition to match on a compound key. Each pair must match for the rows to join.
+3. Pick one field from each source, or choose a pair under **Recommended keys** (推荐关联键). Each suggestion explains the name or value evidence, shared sample values and repeat counts. Applying it fills a compatible condition or adds a new one. Existing complete conditions stay in place. **Match same-name fields** (匹配同名字段) pairs fields by name. All configured pairs must match for a compound key.
 4. Check **Match preview** (匹配预览). It shows output rows, matching pairs and unmatched rows on each side. Repeated keys can produce several matching pairs for one source row.
 
 ### 8.2 Output fields and order
 
 Search either source by field name and check the fields you need. **Select all** applies to the visible search results. **Only selected** shows the fields you have picked.
+
+Choose **左表全部＋右表补充** to select every left field followed by the right fields outside the configured match keys. **仅选左表** and **仅选右表** select all fields from one source. Presets replace the selection in source order and retain aliases on fields that remain selected.
+
+**Result examples** (结果样例) shows up to five actual output rows in the current column order. The first column identifies matched pairs and unmatched rows. Outer joins include examples of each kind present. Changing an alias or moving a column updates the sample immediately.
 
 In **Output columns** (输出列), enter a display alias, drag a row or use its arrow buttons to change its position. The remove button drops that field. Expand **Sorting and bulk actions** to move a selected field to either end, show columns from one side, rebuild the left-to-right order or clear selections.
 

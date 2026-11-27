@@ -161,3 +161,46 @@ describe('Joiner.stats', () => {
     assert.equal(stats, null);
   });
 });
+
+describe('JOIN designer assistance', () => {
+  it('ranks a foreign key ahead of a shared constant and explains sampled duplicates', () => {
+    const tables = [
+      {name:'订单', headers:['客户ID','状态','数量'], rows:[[0,'开',1],[2,'开',2],[2,'开',1]]},
+      {name:'客户', headers:['ID','状态','备注'], rows:[[0,'开','零'],[2,'开','二']]},
+    ];
+    const keys = Joiner.suggestKeys(tables, '订单', '客户');
+    assert.deepEqual([keys[0].l,keys[0].r], ['客户ID','ID']);
+    assert.equal(keys[0].common, 2);
+    assert.equal(keys[0].leftDuplicates, 1);
+    assert.equal(keys[0].rightDuplicates, 0);
+    assert.ok(!keys.some(k => k.l === '状态'));
+    tables[1].rows = [['0','开','零'],['2','开','二']];
+    assert.ok(!Joiner.suggestKeys(tables, '订单', '客户').some(k => k.l === '客户ID' && k.r === 'ID'));
+  });
+
+  for(const type of ['inner','left','right','full','semi','anti']) {
+    it(`projects representative ${type} examples with the saved result's headers and values`, () => {
+      const tables = basic.map(t => ({...t,rows:[...t.rows]}));
+      tables[1].rows.unshift(...Array.from({length:10}, (_,i) => ['1', String(i)]));
+      const config = {...cfg(type), select:'right.name as value,left.value,right.id'};
+      const stats = Joiner.stats(tables, config, [], [], {samples:true});
+      const sample = Joiner.projectSample(stats.sample, config.select);
+      const saved = Joiner.run(tables,config);
+      assert.deepEqual(sample.headers, saved.headers);
+      assert.equal(sample.rows.length, Math.min(5, saved.rows.length));
+      for(const row of sample.rows) assert.ok(saved.rows.some(savedRow => JSON.stringify(savedRow) === JSON.stringify(row.cells)));
+      const kinds = new Set(sample.rows.map(row => row.kind));
+      assert.equal(kinds.has('leftOnly'), ['left','full','anti'].includes(type));
+      assert.equal(kinds.has('rightOnly'), ['right','full'].includes(type));
+      assert.equal(kinds.has('matched'), type !== 'anti');
+    });
+  }
+
+  it('takes only five pairs from a many-to-many result that exceeds the materialization budget', () => {
+    const tables = ['L','R'].map(name => ({name,headers:['id'],rows:Array.from({length:2000}, () => ['x'])}));
+    const config = {...cfg('inner'),select:'left.id'};
+    const result = Joiner.stats(tables,config,[],[],{samples:true});
+    assert.equal(result.outRows, 4000000);
+    assert.equal(result.sample.pairs.length, 5);
+  });
+});

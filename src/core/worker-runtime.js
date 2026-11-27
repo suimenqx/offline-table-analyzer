@@ -94,7 +94,12 @@ const WorkerRuntime = {
             stats(payload) {
                 applyEdits(payload);
                 const { tables } = buildPool(payload.visible, payload.sources);
-                return Joiner.stats(tables,payload.cfg,payload.globalViews || []);
+                return Joiner.stats(tables,payload.cfg,payload.globalViews || [],[],{samples:payload.samples});
+            },
+            suggestKeys(payload) {
+                applyEdits(payload);
+                const {tables} = buildPool(payload.visible, payload.sources);
+                return Joiner.suggestKeys(tables,payload.cfg.left,payload.cfg.right,payload.globalViews || []);
             },
             excel(payload) {
                 applyEdits(payload);
@@ -126,6 +131,7 @@ const WorkerRuntime = {
                     } else if(kind==='excel') {
                         const bytes=session.excel(payload);port.postMessage({id,value:new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})});return;
                     } else if(kind==='stats')value=session.stats(payload);
+                    else if(kind==='suggestKeys')value=session.suggestKeys(payload);
                     else if(kind==='saveWorkspace')await WorkspaceStorage.write(payload.key,payload.workspace);
                     else if(kind==='loadWorkspace')value=await WorkspaceStorage.read(payload.key);
                     else if(kind==='pruneWorkspace')await WorkspaceStorage.prune(payload.prefix,payload.keep);

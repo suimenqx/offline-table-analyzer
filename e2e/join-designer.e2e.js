@@ -12,6 +12,51 @@ const source = [
   '1         3  40',
 ].join('\n');
 
+test('apply a suggested key and an output preset, then preview actual rows before saving', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#autoParseToggle').uncheck();
+  await page.locator('#rawInput').fill(source.replace('ID Name','CustomerID Name'));
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#datasetSummary')).toContainText('2 表');
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#newJoinBtn').click();
+  const editor = page.locator('#joinModal');
+  await editor.getByLabel('视图名称').fill('Enriched');
+  await editor.getByLabel('条件 1 左表字段').selectOption('validflag');
+  await editor.getByLabel('条件 1 右表字段').selectOption('validflag');
+  const candidate = editor.getByRole('button', {name:'采用 CustomerID = ID',exact:true});
+  await candidate.click();
+  await expect(candidate).toBeDisabled();
+  await expect(editor.getByLabel('条件 1 左表字段')).toHaveValue('validflag');
+  await expect(editor.getByLabel('条件 2 左表字段')).toHaveValue('CustomerID');
+  await editor.getByLabel('连接方式').selectOption('left');
+  await editor.getByRole('button', {name:'左表全部＋右表补充'}).click();
+  await expect(editor.locator('#jeRList input[value="ID"]')).not.toBeChecked();
+  await expect(editor.locator('#jeRList input[value="validflag"]')).not.toBeChecked();
+  const sample = editor.getByRole('table', {name:'JOIN 结果样例'});
+  await expect(sample.locator('tbody tr')).toHaveCount(2);
+  await expect(sample.locator('tbody tr').first()).toContainText('Alice');
+  await expect(sample.locator('tbody tr').last()).toContainText('仅左表');
+  await expect(sample.locator('tbody tr').last().locator('td').last()).toHaveText('');
+  await editor.getByLabel('Orders.Amount 的输出别名').fill('Total');
+  await expect(sample.locator('thead th').last()).toHaveText('Total');
+  await editor.getByRole('button', {name:'仅选右表'}).click();
+  await expect(editor.locator('#jeLCount')).toHaveText('0/3');
+  await expect(sample.locator('thead th').last()).toHaveText('Total');
+  await editor.getByRole('button', {name:'左表全部＋右表补充'}).click();
+  await editor.getByLabel('连接方式').selectOption('inner');
+  await editor.getByLabel('条件 2 左表字段').selectOption('Name');
+  await expect(editor.locator('#jeSample')).toContainText('没有输出行');
+  await expect(sample).toHaveCount(0);
+  await editor.getByLabel('条件 2 左表字段').selectOption('CustomerID');
+  await editor.getByLabel('连接方式').selectOption('left');
+  const expected = await sample.locator('tbody tr').evaluateAll(rows => rows.map(row => Array.from(row.querySelectorAll('td'), c => c.textContent)));
+  await editor.locator('#jeSave').click();
+  const saved = page.getByRole('table', {name:'JOIN:Enriched 列表头预览'});
+  await expect(saved.locator('tbody tr')).toHaveCount(2);
+  expect(await saved.locator('tbody tr').evaluateAll(rows => rows.map(row => Array.from(row.querySelectorAll('td'), c => c.textContent)))).toEqual(expected);
+});
+
 test('design a JOIN from the sidebar and inspect the effect before saving', async ({ page }) => {
   await page.goto('/index.html');
   await page.locator('#autoParseToggle').uncheck();

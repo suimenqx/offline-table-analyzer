@@ -41,4 +41,25 @@ describe('Worker-owned tables and page transport',()=>{
     const bytes=session.excel({visible,cardUis:{data:{...ui,globalFilter:'ID<=125'}},mode:'preview',ui:{...ui,globalFilter:'ID<=125'}});
     const rows=await readSheet(Buffer.from(bytes),'Wide');assert.equal(rows.length,126);assert.deepEqual(rows[101],[101,'changed']);
   });
+
+  it('uses corrected Worker rows for key suggestions and samples from chained views',()=>{
+    const {OTA}=loadModules(['worker-runtime']);
+    const session=OTA.require('worker-runtime').WorkerRuntime.createSession();
+    const {Joiner}=OTA.require('joiner');
+    const text=[
+      'table-data Orders','validflag ClientID Region','1 A E','1 B W','1 C E','',
+      'table-data Clients','validflag ID Region Label','1 A E Alpha','1 D W Delta',
+    ].join('\n');
+    session.parse({text,cardId:'doc'});
+    const views=[{view:'OrdersView',left:'Orders',right:'Orders',type:'semi',on:'ClientID=ClientID',select:'left.ClientID,left.Region'}];
+    const config={view:'Report',left:'OrdersView',right:'Clients',type:'left',on:'ClientID=ID,Region=Region',select:'right.Label as Customer,left.ClientID'};
+    const payload={visible:[{id:'doc',name:'Data'}],globalViews:views,cfg:config,
+      cardUis:{doc:{cellEdits:{$Clients:{1:{1:'B'}}}}},samples:true};
+    const recommendations=session.suggestKeys(payload);
+    assert.equal(recommendations.find(k=>k.l==='ClientID' && k.r==='ID').common,2);
+    const {sample}=session.stats(payload);
+    assert.deepEqual(Joiner.projectSample(sample,config.select),{headers:['Customer','ClientID'],rows:[
+      {kind:'matched',cells:['Alpha','A']},{kind:'matched',cells:['Delta','B']},{kind:'leftOnly',cells:['','C']},
+    ]});
+  });
 });

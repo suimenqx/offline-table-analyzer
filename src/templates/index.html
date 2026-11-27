@@ -432,9 +432,18 @@
                     </div>
                     <div id="jeRelContainer"></div>
                     <button class="sm" id="jeAddRel">添加条件</button>
+                    <details class="join-key-suggestions" open>
+                        <summary>推荐关联键</summary>
+                        <div id="jeKeySuggestions"></div>
+                    </details>
                 </section>
                 <section class="join-section">
                     <h3>选择输出字段</h3>
+                    <div class="join-presets" role="group" aria-label="快速选列">
+                        <button class="sm tonal" id="jePresetEnrich" title="按来源顺序选列，略过右表匹配字段，并保留已选字段的别名">左表全部＋右表补充</button>
+                        <button class="sm" id="jePresetLeft">仅选左表</button>
+                        <button class="sm" id="jePresetRight">仅选右表</button>
+                    </div>
                     <div class="join-fields">
                         <div class="join-source join-source-l">
                             <div class="join-field-heading"><strong>左表字段 <small id="jeLSourceName"></small></strong><span id="jeLCount"></span></div>
@@ -462,6 +471,10 @@
                 <section class="join-stats">
                     <div class="join-stats-head"><h3>匹配预览</h3><span class="join-shape" id="jeJoinShape" aria-hidden="true"><i></i></span></div>
                     <div id="jePreview" role="status" aria-live="polite"></div>
+                </section>
+                <section class="join-output">
+                    <div class="join-section-head"><h3>结果样例</h3><span id="jeSampleCount"></span></div>
+                    <div class="join-sample" id="jeSample"></div>
                 </section>
                 <section class="join-output">
                     <div class="join-section-head"><h3>输出列</h3><span id="jeStatus" role="status"></span></div>

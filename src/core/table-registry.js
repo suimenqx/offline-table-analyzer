@@ -162,7 +162,14 @@ const TableRegistry = {
         return { rawTables:this._raw, ui, globalViews:project.views || [], sources, visible, cardUis, cards,
             text:doc.raw, options:this._parseOptions, datasetKey:this._datasetKey, docId:doc.id, sourceRevision:doc.sourceRevision };
     },
-    getJoinStats(cfg) {return BackgroundService.stats(this.getBackgroundInput(),cfg);},
+    getJoinStats(cfg, {samples=false}={}) {
+        if(this.isBackground()) return BackgroundService.stats(this.getBackgroundInput(),cfg,samples);
+        return Joiner.stats(this.getQueryTables(),cfg,Store.getViews(),[],{samples});
+    },
+    getJoinSuggestions(left,right) {
+        if(this.isBackground()) return BackgroundService.joinRequest('suggestKeys',this.getBackgroundInput(),{left,right});
+        return Joiner.suggestKeys(this.getQueryTables(),left,right,Store.getViews());
+    },
 
     /** @returns {Object|null} a raw table by name, or null */
     getTable(name) {

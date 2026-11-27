@@ -1,4 +1,4 @@
-OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager","dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}, {dispatch}) => {
+OTA.define('join-editor', ["runtime","store","joiner","exporter","table-registry","modal-controller","view-manager","dispatch","table-builder"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Joiner}, {Exporter}, {TableRegistry}, {ModalController}, {ViewManager}, {dispatch}, {TableBuilder}) => {
 /* Project-scoped JOIN designer. */
 const JoinEditor = {
     state: { editIdx: -1, rels: [], lSel: [], rSel: [], order: [], dirty: false, lOnlySel: false, rOnlySel: false, showL: true, showR: true, prevLeft: null, prevRight: null, selectedOrderIdx: -1 },
@@ -14,6 +14,9 @@ const JoinEditor = {
         $('jeEnabled').onchange = () => this.markDirty();
         $('jeAddRel').onclick = () => this.addRel();
         $('jeAutoRel').onclick = () => this.autoMatchRels();
+        $('jePresetEnrich').onclick = () => this.applyPreset('enrich');
+        $('jePresetLeft').onclick = () => this.applyPreset('left');
+        $('jePresetRight').onclick = () => this.applyPreset('right');
         $('jeOrderRebuild').onclick = () => this.rebuildOrder();
         $('jeOrderClear').onclick = () => this.clearOrder();
         $('jeOrderLeftOnly').onclick = () => this.keepOnly('l');
@@ -199,6 +202,22 @@ const JoinEditor = {
     },
 
     /* ── Order sync ── */
+    applyPreset(preset) {
+        const left = TableRegistry.getCols($('jeLeftTable').value);
+        const right = TableRegistry.getCols($('jeRightTable').value);
+        const keys = new Set(this.state.rels.filter(rel => rel.l && rel.r).map(rel => rel.r));
+        this.state.lSel = preset === 'right' ? [] : left;
+        this.state.rSel = preset === 'left' ? [] : preset === 'right' ? right : right.filter(col => !keys.has(col));
+        const previous = new Map(this.state.order.map(o => [`${o.side}:${o.col}`,o]));
+        this.state.order = ['l','r'].flatMap(side => this.state[`${side}Sel`].map(col =>
+            previous.get(`${side}:${col}`) || {side,col,alias:''}));
+        this.state.selectedOrderIdx = -1;
+        this.renderSide('l');
+        this.renderSide('r');
+        this.renderSelectedOrder();
+        this.markDirty();
+        this.updateAll();
+    },
     syncOrderFromSelections() {
         const current = this.state.order[this.state.selectedOrderIdx];
         this.state.order = this.state.order.filter(o => this.state[`${o.side}Sel`].includes(o.col));
@@ -526,6 +545,58 @@ const JoinEditor = {
         Toast.show(`已自动匹配 ${this.state.rels.length} 个关联条件`);
     },
 
+    async loadSuggestions(left, right) {
+        const box = $('jeKeySuggestions');
+        const request = {};
+        this._suggestionRequest = request;
+        box.textContent = left && right ? '正在比较字段样本…' : '选定两张来源表后可查看推荐。';
+        if(!left || !right) return;
+        try {
+            const suggestions = await TableRegistry.getJoinSuggestions(left,right);
+            if(this._suggestionRequest !== request) return;
+            if(!suggestions.length) {
+                box.textContent = '样本中没有明确的候选，请手动选择匹配字段。';
+                return;
+            }
+            box.replaceChildren();
+            for(const item of suggestions) {
+                const row = document.createElement('div');
+                row.className = 'join-suggestion';
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'sm';
+                btn.textContent = `${item.l} = ${item.r}`;
+                btn.setAttribute('aria-label', `采用 ${btn.textContent}`);
+                btn.dataset.left = item.l;
+                btn.dataset.right = item.r;
+                btn.onclick = () => this.applySuggestion(item);
+                const reason = document.createElement('span');
+                reason.textContent = `${item.nameReason} · 共同值 ${item.common} 个 · 左样本重复 ${item.leftDuplicates}/${item.leftSampled} 行，右侧 ${item.rightDuplicates}/${item.rightSampled} 行`;
+                row.append(btn,reason);
+                box.appendChild(row);
+            }
+            this.updateSuggestionButtons();
+        } catch(error) {
+            if(this._suggestionRequest === request) box.textContent = `无法推荐关联键：${error.message}`;
+        }
+    },
+    updateSuggestionButtons() {
+        for(const button of $('jeKeySuggestions').querySelectorAll('button')) {
+            button.disabled = this.state.rels.some(rel => rel.l === button.dataset.left && rel.r === button.dataset.right);
+        }
+    },
+    applySuggestion({l,r}) {
+        const rels = this.state.rels;
+        if(rels.some(rel => rel.l === l && rel.r === r)) return;
+        let index = rels.findIndex(rel => (!rel.l || rel.l === l) && (!rel.r || rel.r === r));
+        if(index < 0) index = rels.length;
+        rels[index] = {l,r};
+        this.markDirty();
+        this.renderRels();
+        this.updateAll();
+        this.focusRel(index);
+    },
+
     updateRelMeta() {
         const left = $('jeLeftTable').value;
         const right = $('jeRightTable').value;
@@ -629,40 +700,61 @@ const JoinEditor = {
     },
     updateStatus() {
         $('jeStatus').textContent = `${this.state.order.length} 列`;
+        $('jePresetEnrich').disabled = !this.state.rels.some(rel => rel.l && rel.r);
+        $('jePresetLeft').disabled = !$('jeLeftTable').value;
+        $('jePresetRight').disabled = !$('jeRightTable').value;
+        this.updateSuggestionButtons();
         $('jeJoinShape').dataset.mode = $('jeType').value;
         $('jeTypeHint').textContent = {
             inner:'仅输出两侧匹配的行', left:'保留左表全部行', right:'保留右表全部行',
             full:'保留两侧全部行', semi:'每条匹配的左表行只输出一次', anti:'仅输出未匹配的左表行'
         }[$('jeType').value] || '';
     },
+    renderSample(request, select) {
+        if(!request.sample || request.select === select) return;
+        request.select = select;
+        const box = $('jeSample');
+        const projected = Joiner.projectSample(request.sample, select);
+        $('jeSampleCount').textContent = projected.headers.length ? `${projected.rows.length} 行` : '';
+        if(!projected.headers.length) box.textContent = '勾选输出字段或套用选列组合即可查看样例。';
+        else if(!projected.rows.length) box.textContent = '当前关联条件和连接方式没有输出行。';
+        else box.replaceChildren(TableBuilder.buildJoinSample(projected));
+    },
     async updatePreview() {
         const el = $('jePreview');
         const cfg = this.getCurrentConfig();
         if(!cfg.left || !cfg.right || !cfg.on || this.state.rels.some(r => !!r.l !== !!r.r)) {
             this._statsRequest = null;
+            $('jeSampleCount').textContent = '';
+            $('jeSample').textContent = '请先选好两侧的匹配字段。';
             el.textContent = cfg.left && cfg.right ? '选好两侧的匹配字段后，将显示输出行数。' : '请先解析数据，再选择参与关联的表。';
             return;
         }
         // Projection, aliases and the draft name do not affect row counts.
         const key = JSON.stringify([Store.revision, TableRegistry.isBackground(), cfg.left, cfg.right, cfg.on, cfg.type]);
-        if(this._statsRequest?.key === key) return;
+        if(this._statsRequest?.key === key) {
+            this.renderSample(this._statsRequest,cfg.select);
+            return;
+        }
         const request = {key};
         this._statsRequest = request;
+        $('jeSampleCount').textContent = '';
+        $('jeSample').textContent = '正在生成样例…';
         try {
-            let stats;
-            if(TableRegistry.isBackground()) {
-                el.textContent = '正在计算匹配行数…';
-                stats = await TableRegistry.getJoinStats(cfg);
-            } else {
-                stats = Joiner.stats(TableRegistry.getRaw(), cfg, Store.getViews());
-            }
+            if(TableRegistry.isBackground()) el.textContent = '正在计算匹配行数…';
+            const stats = await TableRegistry.getJoinStats(cfg,{samples:true});
             if(this._statsRequest !== request) return;
-            if(!stats) { el.textContent = '无法预览，请检查来源表与关联条件。'; return; }
+            if(!stats) { el.textContent = '无法预览，请检查来源表与关联条件。'; $('jeSample').textContent = ''; return; }
             const metrics = [['输出行数', stats.outRows], ['匹配对数', stats.matched], ['左表未匹配', stats.leftOnly], ['右表未匹配', stats.rightOnly]];
             el.innerHTML = `<dl class="join-metrics">${metrics.map(([label, value]) =>
                 `<div><dt>${label}</dt><dd>${value.toLocaleString()}</dd></div>`).join('')}</dl>`;
+            request.sample = stats.sample;
+            this.renderSample(request,this.buildSelectString());
         } catch(error) {
-            if(this._statsRequest === request) el.textContent = `预览失败：${error.message}`;
+            if(this._statsRequest === request) {
+                el.textContent = `预览失败：${error.message}`;
+                $('jeSample').textContent = '';
+            }
         }
     },
     updateDependencyInfo() {
@@ -767,6 +859,7 @@ const JoinEditor = {
         this.renderSelectedOrder();
         this.renderRels();
         this.updateDependencyInfo();
+        this.loadSuggestions(lName,rName);
         this.updateAll();
     },
 
@@ -790,7 +883,7 @@ const JoinEditor = {
         const p = $('joinModal'); p.classList.remove('hidden');
         ModalController.activate(p, $('jeName'));
         this._statsRequest = null;
-        for(const el of p.querySelectorAll('details')) el.open = false;
+        for(const el of p.querySelectorAll('details')) el.open = el.classList.contains('join-key-suggestions');
         for(const el of p.querySelectorAll('.join-body,.join-result,.join-setup')) el.scrollTop = 0;
         $('jeLSearch').value = '';
         $('jeRSearch').value = '';
@@ -862,6 +955,7 @@ const JoinEditor = {
         }
         this._statsRequest = null;
         $('joinModal').classList.add('hidden');
+        this._suggestionRequest = null;
         ModalController.deactivate($('joinModal'));
         document.body.classList.remove('modal-open');
     },

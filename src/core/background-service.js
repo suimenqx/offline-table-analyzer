@@ -100,7 +100,13 @@ const BackgroundService = {
         await this.prepare(input);
         return this.request('excel',Object.assign(this.workerPayload(input),{mode}));
     },
-    async stats(input,cfg) {input=snapshotInput(input);cfg=JSON.parse(JSON.stringify(cfg));await this.prepare(input);return this.request('stats',Object.assign(this.workerPayload(input),{cfg}));},
+    async joinRequest(kind,input,cfg,samples=false) {
+        input=snapshotInput(input);
+        const config={...cfg};
+        await this.prepare(input);
+        return this.request(kind,{...this.workerPayload(input),cfg:config,samples});
+    },
+    stats(input,cfg,samples=false) {return this.joinRequest('stats',input,cfg,samples);},
     storage(kind,payload) {return this.request(kind,payload,{},'storage');}
 };
 return {BackgroundService};

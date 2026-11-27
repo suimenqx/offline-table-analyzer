@@ -3,6 +3,26 @@ OTA.define('table-builder', ["runtime","filter-engine","table-utils"], ({$, crea
    preview tables. Extracted from app.js to keep the App orchestrator lean. */
 
 const TableBuilder = {
+    buildJoinSample({headers,rows}) {
+        const table = createEl('table');
+        table.setAttribute('aria-label','JOIN 结果样例');
+        const head = table.createTHead().insertRow();
+        const addHeading = (row, label, scope) => {
+            const th = createEl('th');
+            th.scope = scope;
+            th.textContent = label;
+            row.appendChild(th);
+        };
+        for(const header of ['匹配情况', ...headers]) addHeading(head, header, 'col');
+        const body = table.createTBody();
+        const kinds = {matched:'已匹配', leftOnly:'仅左表', rightOnly:'仅右表'};
+        for(const {kind,cells} of rows) {
+            const tr = body.insertRow();
+            addHeading(tr,kinds[kind],'row');
+            for(const value of cells) tr.insertCell().textContent = value;
+        }
+        return table;
+    },
 
     /**
      * Build a standard column-header preview <table>.

@@ -62,7 +62,7 @@ The generated file is intentionally kept as the only end-user artifact, while so
 | --- | --- |
 | `TableBuilder` | DOM construction for column-header and row-header preview tables. Accepts processed page data from `QueryService` and renders filterable `<table>` elements. |
 | `Select` | Visual-coordinate range selection, auto-scroll, row/column header selection modes, clipboard matrix construction |
-| `JoinEditor` | Owns the JOIN draft, designer controls, shortcuts and match preview. It keys preview requests by workspace revision and match settings so field selection, aliases and column order can change without recomputing row counts. App opens the designer and ViewManager handles the saved-view library. |
+| `JoinEditor` | Owns the JOIN draft, output presets, shortcuts and preview. TableRegistry routes key suggestions and statistics to the active query context. JoinEditor projects the cached examples with Joiner's output projection and passes them to TableBuilder, so aliases and column order can change without repeating the join. |
 | `SourceController` | Source input, keyed compact card DOM, independent editing/participation state, keyboard/focus/rename/reorder, clipboard/FileReader adaptation, full-source modal editing and source undo, file drag-and-drop, input resizer and extension-based format detection |
 | `source-column-editor` | Transient rectangular selections in both source textareas, browser text measurement shared with the line gutter, and native textarea edits. |
 | `CellEditController` | Inline cell editing with Enter/Tab/Escape/blur, non-destructive overlay persistence, 100-step undo/redo stacks |
