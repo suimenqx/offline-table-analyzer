@@ -403,6 +403,9 @@
         .join-chip-label { color:var(--text-strong); font-weight:650; font-size:13px; }
         .join-chip-label small { color:var(--text-mid); font-weight:400; font-size:11px; }
         .join-alias { width:100%; min-width:0; height:29px; border-radius:5px; border:1px solid var(--border); color:var(--text-strong); background:var(--bg-card); padding:0 6px; }
+        .join-alias[aria-invalid="true"] { border-color:var(--danger); }
+        .join-field-error { color:var(--danger); }
+        .join-alias-error { grid-column:1/-1; font-size:12px; }
         .join-chip-actions { display:flex; gap:1px; }
         .join-shell .icon-btn.sm { width:26px; height:30px; padding:0; border-color:transparent; box-shadow:none; }
         .join-order-tools { display:flex; flex-wrap:wrap; gap:8px; padding-top:8px; }

@@ -143,6 +143,8 @@ TableRegistry owns session-only card parse summaries (`recordParse` / `getCardSu
 
 The designer and enable selector call TableRegistry for activation checks. QueryService counts selected source cells and enabled view outputs before filtering, using Joiner statistics in the active Window or Worker context. The designer reuses its current row count for the same draft. Joiner checks intermediate results before expanding match groups.
 
+For draft repair, `TableRegistry.describeSource` returns the headers of a raw table or the schema and dependency diagnostic from `Joiner.describeView`. The designer keeps saved field references when that schema is unavailable. It uses the same output-token parser as the JOIN engine to check that a chosen field can be represented in the saved definition.
+
 Store plans a view edit against the active project so cycle and budget checks use the same source references and enabled names as the final transition. Store also maintains per-card JOIN settings and enumerates downstream views for rename and removal. The designer waits for the workspace write before reporting a successful save. These operations use the existing schema 22 fields.
 
 ### Cross-card JOIN editor catalog (2026-11-23)

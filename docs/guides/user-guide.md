@@ -313,6 +313,10 @@ Choose **左表全部＋右表补充** to select every left field followed by su
 
 In **Output columns** (输出列), enter a display alias, drag a row or use its arrow buttons to change its position. The remove button drops that field. Expand **Sorting and bulk actions** to move a selected field to either end, show columns from one side, rebuild the left-to-right order or clear selections.
 
+An English comma separates output columns in a saved definition. For a single heading such as `金额，含税`, use the Chinese comma `，`. The alias box flags an English comma as you type. Correcting it restores the sample immediately.
+
+If a source header contains JOIN syntax, the designer identifies the affected field before saving. For example, `ref=code` cannot serve as a match field, and `Net, USD` would split into two output fields. Change the header in the source or select a different field. A comma in a data cell is fine.
+
 ### 8.3 Saving and enabling
 
 The footer identifies the next item needed to save, including incomplete conditions, missing output fields, conflicting names and circular dependencies. Closing the designer with unsaved changes asks for confirmation.
@@ -324,6 +328,10 @@ The footer shows the expected rows, selected columns and cells for the current d
 When renaming a view, the designer lists the affected downstream views. Saving updates their source references, the enabled selection and per-card filters and preview settings together. Wait for the save confirmation before reloading. If local storage fails, the app reports the error and keeps the change in the current session so you can back up the workspace.
 
 For single and batch deletion, **管理** lists the surviving views that depend on the selection, including indirect references. Confirming deletes the selected definitions and disables their dependents. To repair a chain, edit the view that used the deleted source, select its replacement and check the match fields and output columns. Then use **启用 JOIN 视图** to re-enable the results you want to display.
+
+When editing an older view, **来源不可用** marks a source outside the current table pool. The designer keeps its saved name, match fields, output order and aliases. Restore the source (for example, show its hidden card and reopen the designer), or choose a replacement. Matching field names carry over. If a switch would remove fields, the confirmation lists them and applies only to the side you changed. For a source whose headers have changed, replace any match field marked **字段缺失** and remove or restore the missing output fields before saving.
+
+If the source is another saved view, the footer identifies the unavailable dependency or match condition. Repair that upstream view first, then reopen the dependent view. Its field selections and aliases are preserved while its source is unavailable.
 
 ### 8.4 Keyboard shortcuts
 

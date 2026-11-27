@@ -12,6 +12,130 @@ const source = [
   '1         3  40',
 ].join('\n');
 
+async function editSavedView(page, fields, otherViews = []) {
+  await page.goto('/index.html');
+  await page.locator('#rawInput').fill(source);
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#datasetSummary')).toContainText('2 表');
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#manageViewsBtn').click();
+  const library = page.locator('#modalContent');
+  await library.getByText('从 JSON 导入视图').click();
+  const view = {view:'Report',type:'inner',left:'Customers',right:'Orders',on:'ID=ID',...fields};
+  await library.getByLabel('视图 JSON 配置').fill(JSON.stringify([view,...otherViews]));
+  await library.getByRole('button',{name:'导入配置'}).click();
+  await library.locator('#jeEdit_0').click();
+  return page.locator('#joinModal');
+}
+
+test('repair missing sources one side at a time without losing saved keys, order or aliases', async ({page}) => {
+  const select = 'right.Amount as Total,left.Name as Customer,left.ID';
+  const editor = await editSavedView(page,{left:'Old customers',right:'Old orders',select:select+',left.LegacyName'});
+  const left = editor.getByLabel('左表',{exact:true});
+  const right = editor.getByLabel('右表',{exact:true});
+  await expect(left).toHaveValue('Old customers');
+  await expect(right).toHaveValue('Old orders');
+  await expect(editor.locator('#jeWarn')).toContainText('Old customers');
+  await expect(editor.locator('#jeSave')).toBeDisabled();
+  await expect(editor.locator('#jeDirty')).toBeHidden();
+  await left.selectOption('Orders'); // Default dialog dismissal cancels the loss of Name.
+  await expect(left).toHaveValue('Old customers');
+  let impact;
+  page.once('dialog',async dialog => {
+    impact = dialog.message();
+    await dialog.accept();
+  });
+  await left.selectOption('Customers');
+  expect(impact).toContain('LegacyName');
+  expect(impact).not.toContain('Amount');
+  await expect(editor.getByLabel('条件 1 右表字段')).toHaveValue('ID');
+  await expect(editor.getByLabel('Old orders.Amount 的输出别名')).toHaveValue('Total');
+  await expect(editor.locator('#jeWarn')).toContainText('Old orders');
+  await right.selectOption('Orders');
+  await expect(editor.locator('#jeSample thead th')).toHaveText(['匹配情况','Total','Customer','ID']);
+  await editor.locator('#jeSave').click();
+  await expect(editor).toBeHidden();
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ota_v21_workspace')).projects[0].views[0]))
+    .toMatchObject({left:'Customers',right:'Orders',on:'ID=ID',select});
+});
+
+test('repair missing fields after a source schema change', async ({page}) => {
+  const editor = await editSavedView(page,{on:'FormerID=ID',select:'left.Name,right.Retired as OldTotal'});
+  const key = editor.getByLabel('条件 1 左表字段');
+  await expect(key).toHaveValue('FormerID');
+  await expect(key.locator('option:checked')).toContainText('字段缺失');
+  await expect(editor.locator('#jeDirty')).toBeHidden();
+  await key.selectOption('ID');
+  await expect(editor.locator('#jeSave')).toBeDisabled();
+  await expect(editor.locator('#jeWarn')).toContainText('Orders.Retired');
+  await expect(editor.locator('.join-chip').filter({hasText:'Retired'})).toContainText('字段缺失');
+  await editor.getByRole('button',{name:'移除 Orders.Retired'}).click();
+  await editor.locator('#jeRList input[value="Amount"]').check();
+  await expect(editor.locator('#jeSample')).toContainText('20');
+  await editor.locator('#jeSave').click();
+  await expect(editor).toBeHidden();
+});
+
+test('an unavailable upstream view identifies its missing source and preserves downstream fields', async ({page}) => {
+  const upstream = {view:'Lookup',left:'Old customers',right:'Orders',type:'left',on:'ID=ID',select:'left.ID,left.Name'};
+  const editor = await editSavedView(page,{select:'left.Name as Customer'},[upstream]);
+  await editor.getByLabel('左表',{exact:true}).selectOption('Lookup');
+  await expect(editor.locator('#jeWarn')).toContainText('Old customers');
+  await expect(editor.getByLabel('条件 1 左表字段')).toHaveValue('ID');
+  await expect(editor.getByLabel('Lookup.Name 的输出别名')).toHaveValue('Customer');
+  await expect(editor.locator('#jeSave')).toBeDisabled();
+  await editor.getByLabel('左表',{exact:true}).selectOption('Customers');
+  await expect(editor.locator('#jeSample thead th').last()).toHaveText('Customer');
+  await expect(editor.locator('#jeSave')).toBeEnabled();
+});
+
+test('an ambiguous alias is identified in place and correcting it restores the sample', async ({page}) => {
+  const editor = await editSavedView(page,{select:'right.Amount as 金额，含税'});
+  const alias = editor.getByLabel('Orders.Amount 的输出别名');
+  await expect(editor.locator('#jeSample thead th').last()).toHaveText('金额，含税');
+  await alias.fill('金额,含税');
+  await expect(alias).toHaveAttribute('aria-invalid','true');
+  await expect(alias).toHaveAccessibleDescription(/英文逗号/);
+  await expect(editor.locator('#jeSave')).toBeDisabled();
+  await expect(editor.locator('#jeSize')).toContainText('1 行 × 1 列');
+  await expect(editor.locator('#jeSample table')).toHaveCount(0);
+  await alias.press('Control+Enter');
+  await expect(alias).toBeFocused();
+  await alias.fill('金额，含税');
+  await expect(editor.locator('#jeSample thead th').last()).toHaveText('金额，含税');
+  await alias.press('Control+Enter');
+  await expect(editor).toBeHidden();
+});
+
+test('a separator in a source field cannot silently change the saved condition or output', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#rawInput').fill(JSON.stringify([{id:1,'ref=code':7,'Net, USD':19,'Tax: USD':2}]));
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#datasetSummary')).toContainText('1 表');
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#newJoinBtn').click();
+  const editor = page.locator('#joinModal');
+  await editor.getByLabel('视图名称').fill('Totals');
+  await editor.getByLabel('在当前工程启用').uncheck();
+  const leftKey = editor.getByLabel('条件 1 左表字段');
+  await leftKey.selectOption('ref=code');
+  await editor.getByLabel('条件 1 右表字段').selectOption('id');
+  await editor.locator('#jeLList input[value="id"]').check();
+  await expect(editor.locator('#jeWarn')).toContainText('ref=code');
+  await expect(editor.locator('#jeSave')).toBeDisabled();
+  await leftKey.selectOption('id');
+  for(const name of ['Net, USD','Tax: USD']) {
+    const field = editor.locator('#jeLList').getByRole('checkbox',{name,exact:true});
+    await field.check();
+    await expect(editor.locator('#jeWarn')).toContainText(name);
+    await expect(editor.locator('#jeSave')).toBeDisabled();
+    await expect(editor.locator('#jeSample table')).toHaveCount(0);
+    await field.uncheck();
+  }
+  await expect(editor.locator('#jeSave')).toBeEnabled();
+  await expect(editor.locator('#jeSample thead th')).toHaveText(['匹配情况','id']);
+});
+
 test('an outer join preset follows the join type and preserves the right-only identifier', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('#rawInput').fill(source);

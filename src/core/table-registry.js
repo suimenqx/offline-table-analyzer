@@ -216,17 +216,20 @@ const TableRegistry = {
         return [...raws, ...views];
     },
 
-    /** @returns {string[]} column headers for a table or view by name */
-    getCols(tableName) {
-        if (!tableName) return [];
-        const raw = this.getAvailableRawTables().find(t => t.name === tableName);
-        if (raw) return raw.headers.slice();
+    /** Resolve headers and preserve the reason an upstream schema is unavailable. */
+    describeSource(tableName) {
+        if (!tableName) return {headers:[]};
+        const rawTables = this.getAvailableRawTables();
+        const raw = rawTables.find(t => t.name === tableName);
+        if (raw) return {headers:raw.headers.slice()};
         const views = Store.getViews() || [];
         const view = views.find(v => v.view === tableName);
-        if (view) {
-            return Joiner.getHeaders(this.getAvailableRawTables(),view,views);
-        }
-        return [];
+        return view ? Joiner.describeView(rawTables,view,views)
+            : {headers:[],error:`来源“${tableName}”不在当前表池`};
+    },
+    /** @returns {string[]} column headers for a table or view by name */
+    getCols(tableName) {
+        return this.describeSource(tableName).headers;
     },
 
     // ── Backward-compatible alias (setRaw still works, used by old callers) ──
