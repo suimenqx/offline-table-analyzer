@@ -408,6 +408,8 @@
         .join-order-tools { display:flex; flex-wrap:wrap; gap:8px; padding-top:8px; }
         .join-empty { background:var(--bg-elevated); border-radius:6px; padding:16px 10px; line-height:1.6; }
         .join-foot { border-top:1px solid var(--border); }
+        .join-save-info { min-width:0; font-size:12px; overflow-wrap:anywhere; max-height:18vh; overflow:auto; }
+        #jeSize { color:var(--text-strong); font-variant-numeric:tabular-nums; }
         #jeWarn { font-size:12px; color:var(--text-mid); overflow-wrap:anywhere; }
         #jeWarn.ok { color:var(--success); }
         #jeWarn.warning { color:var(--warning); }
@@ -430,6 +432,9 @@
         .view-item-info small { display:block; color:var(--text-mid); font-size:12px; margin-top:3px; }
         .view-item-type { display:inline-block; margin-left:8px; font:600 10px var(--font-mono); color:var(--success); }
         .view-actions { gap:4px; flex-wrap:wrap; }
+        .view-delete-impact, .view-budget-error { font-size:13px; color:var(--text-strong); overflow-wrap:anywhere; }
+        .view-actions:has(.view-delete-impact:not(:empty)) { flex-basis:100%; }
+        .view-delete-impact:not(:empty) { flex-basis:100%; }
         .view-actions[hidden], .view-batch[hidden] { display:none; }
         .view-import { border-top:1px solid var(--border); padding-top:8px; }
         .view-import textarea { margin:8px 0; height:80px; }

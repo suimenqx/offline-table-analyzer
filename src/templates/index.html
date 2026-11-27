@@ -440,7 +440,7 @@
                 <section class="join-section">
                     <h3>选择输出字段</h3>
                     <div class="join-presets" role="group" aria-label="快速选列">
-                        <button class="sm tonal" id="jePresetEnrich" title="按来源顺序选列，略过右表匹配字段，并保留已选字段的别名">左表全部＋右表补充</button>
+                        <button class="sm tonal" id="jePresetEnrich">左表全部＋右表补充</button>
                         <button class="sm" id="jePresetLeft">仅选左表</button>
                         <button class="sm" id="jePresetRight">仅选右表</button>
                     </div>
@@ -495,7 +495,11 @@
             </aside>
         </div>
         <footer class="join-foot">
-            <div id="jeWarn" role="status"></div>
+            <div class="join-save-info" role="status">
+                <div id="jeRenameImpact"></div>
+                <div id="jeSize"></div>
+                <div id="jeWarn"></div>
+            </div>
             <div class="join-save-actions">
                 <label class="join-toggle"><input type="checkbox" id="jeEnabled">在当前工程启用</label>
                 <button id="jeCancel">取消</button>

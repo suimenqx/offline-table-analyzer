@@ -11,7 +11,7 @@ const JoinEditor = {
         ViewManager.setEditCallback(idx => this.open(idx));
         $('jeCancel').onclick = () => this.close();
         $('jeSave').onclick = () => this.save();
-        $('jeEnabled').onchange = () => this.markDirty();
+        $('jeEnabled').onchange = () => { this.markDirty(); this.updateSaveState(); };
         $('jeAddRel').onclick = () => this.addRel();
         $('jeAutoRel').onclick = () => this.autoMatchRels();
         $('jePresetEnrich').onclick = () => this.applyPreset('enrich');
@@ -121,8 +121,18 @@ const JoinEditor = {
         const pooled = TableRegistry.getAvailableRawTables().find(t => t.name === name);
         if(pooled) return {...pooled,remote:true};
         const view = Store.getViews().find(v => v.view === name);
-        if(view && TableRegistry.isBackground())return {headers:TableRegistry.getCols(name),rows:[],isView:true};
-        if(view) return Joiner.run(TableRegistry.getRaw(), view, Store.getViews());
+        if(view) {
+            if(this.viewSamples.has(name)) return this.viewSamples.get(name);
+            const table = {headers:TableRegistry.getCols(name),rows:[],isView:true};
+            if(!TableRegistry.isBackground()) {
+                try {
+                    const sample = TableRegistry.getJoinStats(view,{samples:true})?.sample;
+                    if(sample) table.rows = Joiner.projectSample(sample,view.select).rows.map(row => row.cells);
+                } catch { /* The live preview reports unavailable or oversized sources. */ }
+            }
+            this.viewSamples.set(name,table);
+            return table;
+        }
         return null;
     },
 
@@ -183,6 +193,7 @@ const JoinEditor = {
     },
 
     selectColumns(side, cols, checked) {
+        this.state.enrichActive = false;
         const selected = this.state[`${side}Sel`];
         for(const col of cols) {
             const idx = selected.indexOf(col);
@@ -203,11 +214,19 @@ const JoinEditor = {
 
     /* ── Order sync ── */
     applyPreset(preset) {
+        this.state.enrichActive = preset === 'enrich';
+        this.setPresetColumns(preset);
+        this.markDirty();
+        this.updateAll();
+    },
+    setPresetColumns(preset) {
         const left = TableRegistry.getCols($('jeLeftTable').value);
         const right = TableRegistry.getCols($('jeRightTable').value);
         const keys = new Set(this.state.rels.filter(rel => rel.l && rel.r).map(rel => rel.r));
+        const keepRightKeys = ['right','full'].includes($('jeType').value);
         this.state.lSel = preset === 'right' ? [] : left;
-        this.state.rSel = preset === 'left' ? [] : preset === 'right' ? right : right.filter(col => !keys.has(col));
+        this.state.rSel = preset === 'left' ? [] : preset === 'right' || keepRightKeys ? right : right.filter(col => !keys.has(col));
+        this._presetKeys = this.presetKeySignature();
         const previous = new Map(this.state.order.map(o => [`${o.side}:${o.col}`,o]));
         this.state.order = ['l','r'].flatMap(side => this.state[`${side}Sel`].map(col =>
             previous.get(`${side}:${col}`) || {side,col,alias:''}));
@@ -215,8 +234,9 @@ const JoinEditor = {
         this.renderSide('l');
         this.renderSide('r');
         this.renderSelectedOrder();
-        this.markDirty();
-        this.updateAll();
+    },
+    presetKeySignature() {
+        return JSON.stringify([['right','full'].includes($('jeType').value), this.buildOnString(this.state.rels)]);
     },
     syncOrderFromSelections() {
         const current = this.state.order[this.state.selectedOrderIdx];
@@ -341,6 +361,7 @@ const JoinEditor = {
     moveOrder(idx, delta) {
         const target = idx + delta;
         if(target < 0 || target >= this.state.order.length) return;
+        this.state.enrichActive = false;
         const [item] = this.state.order.splice(idx, 1);
         this.state.order.splice(target, 0, item);
         this.state.selectedOrderIdx = target;
@@ -351,6 +372,7 @@ const JoinEditor = {
     },
     moveOrderTo(from, to) {
         if(from < 0 || to < 0 || from === to) return;
+        this.state.enrichActive = false;
         const [item] = this.state.order.splice(from, 1);
         const adjustTo = to > from ? to - 1 : to;
         this.state.order.splice(adjustTo, 0, item);
@@ -365,6 +387,7 @@ const JoinEditor = {
             Toast.show('请先在输出列表中点击选中一列');
             return;
         }
+        this.state.enrichActive = false;
         const [item] = this.state.order.splice(idx, 1);
         if(pos === 'top') {
             this.state.order.unshift(item);
@@ -380,6 +403,7 @@ const JoinEditor = {
     removeOrder(idx) {
         const item = this.state.order[idx];
         if(!item) return;
+        this.state.enrichActive = false;
         this.state.order.splice(idx, 1);
         const arr = item.side === 'l' ? this.state.lSel : this.state.rSel;
         const sIdx = arr.indexOf(item.col);
@@ -404,6 +428,7 @@ const JoinEditor = {
     clearOrder() {
         if(this.state.order.length === 0) return;
         if(!confirm(`清空全部 ${this.state.order.length} 个输出列及其别名？`)) return;
+        this.state.enrichActive = false;
         this.state.lSel = [];
         this.state.rSel = [];
         this.state.order = [];
@@ -419,6 +444,7 @@ const JoinEditor = {
         if(removeCount === 0) return;
         const sideName = side === 'l' ? '右表' : '左表';
         if(!confirm(`确定移除全部 ${sideName} 输出列（${removeCount} 列）吗？`)) return;
+        this.state.enrichActive = false;
         if(side === 'l') this.state.rSel = [];
         if(side === 'r') this.state.lSel = [];
         this.state.order = this.state.order.filter(o => o.side === side);
@@ -670,9 +696,16 @@ const JoinEditor = {
         if(this.state.order.length === 0) errors.push('至少选择一个输出列');
 
         const cfg = this.getCurrentConfig();
-        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(cfg, Store.getViews(), TableRegistry.getAvailableRawTables().map(t => t.name))) {
+        const rawNames = TableRegistry.getAvailableRawTables().map(t => t.name);
+        const previous = Store.getViews()[this.state.editIdx]?.view;
+        const renaming = previous && name && previous !== name;
+        const planned = renaming ? Store.planViewUpsert({index:this.state.editIdx,view:cfg,rawNames})?.views : null;
+        const views = planned || Store.getViews();
+        const proposed = planned?.[this.state.editIdx] || cfg;
+        if(name && leftVal && rightVal && Joiner.hasDependencyCycle(proposed, views, rawNames)) {
             errors.push('视图依赖会形成循环引用');
         }
+        const affected = renaming ? Store.getDependentViews([previous],rawNames) : [];
 
         // Dedup warnings
         const headers = this.state.order.map(o => (o.alias || o.col || '').trim()).filter(Boolean);
@@ -687,20 +720,47 @@ const JoinEditor = {
             warnings.push(`输出列将自动去重: ${uniqueDupes.join(', ')}`);
         }
 
-        return { ok: errors.length === 0, errors, warnings };
+        return { ok: errors.length === 0, errors, warnings, affected };
     },
 
+    enabledDependents() {
+        const original = Store.getViews()[this.state.editIdx];
+        if(!original) return [];
+        const rawNames = TableRegistry.getAvailableRawTables().map(t => t.name);
+        return Store.getDependentViews([original.view],rawNames).filter(name => Store.getEnabledViews().includes(name));
+    },
+    activationState() {
+        const request = this._statsRequest;
+        const rows = request?.outRows, columns = Joiner.buildSelectTokens(this.buildSelectString()).length;
+        const enabled = $('jeEnabled').checked;
+        const issue = request?.error || (rows != null ? Joiner.sizeWarning(rows,columns) : '');
+        const dependents = enabled ? [] : this.enabledDependents();
+        const active = enabled || (dependents.length > 0 && !issue);
+        const pending = active && rows == null && !issue;
+        return {rows,columns,enabled,issue,dependents,active,pending,blocked:pending || (enabled && !!issue)};
+    },
     updateSaveState() {
-        const {ok, errors, warnings} = this.validate();
+        const {ok, errors, warnings, affected} = this.validate();
+        $('jeRenameImpact').textContent = affected.length ? `改名后将同步更新来源引用，涉及 ${affected.join('、')}。` : '';
+        const {rows,columns,enabled,issue,dependents,pending,blocked} = this.activationState();
+        $('jeSize').textContent = rows != null && columns ? `预计 ${rows.toLocaleString('zh-CN')} 行 × ${columns} 列 · ${(rows*columns).toLocaleString('zh-CN')} 个单元格` : '';
+        let advice = '';
+        if(issue) {
+            advice = enabled ? '。可取消启用，先保存配置。' : '。将保存为未启用。';
+            if(dependents.length) advice += `保存时也将停用依赖此来源的 ${dependents.join('、')}。`;
+        }
         const warn = $('jeWarn');
-        warn.textContent = errors[0] || warnings[0] || '可以保存';
+        warn.textContent = errors[0] || this._saveError || (this._saveRequest && '正在核对启用后的合计规模…')
+            || issue + advice || (pending && '正在核对结果规模…') || warnings[0] || '可以保存';
         warn.title = [...errors, ...warnings].join('\n');
-        warn.className = ok ? (warnings.length ? 'warning' : 'ok') : '';
-        $('jeSave').disabled = !ok;
+        warn.className = ok ? (issue || this._saveError || warnings.length ? 'warning' : 'ok') : '';
+        $('jeSave').disabled = !ok || blocked || !!this._saveRequest;
     },
     updateStatus() {
         $('jeStatus').textContent = `${this.state.order.length} 列`;
         $('jePresetEnrich').disabled = !this.state.rels.some(rel => rel.l && rel.r);
+        $('jePresetEnrich').title = ['right','full'].includes($('jeType').value)
+            ? '保留右表匹配字段，便于识别仅右表的行' : '略过右表匹配字段，保留已选字段的别名';
         $('jePresetLeft').disabled = !$('jeLeftTable').value;
         $('jePresetRight').disabled = !$('jeRightTable').value;
         this.updateSuggestionButtons();
@@ -736,7 +796,7 @@ const JoinEditor = {
             this.renderSample(this._statsRequest,cfg.select);
             return;
         }
-        const request = {key};
+        const request = {key,revision:Store.revision};
         this._statsRequest = request;
         $('jeSampleCount').textContent = '';
         $('jeSample').textContent = '正在生成样例…';
@@ -744,17 +804,21 @@ const JoinEditor = {
             if(TableRegistry.isBackground()) el.textContent = '正在计算匹配行数…';
             const stats = await TableRegistry.getJoinStats(cfg,{samples:true});
             if(this._statsRequest !== request) return;
-            if(!stats) { el.textContent = '无法预览，请检查来源表与关联条件。'; $('jeSample').textContent = ''; return; }
+            if(!stats) { request.error = '无法核对来源表与关联条件'; el.textContent = request.error; $('jeSample').textContent = ''; return; }
             const metrics = [['输出行数', stats.outRows], ['匹配对数', stats.matched], ['左表未匹配', stats.leftOnly], ['右表未匹配', stats.rightOnly]];
             el.innerHTML = `<dl class="join-metrics">${metrics.map(([label, value]) =>
                 `<div><dt>${label}</dt><dd>${value.toLocaleString()}</dd></div>`).join('')}</dl>`;
             request.sample = stats.sample;
+            request.outRows = stats.outRows;
             this.renderSample(request,this.buildSelectString());
         } catch(error) {
             if(this._statsRequest === request) {
+                request.error = `无法核对结果规模：${error.message}`;
                 el.textContent = `预览失败：${error.message}`;
                 $('jeSample').textContent = '';
             }
+        } finally {
+            if(this._statsRequest === request) this.updateSaveState();
         }
     },
     updateDependencyInfo() {
@@ -793,9 +857,10 @@ const JoinEditor = {
     },
 
     updateAll() {
+        if(this.state.enrichActive && this._presetKeys !== this.presetKeySignature()) this.setPresetColumns('enrich');
         this.updateStatus();
-        this.updateSaveState();
         this.updatePreview();
+        this.updateSaveState();
     },
 
     /* ── Table changes ── */
@@ -812,6 +877,7 @@ const JoinEditor = {
         });
 
         const applyChange = () => {
+            this.state.enrichActive = false;
             if(side === 'l') this.state.prevLeft = next; else this.state.prevRight = next;
             this.refreshColumns();
             this.markDirty();
@@ -835,7 +901,13 @@ const JoinEditor = {
         this.state.dirty = flag;
         $('jeDirty').hidden = !flag;
     },
-    markDirty() { this.setDirty(true); },
+    markDirty() {
+        this.setDirty(true);
+        if(this._saveRequest || this._saveError) {
+            this._saveRequest = this._saveError = null;
+            this.updateSaveState();
+        }
+    },
 
     /* ── Column refresh ── */
     refreshColumns() {
@@ -883,6 +955,8 @@ const JoinEditor = {
         const p = $('joinModal'); p.classList.remove('hidden');
         ModalController.activate(p, $('jeName'));
         this._statsRequest = null;
+        this._saveRequest = this._saveError = null;
+        this.state.enrichActive = false;
         for(const el of p.querySelectorAll('details')) el.open = el.classList.contains('join-key-suggestions');
         for(const el of p.querySelectorAll('.join-body,.join-result,.join-setup')) el.scrollTop = 0;
         $('jeLSearch').value = '';
@@ -890,6 +964,7 @@ const JoinEditor = {
         document.body.classList.add('modal-open');
         this.state.editIdx = editIdx;
         this.metaCache = {};
+        this.viewSamples = new Map();
         this.state.selectedOrderIdx = -1;
         const v = editIdx > -1 ? Store.getViews()[editIdx] : { view:'', left:'', right:'', type:'inner', on:'', select:'' };
 
@@ -950,17 +1025,20 @@ const JoinEditor = {
     },
 
     close(force=false) {
+        if(this._committing) return;
         if(!force && this.state.dirty) {
             if(!confirm('有未保存修改，确定关闭？')) return;
         }
         this._statsRequest = null;
+        this._saveRequest = null;
         $('joinModal').classList.add('hidden');
         this._suggestionRequest = null;
         ModalController.deactivate($('joinModal'));
         document.body.classList.remove('modal-open');
     },
 
-    save() {
+    async save() {
+        if(this._saveRequest || this._committing) return;
         const check = this.validate();
         if(!check.ok) {
             const msg = check.errors.join('\n');
@@ -974,19 +1052,56 @@ const JoinEditor = {
             updatedAt: Date.now()
         };
 
-        const enabled = Store.getEnabledViews();
-        const nextEnabled = enabled.filter(view => view !== base.view || $('jeEnabled').checked)
-            .map(view => view === base.view ? nv.view : view);
-        if($('jeEnabled').checked && !nextEnabled.includes(nv.view)) nextEnabled.push(nv.view);
-        dispatch('view:upsert', { index:this.state.editIdx > -1 ? this.state.editIdx : undefined, view:nv });
-        if(enabled.length !== nextEnabled.length || enabled.some((v, i) => v !== nextEnabled[i])) {
-            dispatch('view:setEnabled', {enabledViews:nextEnabled});
+        const rawNames = TableRegistry.getAvailableRawTables().map(t => t.name);
+        const stats = this._statsRequest;
+        const {enabled,issue,active,blocked,dependents} = this.activationState();
+        if((enabled || dependents.length) && stats?.revision !== Store.revision) {
+            this._saveError = '工程数据已更新，请核对结果规模后再次保存。';
+            this.updateAll();
+            return;
+        }
+        if(blocked) return;
+        const payload = {index:this.state.editIdx,view:nv,enabled,rawNames,disableDependents:!enabled && !!issue};
+        const plan = Store.planViewUpsert(payload);
+        if(!plan) return;
+        // A disabled source still contributes when one of its downstream views is enabled.
+        if(active) {
+            const request = {};
+            this._saveRequest = request;
+            this._saveError = null;
+            this.updateSaveState();
+            try {
+                await TableRegistry.checkViewBudget(plan.enabledViews,plan.views,{view:nv.view,rows:stats.outRows});
+                if(this._saveRequest !== request) return;
+                if(Store.revision !== stats.revision) {
+                    this._saveError = '工程数据已更新，请核对结果规模后再次保存。';
+                    this.updateAll();
+                    return;
+                }
+            } catch(error) {
+                if(this._saveRequest === request) this._saveError = error.message;
+                return;
+            } finally {
+                if(this._saveRequest === request) { this._saveRequest = null; this.updateSaveState(); }
+            }
+        }
+        if(!dispatch('view:upsert', payload)) return;
+        this._committing = true;
+        const controls = $('joinModal').querySelectorAll('.join-head,.join-body,.join-save-actions');
+        controls.forEach(section => { section.inert = true; });
+        $('jeWarn').textContent = '正在保存到此设备…';
+        let saved;
+        try { saved = await Store.waitForSave(); }
+        finally {
+            this._committing = false;
+            controls.forEach(section => { section.inert = false; });
         }
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinChanged"));
         if (typeof document !== "undefined" && document.dispatchEvent) document.dispatchEvent(new CustomEvent("ota:joinParseRequested"));
         this.setDirty(false);
         this.close(true);
-        Toast.show(this.state.editIdx > -1 ? '视图已更新' : '视图已创建');
+        if(saved) Toast.show(this.state.editIdx > -1 ? '视图已更新' : '视图已创建');
+        else Toast.show(`视图已保留在当前页面，本地保存失败：${Store.lastSaveError || '请备份工作区'}`, true);
     },
 
     /* ── View Management (delegates to ViewManager) ── */

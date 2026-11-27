@@ -8,6 +8,26 @@ const { QueryService } = OTA.require('query-service');
 beforeEach(() => QueryService.clearCache());
 
 describe('QueryService — shared result contract', () => {
+  it('checks exact JOIN rows and the combined preview cell budget before materialization', t => {
+    const {Joiner} = OTA.require('joiner');
+    t.mock.method(Joiner, 'run', () => assert.fail('counting a raw-to-raw JOIN must not expand its result'));
+    const rawTables = [{name:'T', headers:['id'], rows:Array(1000).fill(['x'])}];
+    const config = {view:'V', left:'T', right:'T', type:'inner', on:'id=id', select:Array(8).fill('left.id').join(',')};
+    const globalViews = [config,{...config,view:'Other',select:'left.id'}];
+    const check = (enabledViews,displayTables) => QueryService.checkViewBudget({rawTables,globalViews,ui:{enabledViews,displayTables}});
+    assert.doesNotThrow(() => check(['V'], [])); // Both limits are inclusive.
+    assert.throws(() => check(['V'], null), /8,001,000.*8,000,000/);
+    assert.throws(() => check(['Other','V'], []), /9,000,000.*8,000,000/);
+    globalViews[0].select += ',left.id';
+    assert.throws(() => check(['V'], []), /9,000,000.*8,000,000/);
+    rawTables[0].rows.push(['x']);
+    assert.throws(() => check(['Other'], []), /1,002,001.*1,000,000/);
+  });
+  it('reports the missing source of a newly enabled view while tolerating existing unavailable views', () => {
+    const input = {rawTables:[],globalViews:[{view:'Child',left:'Missing',right:'Other',on:'k=k',select:'left.k'}],ui:{enabledViews:['Child']}};
+    assert.throws(() => QueryService.checkViewBudget(input,{requireAvailable:['Child']}), /Child.*Missing/);
+    assert.doesNotThrow(() => QueryService.checkViewBudget(input));
+  });
   it('never weakens a saved compound JOIN after a source column changes, including dependent views', () => {
     const left = {name:'Stock', headers:['id','region'], rows:[['42','east'],['42','west']]};
     const right = {name:'Prices', headers:['id','region','price'], rows:[['42','east','10'],['42','west','20']]};

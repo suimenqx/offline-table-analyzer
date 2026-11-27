@@ -1,4 +1,4 @@
-OTA.define('view-manager', ["runtime", "store", "exporter", "modal-controller", "dispatch"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Exporter}, {ModalController}, {dispatch}) => {
+OTA.define('view-manager', ["runtime", "store", "exporter", "modal-controller", "dispatch", "table-registry"], ({$, escapeHtml, formatBytes, Toast}, {Store}, {Exporter}, {ModalController}, {dispatch}, {TableRegistry}) => {
 /* ViewManager — JOIN view CRUD and management modal.
 
    Extracted from join-editor.js. All interactions go through Store.getViews().
@@ -151,6 +151,7 @@ const ViewManager = {
                         <button class="sm text-button" id="jeDel_${i}">删除</button>
                     </div>
                     <div class="view-actions" id="jeConfirm_${i}" hidden>
+                        <span class="view-delete-impact" id="jeDelImpact_${i}" role="status"></span>
                         <span>确认删除？</span>
                         <button class="sm" id="jeDelCancel_${i}">取消</button>
                         <button class="sm danger" id="jeDelOk_${i}">删除</button>
@@ -170,6 +171,11 @@ const ViewManager = {
                     <label class="join-toggle"><input type="checkbox" id="jeViewSelectAll">全选当前列表</label>
                     <button class="sm" id="jeBatchExport" disabled>导出所选</button>
                     <button class="sm danger" id="jeBatchDelete" disabled>删除所选</button>
+                </div>
+                <div class="view-actions" id="jeBatchConfirm" hidden>
+                    <span class="view-delete-impact" id="jeBatchImpact" role="status"></span>
+                    <button class="sm" id="jeBatchCancel">取消</button>
+                    <button class="sm danger" id="jeBatchOk">确认删除所选</button>
                 </div>
                 <div id="viewList">${renderList()}</div>
                 <details class="view-import">
@@ -216,11 +222,12 @@ const ViewManager = {
                 const selectedCbs = document.querySelectorAll('.view-checkbox:checked');
                 if (selectedCbs.length === 0) return;
                 const indices = Array.from(selectedCbs).map(cb => parseInt(cb.dataset.index)).sort((a, b) => b - a);
-                if (!confirm(`确定删除选中的 ${indices.length} 个视图吗？此操作不可恢复。`)) return;
-                dispatch('view:removeMany', { indexes:indices });
-                self._notifyChange();
-                self.modManageViews();
-                Toast.show(`已删除 ${indices.length} 个视图`);
+                const removal = self.prepareRemoval(indices);
+                $('jeBatchConfirm').hidden = false;
+                $('jeBatchImpact').textContent = `将删除所选的 ${indices.length} 个视图。${removal.message}`;
+                $('jeBatchCancel').onclick = () => { $('jeBatchConfirm').hidden = true; batchDeleteBtn.focus(); };
+                $('jeBatchOk').onclick = removal.confirm;
+                $('jeBatchCancel').focus();
             };
         }
 
@@ -250,7 +257,28 @@ const ViewManager = {
 
     // ── Internal helpers ──
 
+    prepareRemoval(indexes) {
+        const projectId = Store.getActiveProject()?.id;
+        const viewRevision = Store.viewRevision;
+        const rawNames = TableRegistry.getAvailableRawTables().map(t => t.name);
+        const names = indexes.map(i => Store.getViews()[i].view);
+        const affected = Store.getDependentViews(names,rawNames);
+        return {
+            message:affected.length ? `受影响的下游视图：${affected.join('、')}。将保留这些配置并停用，可在编辑来源后重新启用。` : '',
+            confirm:() => {
+                if(Store.getActiveProject()?.id !== projectId || Store.viewRevision !== viewRevision) {
+                    this.modManageViews();
+                    return Toast.show('视图列表已更新，请重新选择要删除的视图', true);
+                }
+                dispatch('view:removeMany', {indexes,rawNames});
+                this._notifyChange();
+                this.modManageViews();
+                Toast.show(`已删除 ${names.length} 个视图`);
+            }
+        };
+    },
     _updateBatchButtons() {
+        $('jeBatchConfirm').hidden = true;
         const selectedCount = document.querySelectorAll('.view-checkbox:checked').length;
         const total = document.querySelectorAll('.view-checkbox').length;
         const selectAll = $('jeViewSelectAll');
@@ -287,6 +315,9 @@ const ViewManager = {
             };
             if (exportBtn) exportBtn.onclick = () => Exporter.toJson({ kind: 'join-view', view: v }, `join_${v.view}`);
             if (delBtn) delBtn.onclick = () => {
+                const removal = self.prepareRemoval([i]);
+                $(`jeDelImpact_${i}`).textContent = removal.message;
+                delOkBtn.onclick = removal.confirm;
                 $(`jeActions_${i}`).hidden = true;
                 $(`jeConfirm_${i}`).hidden = false;
                 delCancelBtn.focus();
@@ -295,11 +326,6 @@ const ViewManager = {
                 $(`jeActions_${i}`).hidden = false;
                 $(`jeConfirm_${i}`).hidden = true;
                 delBtn.focus();
-            };
-            if (delOkBtn) delOkBtn.onclick = () => {
-                dispatch('view:removeMany', { indexes:[i] });
-                self._notifyChange();
-                self.modManageViews();
             };
             if (checkbox) checkbox.onchange = () => self._updateBatchButtons();
         });

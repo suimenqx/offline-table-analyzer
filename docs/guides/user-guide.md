@@ -307,7 +307,7 @@ Click **New** (＋ 新建) beside **Enable JOIN views** in the configuration sid
 
 Search either source by field name and check the fields you need. **Select all** applies to the visible search results. **Only selected** shows the fields you have picked.
 
-Choose **左表全部＋右表补充** to select every left field followed by the right fields outside the configured match keys. **仅选左表** and **仅选右表** select all fields from one source. Presets replace the selection in source order and retain aliases on fields that remain selected.
+Choose **左表全部＋右表补充** to select every left field followed by supplementary right fields. Right and Full joins retain every right match key so a right-only row can still be identified. Other join types omit the duplicate right keys. The preset follows changes to the join type and match keys until you customize the selection or its order. **仅选左表** and **仅选右表** select all fields from one source. Presets retain aliases on fields that remain selected.
 
 **Result examples** (结果样例) shows up to five actual output rows in the current column order. The first column identifies matched pairs and unmatched rows. Outer joins include examples of each kind present. Changing an alias or moving a column updates the sample immediately.
 
@@ -318,6 +318,10 @@ In **Output columns** (输出列), enter a display alias, drag a row or use its 
 The footer identifies the next item needed to save, including incomplete conditions, missing output fields, conflicting names and circular dependencies. Closing the designer with unsaved changes asks for confirmation.
 
 **Enable in this project** (在当前工程启用) is selected for a new view. Clear it to save the definition for later. Editing a saved view starts with its current enabled setting.
+
+The footer shows the expected rows, selected columns and cells for the current data. A JOIN can produce up to 1,000,000 rows. Displayed source tables and enabled JOIN results share an 8,000,000-cell preview budget before filtering. Both the designer and the enable dialog check the proposed selection before applying it. If the result exceeds a limit, narrow the match, reduce the columns, or save the definition with **Enable in this project** cleared. A disabled definition can still supply another view. When a source definition itself is too large or unavailable, the footer identifies enabled dependents that will also be turned off when you save it disabled.
+
+When renaming a view, the designer lists the affected downstream views. Saving updates their source references, the enabled selection and per-card filters and preview settings together. Single and batch deletion show all surviving views that depend on the selected definitions. Confirming deletes only the selected definitions and disables the affected dependents, which remain in **Manage** for repair.
 
 ### 8.4 Keyboard shortcuts
 

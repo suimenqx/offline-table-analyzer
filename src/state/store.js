@@ -8,6 +8,24 @@ const MAX_IMPORT_BYTES = 128 * 1024 * 1024;
 const MAX_WORKSPACE_BYTES = 256 * 1024 * 1024;
 const COPY_FORMATS = Object.freeze(['default', 'csv', 'markdown', 'ascii', 'json', 'json-inline', 'json-expanded', 'lua-inline', 'lua-expanded']);
 
+function updateViewSettings(card, previous, next, rawNames) {
+    const ui = card?.ui;
+    if(!ui) return;
+    if(Array.isArray(ui.enabledViews)) {
+        ui.enabledViews = ui.enabledViews.flatMap(name => name !== previous ? [name] : next ? [next] : []);
+    }
+    const from = 'JOIN:' + previous, to = next ? 'JOIN:' + next : '';
+    if(rawNames.includes(from)) return;
+    for(const field of ['targetTable','previewTable']) if(ui[field] === from) ui[field] = to;
+    for(const field of ['rules','columnFilters','collapsedTables','previewModes','tablePages']) {
+        const settings = ui[field];
+        if(settings && Object.hasOwn(settings, from)) {
+            if(to) settings[to] = settings[from];
+            delete settings[from];
+        }
+    }
+}
+
 const MIGRATIONS = Object.freeze({
     0(payload) {
         const next = Object.assign({}, payload);
@@ -189,6 +207,49 @@ const Store = {
     getEnabledViews() {
         const project = this.getActiveProject();
         return (project && project.enabledViews) || [];
+    },
+    getDependentViews(names, rawNames=[]) {
+        const raw = new Set(rawNames), children = new Map();
+        for(const view of this.getViews()) {
+            for(const source of new Set([view.left, view.right])) {
+                if(raw.has(source)) continue;
+                if(!children.has(source)) children.set(source, []);
+                children.get(source).push(view.view);
+            }
+        }
+        const queue = [...new Set(names)], visited = new Set(queue);
+        const roots = queue.length;
+        for(let i=0; i<queue.length; i++) {
+            for(const child of children.get(queue[i]) || []) {
+                if(visited.has(child)) continue;
+                visited.add(child);
+                queue.push(child);
+            }
+        }
+        return queue.slice(roots);
+    },
+    // The designer validates exactly the definitions and enabled set the command will commit.
+    planViewUpsert({index, view, enabled, disableDependents=false, rawNames=[]}) {
+        const current = this.getViews();
+        const position = Number.isInteger(index) ? index : current.findIndex(v => v.view === view.view);
+        const previous = current[position]?.view;
+        if(current.some((v,i) => i !== position && v.view === view.view)) return null;
+        const renamed = previous && previous !== view.view;
+        const remap = source => renamed && source === previous && !rawNames.includes(previous) ? view.view : source;
+        const views = current.slice();
+        views[position >= 0 && position < views.length ? position : views.length] = {...view};
+        if(renamed) views.forEach((item,i) => {
+            const left = remap(item.left), right = remap(item.right);
+            if(left !== item.left || right !== item.right) views[i] = {...item,left,right};
+        });
+        let enabledViews = this.getEnabledViews().map(name => renamed && name === previous ? view.view : name);
+        if(enabled === false) enabledViews = enabledViews.filter(name => name !== view.view);
+        if(enabled === false && disableDependents && previous) {
+            const dependents = new Set(this.getDependentViews([previous],rawNames));
+            enabledViews = enabledViews.filter(name => !dependents.has(name));
+        }
+        if(enabled === true && !enabledViews.includes(view.view)) enabledViews.push(view.view);
+        return {views,enabledViews,previous};
     },
     /** 组合后的活动卡片 UI：卡片自身 ui + 工程级 enabledViews（窗口路径与后台路径共用的组合点） */
     getActiveUI() {
@@ -404,8 +465,17 @@ const Store = {
             return false;
         }
         const result=this._withStorageWrite(generation,()=>this._saveWorkspace(generation));
-        if(result && typeof result.then==='function')this.savePromise=result;
+        this.savePromise = result && typeof result.then==='function' ? result : null;
         return result;
+    },
+    async waitForSave() {
+        // A newer snapshot includes the view change and may supersede its initial write.
+        let pending;
+        do {
+            pending = this.savePromise;
+            if(pending) await pending;
+        } while(pending !== this.savePromise);
+        return !this.unsavedChanges;
     },
     _saveWorkspace(generation) {
         const rawBytes=this.state.docs.reduce((sum,doc)=>sum+(doc.raw || '').length*2,0);
@@ -1427,28 +1497,34 @@ const Store = {
                 if(!view || typeof view !== 'object' || !view.view) return false;
                 const project = this.getActiveProject();
                 if(!project) return false;
-                const index = Number.isInteger(payload.index)
-                    ? payload.index
-                    : project.views.findIndex(item => item.view === view.view);
-                if(index >= 0 && index < project.views.length) project.views[index] = Object.assign({}, view);
-                else project.views.push(Object.assign({}, view));
+                const plan = this.planViewUpsert(payload);
+                if(!plan) return false;
+                if(plan.previous && plan.previous !== view.view) {
+                    for(const id of project.cardIds) updateViewSettings(this.getCard(id), plan.previous, view.view, payload.rawNames || []);
+                }
+                project.views = plan.views;
+                project.enabledViews = plan.enabledViews;
                 this.save();
-                this._notify('views:changed', { views:project.views.slice() });
+                this._notify('views:changed', { views:project.views.slice(), enabledViews:project.enabledViews.slice() });
                 this._notify('state:changed', { changed:['views'] });
                 return true;
             }
             case 'view:removeMany': {
                 const project = this.getActiveProject();
                 if(!project) return 0;
-                const indexes = Array.isArray(payload && payload.indexes)
-                    ? payload.indexes.filter(Number.isInteger).sort((a,b) => b-a) : [];
-                indexes.forEach(index => {
-                    if(index >= 0 && index < project.views.length) project.views.splice(index, 1);
-                });
+                const requested = Array.isArray(payload?.indexes) ? payload.indexes : [];
+                const indexes = new Set(requested.filter(i => Number.isInteger(i) && i >= 0 && i < project.views.length));
+                if(!indexes.size) return 0;
+                const names = [...indexes].map(i => project.views[i].view);
+                const rawNames = payload.rawNames || [];
+                const inactive = new Set([...names,...this.getDependentViews(names,rawNames)]);
+                project.views = project.views.filter((_,i) => !indexes.has(i));
+                project.enabledViews = project.enabledViews.filter(name => !inactive.has(name));
+                for(const id of project.cardIds) for(const name of names) updateViewSettings(this.getCard(id), name, '', rawNames);
                 this.save();
-                this._notify('views:changed', { views:project.views.slice() });
+                this._notify('views:changed', { views:project.views.slice(), enabledViews:project.enabledViews.slice() });
                 this._notify('state:changed', { changed:['views'] });
-                return indexes.length;
+                return indexes.size;
             }
             case 'view:setEnabled': {
                 // 工程级启用列表：启用哪些 view（替代每卡 enabledViews）

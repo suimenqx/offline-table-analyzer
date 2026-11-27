@@ -166,6 +166,15 @@ const TableRegistry = {
         if(this.isBackground()) return BackgroundService.stats(this.getBackgroundInput(),cfg,samples);
         return Joiner.stats(this.getQueryTables(),cfg,Store.getViews(),[],{samples});
     },
+    checkViewBudget(enabledViews, globalViews=Store.getViews(), known={}) {
+        const input = this.isBackground() ? this.getBackgroundInput() : {rawTables:this.getQueryTables(), ui:Store.getActiveUI()};
+        input.globalViews = globalViews;
+        input.ui = {...input.ui,enabledViews};
+        const existing = new Set(Store.getEnabledViews());
+        const check = {...known,requireAvailable:enabledViews.filter(name => !existing.has(name))};
+        return this.isBackground() ? BackgroundService.joinRequest('checkViewBudget',input,check)
+            : QueryService.checkViewBudget(input,check);
+    },
     getJoinSuggestions(left,right) {
         if(this.isBackground()) return BackgroundService.joinRequest('suggestKeys',this.getBackgroundInput(),{left,right});
         return Joiner.suggestKeys(this.getQueryTables(),left,right,Store.getViews());

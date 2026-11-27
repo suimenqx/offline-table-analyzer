@@ -77,7 +77,14 @@ function projection(tokens, left, right) {
 
 const Joiner = {
     MAX_ROWS:1000000,
-    MAX_CELLS:8000000,
+    MAX_CELLS:TableUtils.MAX_CELLS,
+    sizeWarning(rows, columns) {
+        const issues = [];
+        const cells = rows * columns;
+        if(rows > this.MAX_ROWS) issues.push(`${rows.toLocaleString('zh-CN')} 行超过单视图上限 ${this.MAX_ROWS.toLocaleString('zh-CN')} 行`);
+        if(cells > this.MAX_CELLS) issues.push(`${cells.toLocaleString('zh-CN')} 个单元格超过上限 ${this.MAX_CELLS.toLocaleString('zh-CN')} 个`);
+        return issues.join('，');
+    },
     describeView(rawTables, cfg, views=[], stack=[], memo=new Map()) {
         if (!cfg || stack.includes(cfg.view)) return {headers:[], error:'视图引用无效'};
         if (memo.has(cfg.view)) return memo.get(cfg.view);
@@ -258,6 +265,7 @@ const Joiner = {
         if(!pairs.length || !cols.length) return null;
 
         const existenceOnly = cfg.type === 'semi' || cfg.type === 'anti';
+        const rowBudget = Math.min(this.MAX_ROWS, Math.floor(Math.min(this.MAX_CELLS,limits.maxCells ?? this.MAX_CELLS) / cols.length));
         const rIdx = new Map();
         const rMap = new Map(R.headers.map((h,i)=>[h,i]));
         const rightKeys = pairs.map(pair => pair[1]);
@@ -268,26 +276,35 @@ const Joiner = {
             else if(!existenceOnly) bucket.push(r);
         });
 
-        const rows = [];
-        const append=value=>{if(rows.length>=this.MAX_ROWS || (rows.length+1)*cols.length>Math.min(this.MAX_CELLS,limits.maxCells ?? this.MAX_CELLS))throw new Error('JOIN 结果超过行数或单元格预算，请减少显示表或收紧关联条件');rows.push(value);};
-        const matchedRight = ['right','full'].includes(cfg.type) ? new Set() : null;
+        // Keep one bucket reference per contributing left row. Large many-to-many
+        // intermediates are counted before any output cells or pair objects are allocated.
+        const groups = [];
+        const keepRight = ['right','full'].includes(cfg.type);
+        const keepLeft = ['left','full','anti'].includes(cfg.type);
+        const matchedKeys = keepRight ? new Set() : null;
+        const noMatch = [null];
+        let outRows = 0;
         const lMap = new Map(L.headers.map((h,i)=>[h,i]));
         const leftKeys = pairs.map(pair => pair[0]);
         L.rows.forEach(lr => {
             const k = this.compositeKey(lr, lMap, leftKeys);
             const matches = rIdx.get(k);
-            if(matches) {
-                if(cfg.type === 'semi') append({l:lr, r:matches[0]});
-                else if(cfg.type !== 'anti') matches.forEach(rr => {
-                    matchedRight?.add(rr);
-                    append({l:lr, r:rr});
-                });
-            } else if(['left','full','anti'].includes(cfg.type)) append({l:lr, r:null});
+            if(matches) matchedKeys?.add(k);
+            const bucket = matches ? (cfg.type === 'anti' ? null : matches) : (keepLeft ? noMatch : null);
+            if(bucket) {
+                outRows += bucket.length;
+                if(outRows <= rowBudget) groups.push({left:lr,bucket});
+            }
         });
-        if(matchedRight) R.rows.forEach(rr => { if(!matchedRight.has(rr)) append({l:null, r:rr}); });
-
+        if(keepRight) for(const [key,bucket] of rIdx) if(!matchedKeys.has(key)) outRows += bucket.length;
+        if(outRows > rowBudget) throw new Error(`视图“${cfg.view}”预计 ${outRows.toLocaleString('zh-CN')} 行，超过当前行数或单元格预算（最多 ${rowBudget.toLocaleString('zh-CN')} 行），请减少输出列或收紧关联条件`);
         const output = projection(cols, lMap, rMap);
-        return { name: `JOIN:${cfg.view}`, headers:output.headers, rows:rows.map(output.cells), isView:true };
+        const rows = [];
+        for(const {left,bucket} of groups) for(const right of bucket) rows.push(output.cells({l:left,r:right}));
+        if(keepRight) for(const right of R.rows) {
+            if(!matchedKeys.has(this.compositeKey(right,rMap,rightKeys))) rows.push(output.cells({l:null,r:right}));
+        }
+        return { name: `JOIN:${cfg.view}`, headers:output.headers, rows, isView:true };
     }
 };
 

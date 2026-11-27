@@ -91,6 +91,10 @@ const WorkerRuntime = {
             },
             query,
             preview,
+            checkViewBudget(payload) {
+                applyEdits(payload);
+                return QueryService.checkViewBudget(queryInput(payload),payload.cfg);
+            },
             stats(payload) {
                 applyEdits(payload);
                 const { tables } = buildPool(payload.visible, payload.sources);
@@ -132,6 +136,7 @@ const WorkerRuntime = {
                         const bytes=session.excel(payload);port.postMessage({id,value:new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'})});return;
                     } else if(kind==='stats')value=session.stats(payload);
                     else if(kind==='suggestKeys')value=session.suggestKeys(payload);
+                    else if(kind==='checkViewBudget')value=session.checkViewBudget(payload);
                     else if(kind==='saveWorkspace')await WorkspaceStorage.write(payload.key,payload.workspace);
                     else if(kind==='loadWorkspace')value=await WorkspaceStorage.read(payload.key);
                     else if(kind==='pruneWorkspace')await WorkspaceStorage.prune(payload.prefix,payload.keep);

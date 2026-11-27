@@ -1,4 +1,4 @@
-OTA.define('modal-controller', ["runtime", "store", "dispatch"], ({$, escapeHtml}, {Store}, {dispatch}) => {
+OTA.define('modal-controller', ["runtime", "store", "dispatch", "table-registry"], ({$, escapeHtml}, {Store}, {dispatch}, {TableRegistry}) => {
 /* ModalController — generic modal dialog management.
 
    Responsibilities:
@@ -130,13 +130,37 @@ const ModalController = {
                 : '';
             return `<label class="checkbox-row"><input type="checkbox" value="${name}" ${selected.includes(v.view) ? 'checked' : ''}><span style="font-weight:600; color:var(--text-main);">${name}</span>${meta}</label>`;
         }).join('');
-        ModalController.show('启用视图', `<div>${h}</div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
-        ModalController._bindSaveBtn(() => {
-            const sel = Array.from($('modalContent').querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
+        ModalController.show('启用视图', `<div>${h}</div><div class="view-budget-error" id="viewBudgetStatus" role="status"></div><div style="margin-top:16px; text-align:right;"><button class="primary" id="saveMod">确定</button></div>`);
+        const button = $('saveMod'), status = $('viewBudgetStatus');
+        let attempt = 0;
+        const content = $('modalContent');
+        for(const input of content.querySelectorAll('.checkbox-row input')) input.onchange = () => {
+            attempt++;
+            button.disabled = false;
+            status.textContent = '';
+        };
+        button.onclick = async () => {
+            const sel = Array.from(content.querySelectorAll('.checkbox-row input:checked')).map(c => c.value);
+            if(sel.some(name => !selected.includes(name))) {
+                const request = ++attempt, revision = Store.revision;
+                const current = () => request === attempt && button.isConnected && !$('modalOverlay').classList.contains('hidden');
+                button.disabled = true;
+                status.textContent = '正在核对所选视图的结果规模…';
+                try {
+                    await TableRegistry.checkViewBudget(sel);
+                    if(!current()) return;
+                    if(Store.revision !== revision) { status.textContent = '工程数据已变化，请重新确认。'; return; }
+                } catch(error) {
+                    if(current()) status.textContent = error.message;
+                    return;
+                } finally {
+                    if(current()) button.disabled = false;
+                }
+            }
             dispatch('view:setEnabled', { enabledViews:sel });
             ModalController.close();
             dispatch('preview:renderRequested', {});
-        });
+        };
     },
 
     /**

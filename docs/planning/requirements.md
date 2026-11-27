@@ -136,6 +136,8 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - Duplicate output headers are normalized via `TableUtils.ensureUniqueHeaders`.
 - Dependency cycles are detected via DFS graph traversal before save.
 - All six JOIN types implemented: Inner, Left, Right, Full, Semi, Anti.
+- The enrichment preset keeps every right-side key for Right and Full JOINs so right-only records retain their identifiers. Manually chosen fields and order take precedence.
+- A project view rename updates source references, enabled names and per-card JOIN settings atomically. Single and batch deletion disclose transitive dependents and retain their definitions disabled.
 
 ### R5 — large-table protection
 
@@ -148,6 +150,7 @@ The [2026-10-24 sidebar baseline](../testing/sidebar-simplification-baseline.md)
 - Large table-data/text parsing, querying, JOIN and XLSX run in cancellable embedded Workers; large HTML retains its DOMParser Window path. Error/cancel/stale source results cannot discard original text or overwrite a newer source.
 - Non-table clipboard HTML does not force text onto Window. ImportEngine owns the DOMParser routing decision; a manual text parser remains authoritative even with an HTML table in the clipboard.
 - At most 8 million cells in parsed datasets, combined selected/query/export tables; 1 million rows per JOIN; 256 MiB XLSX output. Budget failures are explicit, without silent truncation. These are implementation protection budgets, not universal capacity guarantees.
+- The designer displays the current output size. Enabling views checks the full proposed preview selection against the same inclusive row and aggregate cell budgets in Window and Worker. Oversized definitions can be saved disabled.
 - Pages reuse the same query and raw snapshot; only source/query/view/correction changes invalidate derived results. Worker full-query and Window page caches each have at most two entries. Complete parsed/filtered/JOIN tables stay in Worker; Window descriptors contain empty rows plus rowCount. Only current pages, at most the selected 50/100/250/500 rows per visible table, cross the boundary. Hidden large-mode tables send metadata only.
 - All original raw text is retained, including CRLF for intercepted large paste/file input. XLSX exports full filtered results across pages.
 

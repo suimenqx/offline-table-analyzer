@@ -12,6 +12,152 @@ const source = [
   '1         3  40',
 ].join('\n');
 
+test('an outer join preset follows the join type and preserves the right-only identifier', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#rawInput').fill(source);
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#datasetSummary')).toContainText('2 表');
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#newJoinBtn').click();
+  const editor = page.locator('#joinModal');
+  await editor.getByLabel('视图名称').fill('Outer');
+  await editor.getByRole('button',{name:'匹配同名字段'}).click();
+  await editor.locator('#jePresetEnrich').click();
+  const id = editor.locator('#jeRList input[value="ID"]');
+  await expect(id).not.toBeChecked();
+  for (const type of ['right','full']) {
+    await editor.getByLabel('连接方式').selectOption(type);
+    await expect(id).toBeChecked();
+    await expect(editor.locator('#jeRList input[value="validflag"]')).toBeChecked();
+    await expect(editor.locator('#jeSample tr').filter({hasText:'仅右表'}).getByRole('cell',{name:'3',exact:true})).toBeVisible();
+  }
+  await id.uncheck();
+  await editor.getByLabel('连接方式').selectOption('right');
+  await expect(id).not.toBeChecked();
+  await editor.locator('#jePresetEnrich').click();
+  await editor.locator('#jeSave').click();
+  await expect(page.getByRole('table',{name:'JOIN:Outer 列表头预览'}).getByRole('cell',{name:'3',exact:true})).toHaveCount(1);
+});
+
+test('save a four-million-row Worker JOIN disabled, then tighten it and enable it', async ({page}) => {
+  const rows = Array.from({length:2000}, (_,i) => ({id:String(i), group:'same', note:'source row for the scale check'}));
+  await page.goto('/index.html');
+  await page.locator('#autoParseToggle').uncheck();
+  await page.locator('#rawInput').fill(JSON.stringify({L:rows,R:rows}));
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#datasetSummary')).toContainText('2 表');
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#newJoinBtn').click();
+  const editor = page.locator('#joinModal');
+  await editor.getByLabel('视图名称').fill('Fanout');
+  await editor.getByLabel('条件 1 左表字段').selectOption('group');
+  await editor.getByLabel('条件 1 右表字段').selectOption('group');
+  await editor.locator('#jeLList input[value="id"]').check();
+  await expect(editor.locator('#jeSize')).toContainText('4,000,000 行 × 1 列');
+  await expect(editor.locator('#jeWarn')).toContainText('1,000,000 行');
+  await expect(editor.locator('#jeSave')).toBeDisabled();
+  await expect(editor.locator('#jeSample tbody tr')).toHaveCount(5);
+  await editor.getByLabel('在当前工程启用').uncheck();
+  await editor.locator('#jeSave').click();
+  await expect(editor).toBeHidden();
+  await page.locator('#viewsTrigger').click();
+  await page.locator('#modalContent input[value="Fanout"]').check();
+  await page.locator('#saveMod').click();
+  await expect(page.locator('#viewBudgetStatus')).toContainText('4,000,000 行');
+  await expect(page.locator('#viewsTrigger')).not.toContainText('Fanout');
+  await page.keyboard.press('Escape');
+  await page.locator('#manageViewsBtn').click();
+  await page.locator('#jeEdit_0').click();
+  await editor.getByLabel('条件 1 左表字段').selectOption('id');
+  await editor.getByLabel('条件 1 右表字段').selectOption('id');
+  await expect(editor.locator('#jeSize')).toContainText('2,000 行 × 1 列');
+  await editor.getByLabel('在当前工程启用').check();
+  await editor.locator('#jeSave').click();
+  await expect(editor).toBeHidden();
+  await expect(page.locator('#viewsTrigger')).toContainText('Fanout');
+});
+
+test('the designer includes displayed source cells when a JOIN alone fits exactly', async ({page}) => {
+  const row = {id:'x',a:'a',b:'b',c:'c',d:'d',e:'e',f:'f',g:'g'};
+  await page.goto('/index.html');
+  await page.locator('#autoParseToggle').uncheck();
+  await page.locator('#rawInput').fill(JSON.stringify({Source:Array(1000).fill(row)}));
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#datasetSummary')).toContainText('1 表');
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#newJoinBtn').click();
+  const editor = page.locator('#joinModal');
+  await editor.getByLabel('视图名称').fill('Exact');
+  await editor.getByLabel('条件 1 左表字段').selectOption('id');
+  await editor.getByLabel('条件 1 右表字段').selectOption('id');
+  await editor.locator('#jePresetLeft').click();
+  await expect(editor.locator('#jeSize')).toContainText('8,000,000 个单元格');
+  await editor.locator('#jeSave').click();
+  await expect(editor.locator('#jeWarn')).toContainText('8,008,000 个单元格');
+  await editor.getByLabel('在当前工程启用').uncheck();
+  await editor.locator('#jeSave').click();
+  await expect(editor).toBeHidden();
+  await expect(page.locator('#viewsTrigger')).not.toContainText('Exact');
+});
+
+test('rename and delete sources with visible downstream impact across a saved chain', async ({page}) => {
+  await page.goto('/index.html');
+  await page.locator('#rawInput').fill(source);
+  await page.locator('#parseBtn').click();
+  await expect(page.locator('#datasetSummary')).toContainText('2 表');
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#manageViewsBtn').click();
+  const library = page.locator('#modalContent');
+  const base = {view:'Base',left:'Customers',right:'Orders',type:'left',on:'ID=ID',select:'left.ID,left.Name'};
+  await library.getByText('从 JSON 导入视图').click();
+  await library.getByLabel('视图 JSON 配置').fill(JSON.stringify([base,{...base,view:'Middle',left:'Base'},{...base,view:'Final',left:'Middle'}]));
+  await library.getByRole('button',{name:'导入配置'}).click();
+  await page.keyboard.press('Escape');
+  await page.locator('#viewsTrigger').click();
+  await library.locator('input[value="Final"]').check();
+  await library.locator('#saveMod').click();
+  await expect(page.getByRole('table',{name:'JOIN:Final 列表头预览'})).toContainText('Alice');
+  await page.locator('#manageViewsBtn').click();
+  await library.locator('#jeEdit_0').click();
+  const editor = page.locator('#joinModal');
+  await editor.getByLabel('视图名称').fill('Renamed');
+  await expect(editor.locator('#jeRenameImpact')).toContainText('Middle、Final');
+  await editor.getByLabel('左表',{exact:true}).selectOption('Final');
+  await expect(editor.locator('#jeWarn')).toContainText('循环');
+  await expect(editor.locator('#jeSave')).toBeDisabled();
+  await editor.getByLabel('左表',{exact:true}).selectOption('Customers');
+  await expect(editor.getByLabel('视图名称')).toHaveValue('Renamed');
+  await page.evaluate(() => new Promise(held => {
+    navigator.locks.request('ota_v21_workspace', () => new Promise(release => {
+      window.releaseJoinSave = release;
+      held(true);
+    }));
+  }));
+  await editor.locator('#jeSave').click();
+  await expect(editor.locator('#jeWarn')).toContainText('正在保存到此设备');
+  await page.evaluate(() => window.releaseJoinSave());
+  await expect(editor).toBeHidden();
+  await expect(page.locator('#targetTableSelect option[value="JOIN:Renamed"]')).toHaveCount(1);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('ota_v21_workspace')).projects[0].views[0].view)).toBe('Renamed');
+  await page.reload();
+  await expect(page.getByRole('table',{name:'JOIN:Final 列表头预览'})).toContainText('Alice');
+  await page.locator('#sidebarConfigTabBtn').click();
+  await page.locator('#manageViewsBtn').click();
+  await library.locator('#jeDel_0').click();
+  await expect(library.locator('#jeDelImpact_0')).toContainText('Middle、Final');
+  await library.locator('#jeDelCancel_0').click();
+  await library.getByLabel('选择 Renamed').check();
+  await library.getByLabel('选择 Middle').check();
+  await library.getByRole('button',{name:'删除所选',exact:true}).click();
+  await expect(library.locator('#jeBatchImpact')).toContainText('Final');
+  await expect(library.locator('#jeBatchImpact')).not.toContainText('Middle');
+  await library.getByRole('button',{name:'确认删除所选'}).click();
+  await expect(library.locator('.view-item')).toHaveCount(1);
+  await expect(library.locator('.view-item')).toContainText('Final');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#viewsTrigger')).not.toContainText('Final');
+});
+
 test('apply a suggested key and an output preset, then preview actual rows before saving', async ({page}) => {
   await page.goto('/index.html');
   await page.locator('#autoParseToggle').uncheck();

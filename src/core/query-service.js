@@ -54,6 +54,12 @@ function cloneForResult(table) {
     };
 }
 
+function selectedRawTables(rawTables, ui, selectTables=true) {
+    return selectTables && Array.isArray(ui.displayTables)
+        ? rawTables.filter(table => ui.displayTables.includes(table.name)) : rawTables.slice();
+}
+const countCells = tables => tables.reduce((sum,table) => sum + table.rows.length * table.headers.length, 0);
+
 function indexedQuery({rawTables=[], globalViews=[], ui={}, ...meta}={}) {
     const key = querySignature(ui, {...meta, globalViews, rawToken:objectIdentity(rawTables)});
     if (cache.has(key)) return cache.get(key);
@@ -86,7 +92,7 @@ function pageBounds(totalRows, requested, pageSize) {
 }
 
 const QueryService = {
-    MAX_CELLS:8000000,
+    MAX_CELLS:TableUtils.MAX_CELLS,
     /**
      * 表池派生（纯函数，无 DOM）：entries = [{cardId, table, visible?}] 按工程卡片顺序。
      * 已知但隐藏的来源仅提供命名/结构基准，不贡献记录。
@@ -122,10 +128,30 @@ const QueryService = {
         }
         return pool;
     },
+    checkViewBudget({rawTables,globalViews,ui}, known={}) {
+        let cells = countCells(selectedRawTables(rawTables,ui));
+        for(const name of ui.enabledViews || []) {
+            const config = globalViews.find(v => v.view === name);
+            if(!config) continue;
+            const rows = known.view === name ? known.rows : Joiner.stats(rawTables,config,globalViews)?.outRows;
+            if(rows == null) {
+                if(known.requireAvailable?.includes(name)) {
+                    const reason = Joiner.describeView(rawTables,config,globalViews).error || '请检查来源表与关联条件';
+                    throw new Error(`无法启用“${name}”：${reason}。`);
+                }
+                continue; // Previously enabled, unavailable views are omitted by collectTables.
+            }
+            const columns = Joiner.buildSelectTokens(config.select).length;
+            if(!columns) continue;
+            const issue = Joiner.sizeWarning(rows,columns);
+            if(issue) throw new Error(`“${name}”的结果为 ${issue}。`);
+            cells += rows * columns;
+        }
+        if(cells > this.MAX_CELLS) throw new Error(`所选原始表和启用视图合计 ${cells.toLocaleString('zh-CN')} 个单元格，超过上限 ${this.MAX_CELLS.toLocaleString('zh-CN')} 个。请减少显示表、启用视图或输出列。`);
+    },
     collectTables(rawTables, globalViews, ui, selectTables=true) {
-        let tables=rawTables.slice();
-        if(selectTables && Array.isArray(ui.displayTables))tables=tables.filter(table=>ui.displayTables.includes(table.name));
-        let cells=tables.reduce((sum,table)=>sum+table.rows.length*table.headers.length,0);
+        const tables=selectedRawTables(rawTables,ui,selectTables);
+        let cells=countCells(tables);
         if(cells>this.MAX_CELLS)throw new Error('查询结果超过 800 万单元格合计预算，请减少显示表');
         for(const name of ui.enabledViews || []) {
             const config=globalViews.find(view=>view && view.view===name);

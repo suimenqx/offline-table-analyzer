@@ -51,6 +51,36 @@ beforeEach(() => {
 
 // ---------------------------------------------------------------------------
 describe('Store — 工程/卡片 renaming', () => {
+  it('renames a JOIN definition, its direct references and per-card settings together', () => {
+    const base = {view:'Base',left:'T',right:'U'};
+    const chain = [base,{view:'Middle',left:'Base',right:'Base'},{view:'End',left:'Middle',right:'T'}];
+    Store.transition('view:replaceAll',{views:chain});
+    Store.transition('view:setEnabled',{enabledViews:['Base','End']});
+    Store.transition('ui:set',{key:'previewTable',value:'JOIN:Base'});
+    Store.transition('rule:set',{table:'JOIN:Base',field:'filter',value:'id=42'});
+    const second = Store.transition('card:create',{});
+    Store.transition('ui:set',{key:'columnFilters',value:{'JOIN:Base':{id:'42'}}});
+    const rev = Store.viewRevision;
+    assert.deepEqual(Store.getDependentViews(['Base']), ['Middle','End']);
+    assert.deepEqual(Store.getDependentViews(['Base'], ['Base']), []);
+    const disabledPlan = Store.planViewUpsert({index:0,view:base,enabled:false,disableDependents:true});
+    assert.deepEqual(disabledPlan.enabledViews, []);
+    assert.deepEqual(Store.getEnabledViews(), ['Base','End']);
+    assert.equal(Store.transition('view:upsert',{index:0,view:{...base,view:'Renamed'},enabled:true}), true);
+    assert.equal(Store.viewRevision, rev+1);
+    assert.deepEqual(Store.getEnabledViews(), ['Renamed','End']);
+    assert.deepEqual(Store.getView('Middle'), {view:'Middle',left:'Renamed',right:'Renamed'});
+    assert.equal(Store.getView('End').left, 'Middle');
+    assert.equal(Store.getCard('b').ui.previewTable, 'JOIN:Renamed');
+    assert.equal(Store.getCard('b').ui.rules['JOIN:Renamed'].filter, 'id=42');
+    assert.deepEqual(Store.getCard(second.id).ui.columnFilters, {'JOIN:Renamed':{id:'42'}});
+    assert.equal(Store.transition('view:upsert',{index:0,view:{...base,view:'End'}}), false);
+    assert.deepEqual(Store.getDependentViews(['Renamed','Middle']), ['End']);
+    assert.equal(Store.transition('view:removeMany',{indexes:[0,0,-1]}), 1);
+    assert.deepEqual(Store.getEnabledViews(), []);
+    assert.ok(Store.getView('Middle') && Store.getView('End'));
+    assert.deepEqual(Store.getCard(second.id).ui.columnFilters, {});
+  });
   it('工程重命名：trims whitespace and newlines', () => {
     assert.equal(Store.renameProject('p1', '  Orders\n  Review\t '), true);
     assert.equal(Store.state.projects[0].title, 'Orders Review');
